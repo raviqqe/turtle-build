@@ -1,0 +1,24 @@
+name: lint
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - run: cargo clippy -- -D warnings
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - run: tools/format.sh -- --check
+  spell_check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: streetsidesoftware/cspell-action@main
+        with:
+          files: "**/*.{md,rs}"

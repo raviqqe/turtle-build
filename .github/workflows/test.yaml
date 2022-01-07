@@ -1,0 +1,18 @@
+name: test
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: cargo test
+  spell_check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: streetsidesoftware/cspell-action@main
+        with:
+          files: "**/*.{md,rs}"

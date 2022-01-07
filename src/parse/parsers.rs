@@ -1,7 +1,7 @@
 use super::stream::Stream;
 use crate::cfg::{Module, VariableDefinition};
 use combine::{
-    choice, eof, many,
+    choice, eof, many, none_of,
     parser::char::{alpha_num, char, letter, newline, space, string},
     value, Parser,
 };
@@ -18,8 +18,7 @@ fn variable_definition<'a>() -> impl Parser<Stream<'a>, Output = VariableDefinit
 }
 
 fn string_literal<'a>() -> impl Parser<Stream<'a>, Output = String> {
-    // TODO
-    identifier()
+    many(none_of(['\n'])).map(|string: String| string.trim().into())
 }
 
 fn identifier<'a>() -> impl Parser<Stream<'a>, Output = String> {
@@ -54,6 +53,26 @@ fn blank_lines<'a>() -> impl Parser<Stream<'a>, Output = ()> {
 mod tests {
     use super::*;
     use crate::parse::stream::stream;
+
+    #[test]
+    fn parse_string_literal() {
+        assert_eq!(
+            string_literal().parse(stream("foo")).unwrap().0,
+            "foo".to_string()
+        );
+        assert_eq!(
+            string_literal().parse(stream("foo\n")).unwrap().0,
+            "foo".to_string()
+        );
+        assert_eq!(
+            string_literal().parse(stream("foo \n")).unwrap().0,
+            "foo".to_string()
+        );
+        assert_eq!(
+            string_literal().parse(stream("foo bar")).unwrap().0,
+            "foo bar".to_string()
+        );
+    }
 
     #[test]
     fn parse_identifier() {

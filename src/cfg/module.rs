@@ -1,10 +1,11 @@
-use super::{Build, Rule, VariableDefinition};
+use super::{Build, Rule, Submodule, VariableDefinition};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Module {
     variable_definitions: Vec<VariableDefinition>,
     rules: Vec<Rule>,
     builds: Vec<Build>,
+    submodules: Vec<Submodule>,
 }
 
 impl Module {
@@ -12,11 +13,13 @@ impl Module {
         variable_definitions: Vec<VariableDefinition>,
         rules: Vec<Rule>,
         builds: Vec<Build>,
+        submodules: Vec<Submodule>,
     ) -> Self {
         Self {
             variable_definitions,
             rules,
             builds,
+            submodules,
         }
     }
 
@@ -30,5 +33,9 @@ impl Module {
 
     pub fn builds(&self) -> &[Build] {
         &self.builds
+    }
+
+    pub fn submodules(&self) -> &[Submodule] {
+        &self.submodules
     }
 }

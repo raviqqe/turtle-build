@@ -8,14 +8,17 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v2
       - run: cargo build
   test:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v2
       - run: cargo test
   lint:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v2
       - run: cargo clippy
   spell_check:
     runs-on: ubuntu-latest

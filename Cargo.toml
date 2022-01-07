@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 combine = { version = "4", features = ["regex"] }
+tokio = { "version" = "1", features = ["full"] }

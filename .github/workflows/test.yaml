@@ -5,10 +5,18 @@ on:
       - main
   pull_request:
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: cargo build
   test:
     runs-on: ubuntu-latest
     steps:
       - run: cargo test
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: cargo clippy
   spell_check:
     runs-on: ubuntu-latest
     steps:

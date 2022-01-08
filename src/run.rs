@@ -4,7 +4,7 @@ use crate::ir::{Build, Configuration};
 use error::RunError;
 use futures::future::{select_all, FutureExt, Shared};
 use std::collections::HashMap;
-use std::future::Future;
+use std::future::{ready, Future};
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
@@ -16,14 +16,13 @@ type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<(), RunError>> + Se
 pub async fn run(configuration: &Configuration) -> Result<(), RunError> {
     let mut builds = HashMap::new();
 
-    select_all(
+    select_builds(
         configuration
             .outputs()
             .values()
             .map(|build| run_build(configuration, &mut builds, build)),
     )
-    .await
-    .0?;
+    .await?;
 
     Ok(())
 }
@@ -47,7 +46,7 @@ fn run_build(
 
     let rule = build.rule().clone();
     let handle = spawn(async move {
-        select_all(inputs.iter().cloned()).await.0?;
+        select_builds(inputs.iter().cloned().collect::<Vec<_>>()).await?;
         run_command(rule.command()).await
     });
     let boxed: Pin<Box<dyn Future<Output = _> + Send>> = Box::pin(async move { handle.await? });
@@ -56,6 +55,16 @@ fn run_build(
     builds.insert(build.id().into(), future.clone());
 
     future
+}
+
+async fn select_builds(builds: impl IntoIterator<Item = BuildFuture>) -> Result<(), RunError> {
+    let future: Pin<Box<dyn Future<Output = _> + Send>> = Box::pin(ready(Ok(())));
+
+    select_all(builds.into_iter().chain([future.shared()]))
+        .await
+        .0?;
+
+    Ok(())
 }
 
 async fn run_command(command: &str) -> Result<(), RunError> {

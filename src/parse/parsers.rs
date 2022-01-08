@@ -51,7 +51,7 @@ fn build<'a>() -> impl Parser<Stream<'a>, Output = Build> {
         many1(string_literal()),
         sign(":"),
         identifier(),
-        many1(string_literal()),
+        many(string_literal()),
     )
         .skip(line_break())
         .map(|(_, outputs, _, rule, inputs)| Build::new(outputs, rule, inputs))
@@ -200,6 +200,10 @@ mod tests {
         assert_eq!(
             build().parse(stream("build foo: bar baz\n")).unwrap().0,
             Build::new(vec!["foo".into()], "bar", vec!["baz".into()])
+        );
+        assert_eq!(
+            build().parse(stream("build foo: bar\n")).unwrap().0,
+            Build::new(vec!["foo".into()], "bar", vec![])
         );
     }
 

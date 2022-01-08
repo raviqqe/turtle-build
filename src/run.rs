@@ -16,7 +16,6 @@ type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), RunError>> + Send>>
 type BuildFuture = Shared<RawBuildFuture>;
 
 pub async fn run(configuration: &Configuration) -> Result<(), RunError> {
-    dbg!(configuration);
     let mut builds = HashMap::new();
 
     select_builds(

@@ -72,6 +72,6 @@ async fn run_command(command: &str) -> Result<(), RunError> {
         stderr().write_all(&output.stdout).await?;
         stderr().write_all(&output.stdout).await?;
 
-        Err(RunError::ChildExit(output.status.code()).into())
+        Err(RunError::ChildExit(output.status.code()))
     }
 }

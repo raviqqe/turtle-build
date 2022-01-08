@@ -6,12 +6,39 @@ on:
   pull_request:
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os:
+          - ubuntu-18.04
+          - macos-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
-      - run: cargo build
-  test:
+      - run: tools/build.sh
+      - run: git diff --exit-code
+      - uses: actions/upload-artifact@v2
+        with:
+          name: build-${{ matrix.os }}
+          path: target/release/turtle
+  unit_test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - run: cargo test
+  integration_test:
+    needs: build
+    strategy:
+      matrix:
+        os:
+          - ubuntu-18.04
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: ruby/setup-ruby@v1
+      - uses: actions/download-artifact@v2
+        with:
+          name: build-${{ matrix.os }}
+          path: target/release
+      - run: chmod +x target/release/turtle
+      - run: tools/integration_test.sh

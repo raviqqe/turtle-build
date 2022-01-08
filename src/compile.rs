@@ -49,6 +49,7 @@ pub fn compile(module: &Module) -> Result<Configuration, String> {
     ))
 }
 
+// TODO Use rsplit to prevent overlapped interoplation.
 fn interpolate_variables(template: &str, variables: &HashMap<&str, &str>) -> String {
     variables
         .iter()

@@ -1,11 +1,10 @@
-mod ast;
+mod ir;
 mod parse;
 
-use ast::Module;
+use ir::Module;
 use parse::parse;
 use std::error::Error;
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
+use tokio::{fs::File, io::AsyncReadExt};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

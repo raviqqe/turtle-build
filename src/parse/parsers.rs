@@ -1,5 +1,5 @@
 use super::stream::Stream;
-use crate::ast::{Build, Module, Rule, Submodule, VariableDefinition};
+use crate::ir::{Build, Module, Rule, Submodule, VariableDefinition};
 use combine::{
     attempt, choice, eof, many, many1, none_of, not_followed_by, one_of, optional,
     parser::char::{alpha_num, char, letter, newline, string},

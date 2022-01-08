@@ -39,7 +39,7 @@ async fn read_modules(path: &str) -> Result<HashMap<String, Module>, Box<dyn Err
                 .map(|submodule| submodule.path().to_string()),
         );
 
-        modules.insert(path.into(), module);
+        modules.insert(path, module);
     }
 
     Ok(modules)

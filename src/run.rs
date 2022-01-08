@@ -75,11 +75,12 @@ async fn run_command(command: &str) -> Result<(), RunError> {
         .output()
         .await?;
 
+    stderr().write_all(&output.stdout).await?;
+
     if output.status.success() {
         Ok(())
     } else {
-        stderr().write_all(&output.stdout).await?;
-        stderr().write_all(&output.stdout).await?;
+        stderr().write_all(&output.stderr).await?;
 
         Err(RunError::ChildExit(output.status.code()))
     }

@@ -1,5 +1,6 @@
 mod ast;
 mod compile;
+mod ir;
 mod parse;
 
 use ast::Module;

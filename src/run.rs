@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::future::{ready, Future};
 use std::pin::Pin;
 use std::sync::Arc;
+use tokio::fs::metadata;
 use tokio::io::AsyncWriteExt;
 use tokio::spawn;
 use tokio::{io::stderr, process::Command};
@@ -40,7 +41,16 @@ fn run_build(
         build
             .inputs()
             .iter()
-            .map(|input| run_build(configuration, builds, &configuration.outputs()[input]))
+            .map(|input| {
+                if let Some(build) = configuration.outputs().get(input) {
+                    run_build(configuration, builds, build)
+                } else {
+                    let input = input.to_string();
+                    let future: Pin<Box<dyn Future<Output = _> + Send>> =
+                        Box::pin(async move { run_leaf_input(&input).await });
+                    future.shared()
+                }
+            })
             .collect::<Vec<_>>(),
     );
 
@@ -63,6 +73,12 @@ async fn select_builds(builds: impl IntoIterator<Item = BuildFuture>) -> Result<
     for result in join_all(builds.into_iter().chain([future.shared()])).await {
         result?;
     }
+
+    Ok(())
+}
+
+async fn run_leaf_input(output: &str) -> Result<(), RunError> {
+    metadata(output).await?;
 
     Ok(())
 }

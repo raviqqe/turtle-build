@@ -1,15 +1,20 @@
+mod context;
+
 use crate::{
-    ast::Module,
+    ast,
     ir::{Build, Configuration},
 };
 use std::{collections::HashMap, sync::Arc};
 
+use self::context::CompileContext;
+
 pub fn compile(
-    modules: &HashMap<String, Module>,
+    modules: &HashMap<String, ast::Module>,
     root_module_path: &str,
 ) -> Result<Configuration, String> {
+    let mut context = CompileContext::new();
+
     let module = &modules[root_module_path];
-    let mut build_index = 0;
 
     let variables = [("$", "$".into())]
         .into_iter()
@@ -27,39 +32,47 @@ pub fn compile(
         .map(|rule| (rule.name(), rule))
         .collect::<HashMap<_, _>>();
 
-    Ok(Configuration::new(
-        module
-            .builds()
-            .iter()
-            .flat_map(|build| {
-                let rule = rules[build.rule()];
-                let variables = variables
-                    .clone()
-                    .into_iter()
-                    .chain([
-                        ("in", build.inputs().join(" ")),
-                        ("out", build.outputs().join(" ")),
-                    ])
-                    .collect();
-                let ir = Arc::new(Build::new(
-                    {
-                        let index = build_index;
-                        build_index += 1;
-                        index.to_string()
-                    },
-                    interpolate_variables(rule.command(), &variables),
-                    interpolate_variables(rule.description(), &variables),
-                    build.inputs().to_vec(),
-                ));
+    Ok(Configuration::new(compile_module(
+        &mut context,
+        module,
+        &rules,
+        &variables,
+    )))
+}
 
-                build
-                    .outputs()
-                    .iter()
-                    .map(|output| (output.clone(), ir.clone()))
-                    .collect::<Vec<_>>()
-            })
-            .collect(),
-    ))
+fn compile_module(
+    context: &mut CompileContext,
+    module: &ast::Module,
+    rules: &HashMap<&str, &ast::Rule>,
+    variables: &HashMap<&str, String>,
+) -> HashMap<String, Arc<Build>> {
+    module
+        .builds()
+        .iter()
+        .flat_map(|build| {
+            let rule = &rules[build.rule()];
+            let variables = variables
+                .clone()
+                .into_iter()
+                .chain([
+                    ("in", build.inputs().join(" ")),
+                    ("out", build.outputs().join(" ")),
+                ])
+                .collect();
+            let ir = Arc::new(Build::new(
+                context.generate_build_id(),
+                interpolate_variables(rule.command(), &variables),
+                interpolate_variables(rule.description(), &variables),
+                build.inputs().to_vec(),
+            ));
+
+            build
+                .outputs()
+                .iter()
+                .map(|output| (output.clone(), ir.clone()))
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 // TODO Use rsplit to prevent overlapped interpolation.

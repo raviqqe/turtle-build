@@ -31,11 +31,11 @@ fn rule<'a>() -> impl Parser<Stream<'a>, Output = Rule> {
         keyword("rule"),
         identifier(),
         line_break(),
-        (string("\t"), keyword("command"), sign("="))
+        (indent(), keyword("command"), sign("="))
             .with(string_line())
             .skip(line_break()),
         optional(
-            (string("\t"), keyword("description"), sign("="))
+            (indent(), keyword("description"), sign("="))
                 .with(string_line())
                 .skip(line_break()),
         ),
@@ -95,6 +95,10 @@ fn token<'a, O, P: Parser<Stream<'a>, Output = O>>(
     parser.skip(blank())
 }
 
+fn indent<'a>() -> impl Parser<Stream<'a>, Output = ()> {
+    many1::<Vec<_>, _, _>(char(' ')).with(value(()))
+}
+
 fn blank<'a>() -> impl Parser<Stream<'a>, Output = ()> {
     many::<Vec<_>, _, _>(one_of([' ', '\t', '\r'])).with(value(()))
 }
@@ -137,7 +141,7 @@ mod tests {
         );
         assert_eq!(
             module()
-                .parse(stream("rule foo\n\tcommand = bar\n"))
+                .parse(stream("rule foo\n command = bar\n"))
                 .unwrap()
                 .0,
             Module::new(vec![], vec![Rule::new("foo", "bar", "")], vec![], vec![])
@@ -145,7 +149,7 @@ mod tests {
         assert_eq!(
             module()
                 .parse(stream(
-                    "rule foo\n\tcommand = bar\nrule baz\n\tcommand = blah\n"
+                    "rule foo\n command = bar\nrule baz\n command = blah\n"
                 ))
                 .unwrap()
                 .0,
@@ -177,14 +181,14 @@ mod tests {
     fn parse_rule() {
         assert_eq!(
             rule()
-                .parse(stream("rule foo\n\tcommand = bar\n"))
+                .parse(stream("rule foo\n command = bar\n"))
                 .unwrap()
                 .0,
             Rule::new("foo", "bar", "")
         );
         assert_eq!(
             rule()
-                .parse(stream("rule foo\n\tcommand = bar\n\tdescription = baz\n"))
+                .parse(stream("rule foo\n command = bar\n description = baz\n"))
                 .unwrap()
                 .0,
             Rule::new("foo", "bar", "baz")

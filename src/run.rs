@@ -32,7 +32,7 @@ pub async fn run(configuration: &Configuration) -> Result<(), RunError> {
 fn run_build(
     configuration: &Configuration,
     builds: &mut HashMap<String, BuildFuture>,
-    build: &Build,
+    build: &Arc<Build>,
 ) -> BuildFuture {
     if let Some(future) = builds.get(build.id()) {
         return future.clone();
@@ -54,13 +54,15 @@ fn run_build(
             .collect::<Vec<_>>(),
     );
 
-    let rule = build.rule().clone();
-    let handle = spawn(async move {
-        select_builds(inputs.iter().cloned().collect::<Vec<_>>()).await?;
-        run_command(rule.command()).await
-    });
-    let raw: RawBuildFuture = Box::pin(async move { handle.await? });
-    let future = raw.shared();
+    let future = {
+        let cloned_build = build.clone();
+        let handle = spawn(async move {
+            select_builds(inputs.iter().cloned().collect::<Vec<_>>()).await?;
+            run_command(cloned_build.command()).await
+        });
+        let raw: RawBuildFuture = Box::pin(async move { handle.await? });
+        raw.shared()
+    };
 
     builds.insert(build.id().into(), future.clone());
 

@@ -1,18 +1,22 @@
-use super::Rule;
-use std::sync::Arc;
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Build {
     id: String,
-    rule: Arc<Rule>,
+    command: String,
+    description: String,
     inputs: Vec<String>,
 }
 
 impl Build {
-    pub fn new(id: impl Into<String>, rule: Arc<Rule>, inputs: Vec<String>) -> Self {
+    pub fn new(
+        id: impl Into<String>,
+        command: impl Into<String>,
+        description: impl Into<String>,
+        inputs: Vec<String>,
+    ) -> Self {
         Self {
             id: id.into(),
-            rule,
+            command: command.into(),
+            description: description.into(),
             inputs,
         }
     }
@@ -21,8 +25,12 @@ impl Build {
         &self.id
     }
 
-    pub fn rule(&self) -> &Arc<Rule> {
-        &self.rule
+    pub fn command(&self) -> &str {
+        &self.id
+    }
+
+    pub fn description(&self) -> &str {
+        &self.id
     }
 
     pub fn inputs(&self) -> &[String] {

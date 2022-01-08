@@ -1,6 +1,6 @@
 use crate::{
     ast::Module,
-    ir::{Build, Configuration, Rule},
+    ir::{Build, Configuration},
 };
 use std::{collections::HashMap, sync::Arc};
 
@@ -20,15 +20,7 @@ pub fn compile(module: &Module) -> Result<Configuration, String> {
     let rules = module
         .rules()
         .iter()
-        .map(|rule| {
-            (
-                rule.name(),
-                Arc::new(Rule::new(
-                    interpolate_variables(rule.command(), &variables),
-                    rule.description(),
-                )),
-            )
-        })
+        .map(|rule| (rule.name(), rule))
         .collect::<HashMap<_, _>>();
 
     Ok(Configuration::new(
@@ -36,13 +28,15 @@ pub fn compile(module: &Module) -> Result<Configuration, String> {
             .builds()
             .iter()
             .flat_map(|build| {
+                let rule = rules[build.rule()];
                 let ir = Arc::new(Build::new(
                     {
                         let index = build_index;
                         build_index += 1;
                         index.to_string()
                     },
-                    rules[build.rule()].clone(),
+                    interpolate_variables(rule.command(), &variables),
+                    interpolate_variables(rule.description(), &variables),
                     build.inputs().to_vec(),
                 ));
 
@@ -90,12 +84,9 @@ mod tests {
             ))
             .unwrap(),
             ir::Configuration::new(
-                [(
-                    "bar".into(),
-                    Build::new("0", Rule::new("42", "").into(), vec![]).into()
-                )]
-                .into_iter()
-                .collect()
+                [("bar".into(), Build::new("0", "42", "", vec![]).into())]
+                    .into_iter()
+                    .collect()
             )
         );
     }
@@ -111,12 +102,9 @@ mod tests {
             ))
             .unwrap(),
             ir::Configuration::new(
-                [(
-                    "bar".into(),
-                    Build::new("0", Rule::new("$", "").into(), vec![]).into()
-                )]
-                .into_iter()
-                .collect()
+                [("bar".into(), Build::new("0", "$", "", vec![]).into())]
+                    .into_iter()
+                    .collect()
             )
         );
     }
@@ -136,14 +124,8 @@ mod tests {
             .unwrap(),
             ir::Configuration::new(
                 [
-                    (
-                        "bar".into(),
-                        Build::new("0", Rule::new("", "").into(), vec![]).into()
-                    ),
-                    (
-                        "baz".into(),
-                        Build::new("1", Rule::new("", "").into(), vec![]).into()
-                    )
+                    ("bar".into(), Build::new("0", "", "", vec![]).into()),
+                    ("baz".into(), Build::new("1", "", "", vec![]).into())
                 ]
                 .into_iter()
                 .collect()

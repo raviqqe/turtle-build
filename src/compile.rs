@@ -65,4 +65,25 @@ mod tests {
             ir::Configuration::new(Default::default())
         );
     }
+
+    #[test]
+    fn interpolate_variable_in_command() {
+        assert_eq!(
+            compile(&ast::Module::new(
+                vec![ast::VariableDefinition::new("x", "42")],
+                vec![ast::Rule::new("foo", "$x", "")],
+                vec![ast::Build::new(vec!["bar".into()], "foo", vec![])],
+                vec![]
+            ))
+            .unwrap(),
+            ir::Configuration::new(
+                [(
+                    "bar".into(),
+                    Build::new(Rule::new("42", "").into(), vec![]).into()
+                )]
+                .into_iter()
+                .collect()
+            )
+        );
+    }
 }

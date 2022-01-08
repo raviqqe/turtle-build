@@ -1,7 +1,7 @@
 use super::stream::Stream;
-use crate::cfg::{Module, VariableDefinition};
+use crate::cfg::{Module, Rule, VariableDefinition};
 use combine::{
-    choice, eof, many, many1, none_of, one_of, optional,
+    attempt, choice, eof, many, many1, none_of, not_followed_by, one_of, optional,
     parser::char::{alpha_num, char, letter, newline, string},
     value, Parser,
 };
@@ -9,19 +9,46 @@ use combine::{
 pub fn module<'a>() -> impl Parser<Stream<'a>, Output = Module> {
     (
         optional(line_break()),
-        many(variable_definition().skip(line_break())),
+        many(variable_definition()),
+        many(rule()),
     )
         .skip(eof())
-        .map(|(_, variable_definitions)| Module::new(variable_definitions, vec![], vec![], vec![]))
+        .map(|(_, variable_definitions, rules)| {
+            Module::new(variable_definitions, rules, vec![], vec![])
+        })
 }
 
 fn variable_definition<'a>() -> impl Parser<Stream<'a>, Output = VariableDefinition> {
-    (identifier(), sign("="), string_literal())
-        .map(|(name, _, value)| VariableDefinition::new(name, value))
+    (attempt(identifier().skip(sign("="))), string_literal())
+        .skip(line_break())
+        .map(|(name, value)| VariableDefinition::new(name, value))
+}
+
+fn rule<'a>() -> impl Parser<Stream<'a>, Output = Rule> {
+    (
+        keyword("rule"),
+        identifier(),
+        line_break(),
+        (string("\t"), keyword("command"), sign("="))
+            .with(string_literal())
+            .skip(line_break()),
+        optional(
+            (string("\t"), keyword("description"), sign("="))
+                .with(string_literal())
+                .skip(line_break()),
+        ),
+    )
+        .map(|(_, name, _, command, description)| {
+            Rule::new(name, command, description.unwrap_or_default())
+        })
 }
 
 fn string_literal<'a>() -> impl Parser<Stream<'a>, Output = String> {
     many(none_of(['\n'])).map(|string: String| string.trim().into())
+}
+
+fn keyword<'a>(name: &'static str) -> impl Parser<Stream<'a>, Output = ()> {
+    token(attempt(string(name)).skip(not_followed_by(alpha_num()))).with(value(()))
 }
 
 fn identifier<'a>() -> impl Parser<Stream<'a>, Output = String> {
@@ -49,7 +76,7 @@ fn blank<'a>() -> impl Parser<Stream<'a>, Output = ()> {
 }
 
 fn line_break<'a>() -> impl Parser<Stream<'a>, Output = ()> {
-    many1::<Vec<_>, _, _>((blank(), newline())).with(value(()))
+    many1::<Vec<_>, _, _>(attempt((blank(), newline()))).with(value(()))
 }
 
 #[cfg(test)]
@@ -84,20 +111,59 @@ mod tests {
                 vec![]
             )
         );
+        assert_eq!(
+            module()
+                .parse(stream("rule foo\n\tcommand = bar\n"))
+                .unwrap()
+                .0,
+            Module::new(vec![], vec![Rule::new("foo", "bar", "")], vec![], vec![])
+        );
+        assert_eq!(
+            module()
+                .parse(stream(
+                    "rule foo\n\tcommand = bar\nrule baz\n\tcommand = blah\n"
+                ))
+                .unwrap()
+                .0,
+            Module::new(
+                vec![],
+                vec![Rule::new("foo", "bar", ""), Rule::new("baz", "blah", "")],
+                vec![],
+                vec![]
+            )
+        );
     }
 
     #[test]
     fn parse_variable_definition() {
         assert_eq!(
-            variable_definition().parse(stream("x = 42")).unwrap().0,
+            variable_definition().parse(stream("x = 42\n")).unwrap().0,
             VariableDefinition::new("x", "42")
         );
         assert_eq!(
             variable_definition()
-                .parse(stream("foo = 1 + 1"))
+                .parse(stream("foo = 1 + 1\n"))
                 .unwrap()
                 .0,
             VariableDefinition::new("foo", "1 + 1")
+        );
+    }
+
+    #[test]
+    fn parse_rule() {
+        assert_eq!(
+            rule()
+                .parse(stream("rule foo\n\tcommand = bar\n"))
+                .unwrap()
+                .0,
+            Rule::new("foo", "bar", "")
+        );
+        assert_eq!(
+            rule()
+                .parse(stream("rule foo\n\tcommand = bar\n\tdescription = baz\n"))
+                .unwrap()
+                .0,
+            Rule::new("foo", "bar", "baz")
         );
     }
 

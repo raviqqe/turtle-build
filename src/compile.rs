@@ -10,6 +10,7 @@ pub fn compile(module: &Module) -> Result<Configuration, String> {
         .iter()
         .map(|definition| (definition.name(), definition.value()))
         .collect::<HashMap<_, _>>();
+
     let rules = module
         .rules()
         .iter()

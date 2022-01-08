@@ -12,7 +12,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::spawn;
 use tokio::{io::stderr, process::Command};
 
-type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<(), RunError>> + Send>>>;
+type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), RunError>> + Send>>;
+type BuildFuture = Shared<RawBuildFuture>;
 
 pub async fn run(configuration: &Configuration) -> Result<(), RunError> {
     let mut builds = HashMap::new();
@@ -46,9 +47,8 @@ fn run_build(
                     run_build(configuration, builds, build)
                 } else {
                     let input = input.to_string();
-                    let future: Pin<Box<dyn Future<Output = _> + Send>> =
-                        Box::pin(async move { run_leaf_input(&input).await });
-                    future.shared()
+                    let raw: RawBuildFuture = Box::pin(async move { run_leaf_input(&input).await });
+                    raw.shared()
                 }
             })
             .collect::<Vec<_>>(),
@@ -59,8 +59,8 @@ fn run_build(
         select_builds(inputs.iter().cloned().collect::<Vec<_>>()).await?;
         run_command(rule.command()).await
     });
-    let boxed: Pin<Box<dyn Future<Output = _> + Send>> = Box::pin(async move { handle.await? });
-    let future = boxed.shared();
+    let raw: RawBuildFuture = Box::pin(async move { handle.await? });
+    let future = raw.shared();
 
     builds.insert(build.id().into(), future.clone());
 

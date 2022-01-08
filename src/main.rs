@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 async fn read_configuration() -> Result<Module, Box<dyn Error>> {
     let mut source = "".into();
 
-    File::open("main.ninja")
+    File::open("build.ninja")
         .await?
         .read_to_string(&mut source)
         .await?;

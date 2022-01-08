@@ -2,19 +2,19 @@ mod ast;
 mod compile;
 mod ir;
 mod parse;
+mod run;
 
 use ast::Module;
 use compile::compile;
 use parse::parse;
+use run::run;
 use std::error::Error;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let module = read_configuration().await?;
-
-    compile(&module)?;
+    run(&compile(&read_configuration().await?)?).await?;
 
     Ok(())
 }

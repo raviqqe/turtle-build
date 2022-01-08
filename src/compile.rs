@@ -1,34 +1,26 @@
 use crate::{
     ast::Module,
-    ir::{Build, Configuration, Rule},
+    ir::{Build, Configuration},
 };
 use std::{collections::HashMap, sync::Arc};
 
 pub fn compile(module: &Module) -> Result<Configuration, String> {
     let mut build_index = 0;
 
-    let variables = [("$", "$")]
+    let variables = [("$", "$".into())]
         .into_iter()
         .chain(
             module
                 .variable_definitions()
                 .iter()
-                .map(|definition| (definition.name(), definition.value())),
+                .map(|definition| (definition.name(), definition.value().into())),
         )
         .collect::<HashMap<_, _>>();
 
     let rules = module
         .rules()
         .iter()
-        .map(|rule| {
-            (
-                rule.name(),
-                Arc::new(Rule::new(
-                    interpolate_variables(rule.command(), &variables),
-                    rule.description(),
-                )),
-            )
-        })
+        .map(|rule| (rule.name(), rule))
         .collect::<HashMap<_, _>>();
 
     Ok(Configuration::new(
@@ -36,13 +28,23 @@ pub fn compile(module: &Module) -> Result<Configuration, String> {
             .builds()
             .iter()
             .flat_map(|build| {
+                let rule = rules[build.rule()];
+                let variables = variables
+                    .clone()
+                    .into_iter()
+                    .chain([
+                        ("in", build.inputs().join(" ")),
+                        ("out", build.outputs().join(" ")),
+                    ])
+                    .collect();
                 let ir = Arc::new(Build::new(
                     {
                         let index = build_index;
                         build_index += 1;
                         index.to_string()
                     },
-                    rules[build.rule()].clone(),
+                    interpolate_variables(rule.command(), &variables),
+                    interpolate_variables(rule.description(), &variables),
                     build.inputs().to_vec(),
                 ));
 
@@ -57,7 +59,7 @@ pub fn compile(module: &Module) -> Result<Configuration, String> {
 }
 
 // TODO Use rsplit to prevent overlapped interpolation.
-fn interpolate_variables(template: &str, variables: &HashMap<&str, &str>) -> String {
+fn interpolate_variables(template: &str, variables: &HashMap<&str, String>) -> String {
     variables
         .iter()
         .fold(template.into(), |template, (name, value)| {
@@ -90,12 +92,9 @@ mod tests {
             ))
             .unwrap(),
             ir::Configuration::new(
-                [(
-                    "bar".into(),
-                    Build::new("0", Rule::new("42", "").into(), vec![]).into()
-                )]
-                .into_iter()
-                .collect()
+                [("bar".into(), Build::new("0", "42", "", vec![]).into())]
+                    .into_iter()
+                    .collect()
             )
         );
     }
@@ -111,12 +110,52 @@ mod tests {
             ))
             .unwrap(),
             ir::Configuration::new(
+                [("bar".into(), Build::new("0", "$", "", vec![]).into())]
+                    .into_iter()
+                    .collect()
+            )
+        );
+    }
+
+    #[test]
+    fn interpolate_in_variable_in_command() {
+        assert_eq!(
+            compile(&ast::Module::new(
+                vec![ast::VariableDefinition::new("x", "42")],
+                vec![ast::Rule::new("foo", "$in", "")],
+                vec![ast::Build::new(
+                    vec!["bar".into()],
+                    "foo",
+                    vec!["baz".into()]
+                )],
+                vec![]
+            ))
+            .unwrap(),
+            ir::Configuration::new(
                 [(
                     "bar".into(),
-                    Build::new("0", Rule::new("$", "").into(), vec![]).into()
+                    Build::new("0", "baz", "", vec!["baz".into()]).into()
                 )]
                 .into_iter()
                 .collect()
+            )
+        );
+    }
+
+    #[test]
+    fn interpolate_out_variable_in_command() {
+        assert_eq!(
+            compile(&ast::Module::new(
+                vec![ast::VariableDefinition::new("x", "42")],
+                vec![ast::Rule::new("foo", "$out", "")],
+                vec![ast::Build::new(vec!["bar".into()], "foo", vec![])],
+                vec![]
+            ))
+            .unwrap(),
+            ir::Configuration::new(
+                [("bar".into(), Build::new("0", "bar", "", vec![]).into())]
+                    .into_iter()
+                    .collect()
             )
         );
     }
@@ -136,14 +175,8 @@ mod tests {
             .unwrap(),
             ir::Configuration::new(
                 [
-                    (
-                        "bar".into(),
-                        Build::new("0", Rule::new("", "").into(), vec![]).into()
-                    ),
-                    (
-                        "baz".into(),
-                        Build::new("1", Rule::new("", "").into(), vec![]).into()
-                    )
+                    ("bar".into(), Build::new("0", "", "", vec![]).into()),
+                    ("baz".into(), Build::new("1", "", "", vec![]).into())
                 ]
                 .into_iter()
                 .collect()

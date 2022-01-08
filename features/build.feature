@@ -1,12 +1,13 @@
 Feature: Build
   Scenario: Build with a build file
-    When a file named "build.ninja" with:
+    Given a file named "build.ninja" with:
     """
     """
-    Then I successfully run `turtle`
+    When I successfully run `turtle`
+    Then the exit status should be 0
 
   Scenario: Run a rule without any input
-    When a file named "build.ninja" with:
+    Given a file named "build.ninja" with:
     """
     rule hello
       command = echo hello
@@ -14,11 +15,11 @@ Feature: Build
     build foo: hello
 
     """
-    Then I successfully run `turtle`
-    And the stderr should contain exactly "hello"
+    When I successfully run `turtle`
+    Then the stderr should contain exactly "hello"
 
   Scenario: Run a rule with an input
-    When a file named "build.ninja" with:
+    Given a file named "build.ninja" with:
     """
     rule hello
       command = echo hello
@@ -27,11 +28,11 @@ Feature: Build
 
     """
     And a file named "bar" with ""
-    Then I successfully run `turtle`
-    And the stderr should contain exactly "hello"
+    When I successfully run `turtle`
+    Then the exit status should be 0
 
-  Scenario: Failt to run a rule with a missing input
-    When a file named "build.ninja" with:
+  Scenario: Fail to run a rule with a missing input
+    Given a file named "build.ninja" with:
     """
     rule hello
       command = echo hello
@@ -39,5 +40,18 @@ Feature: Build
     build foo: hello bar
 
     """
-    Then I run `turtle`
-    And the exit status should not be 0
+    When I run `turtle`
+    Then the exit status should not be 0
+
+  Scenario: Run a rule with variables
+    Given a file named "build.ninja" with:
+    """
+    rule echo
+      command = echo $out $in
+
+    build foo: echo bar
+
+    """
+    And a file named "bar" with ""
+    When I successfully run `turtle`
+    Then the stderr should contain exactly "foo bar"

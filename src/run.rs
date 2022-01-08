@@ -2,7 +2,7 @@ mod error;
 
 use crate::ir::{Build, Configuration};
 use error::RunError;
-use futures::future::{select_all, FutureExt, Shared};
+use futures::future::{join_all, FutureExt, Shared};
 use std::collections::HashMap;
 use std::future::{ready, Future};
 use std::pin::Pin;
@@ -60,9 +60,9 @@ fn run_build(
 async fn select_builds(builds: impl IntoIterator<Item = BuildFuture>) -> Result<(), RunError> {
     let future: Pin<Box<dyn Future<Output = _> + Send>> = Box::pin(ready(Ok(())));
 
-    select_all(builds.into_iter().chain([future.shared()]))
-        .await
-        .0?;
+    for result in join_all(builds.into_iter().chain([future.shared()])).await {
+        result?;
+    }
 
     Ok(())
 }

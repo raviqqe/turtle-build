@@ -1,7 +1,7 @@
-mod cfg;
+mod ast;
 mod parse;
 
-use cfg::Module;
+use ast::Module;
 use parse::parse;
 use std::error::Error;
 use tokio::fs::File;

@@ -1,5 +1,5 @@
 use super::stream::Stream;
-use crate::cfg::{Build, Module, Rule, Submodule, VariableDefinition};
+use crate::ast::{Build, Module, Rule, Submodule, VariableDefinition};
 use combine::{
     attempt, choice, eof, many, many1, none_of, not_followed_by, one_of, optional,
     parser::char::{alpha_num, char, letter, newline, string},
@@ -103,7 +103,7 @@ fn line_break<'a>() -> impl Parser<Stream<'a>, Output = ()> {
     many1::<Vec<_>, _, _>(attempt((blank(), newline()))).with(value(()))
 }
 
-#[cfg(test)]
+#[ast(test)]
 mod tests {
     use super::*;
     use crate::parse::stream::stream;

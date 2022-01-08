@@ -14,14 +14,16 @@ use tokio::{io::stderr, process::Command};
 type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<(), RunError>> + Send>>>;
 
 pub async fn run(configuration: &Configuration) -> Result<(), RunError> {
-    let mut futures = vec![];
     let mut builds = HashMap::new();
 
-    for (_, build) in configuration.outputs() {
-        futures.push(run_build(configuration, &mut builds, build));
-    }
-
-    select_all(futures).await.0?;
+    select_all(
+        configuration
+            .outputs()
+            .values()
+            .map(|build| run_build(configuration, &mut builds, build)),
+    )
+    .await
+    .0?;
 
     Ok(())
 }

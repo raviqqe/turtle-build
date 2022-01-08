@@ -1,5 +1,5 @@
 use super::stream::Stream;
-use crate::cfg::{Module, Rule, VariableDefinition};
+use crate::cfg::{Build, Module, Rule, VariableDefinition};
 use combine::{
     attempt, choice, eof, many, many1, none_of, not_followed_by, one_of, optional,
     parser::char::{alpha_num, char, letter, newline, string},
@@ -11,15 +11,16 @@ pub fn module<'a>() -> impl Parser<Stream<'a>, Output = Module> {
         optional(line_break()),
         many(variable_definition()),
         many(rule()),
+        many(build()),
     )
         .skip(eof())
-        .map(|(_, variable_definitions, rules)| {
-            Module::new(variable_definitions, rules, vec![], vec![])
+        .map(|(_, variable_definitions, rules, builds)| {
+            Module::new(variable_definitions, rules, builds, vec![])
         })
 }
 
 fn variable_definition<'a>() -> impl Parser<Stream<'a>, Output = VariableDefinition> {
-    (attempt(identifier().skip(sign("="))), string_literal())
+    (attempt(identifier().skip(sign("="))), string_line())
         .skip(line_break())
         .map(|(name, value)| VariableDefinition::new(name, value))
 }
@@ -30,11 +31,11 @@ fn rule<'a>() -> impl Parser<Stream<'a>, Output = Rule> {
         identifier(),
         line_break(),
         (string("\t"), keyword("command"), sign("="))
-            .with(string_literal())
+            .with(string_line())
             .skip(line_break()),
         optional(
             (string("\t"), keyword("description"), sign("="))
-                .with(string_literal())
+                .with(string_line())
                 .skip(line_break()),
         ),
     )
@@ -43,8 +44,24 @@ fn rule<'a>() -> impl Parser<Stream<'a>, Output = Rule> {
         })
 }
 
+fn build<'a>() -> impl Parser<Stream<'a>, Output = Build> {
+    (
+        keyword("build"),
+        many1(string_literal()),
+        sign(":"),
+        identifier(),
+        many1(string_literal()),
+    )
+        .skip(line_break())
+        .map(|(_, outputs, _, rule, inputs)| Build::new(outputs, rule, inputs))
+}
+
+fn string_line<'a>() -> impl Parser<Stream<'a>, Output = String> {
+    many1(none_of(['\n'])).map(|string: String| string.trim().into())
+}
+
 fn string_literal<'a>() -> impl Parser<Stream<'a>, Output = String> {
-    many(none_of(['\n'])).map(|string: String| string.trim().into())
+    many1(none_of([' ', '\t', '\r', '\n', ':']))
 }
 
 fn keyword<'a>(name: &'static str) -> impl Parser<Stream<'a>, Output = ()> {
@@ -168,22 +185,44 @@ mod tests {
     }
 
     #[test]
+    fn parse_build() {
+        assert_eq!(
+            build().parse(stream("build foo: bar baz\n")).unwrap().0,
+            Build::new(vec!["foo".into()], "bar", vec!["baz".into()])
+        );
+    }
+
+    #[test]
+    fn parse_string_line() {
+        assert!(string_line().parse(stream("")).is_err());
+        assert_eq!(
+            string_line().parse(stream("foo")).unwrap().0,
+            "foo".to_string()
+        );
+        assert_eq!(
+            string_line().parse(stream("foo\n")).unwrap().0,
+            "foo".to_string()
+        );
+        assert_eq!(
+            string_line().parse(stream("foo \n")).unwrap().0,
+            "foo".to_string()
+        );
+        assert_eq!(
+            string_line().parse(stream("foo bar")).unwrap().0,
+            "foo bar".to_string()
+        );
+    }
+
+    #[test]
     fn parse_string_literal() {
+        assert!(string_literal().parse(stream("")).is_err());
         assert_eq!(
             string_literal().parse(stream("foo")).unwrap().0,
             "foo".to_string()
         );
         assert_eq!(
-            string_literal().parse(stream("foo\n")).unwrap().0,
-            "foo".to_string()
-        );
-        assert_eq!(
-            string_literal().parse(stream("foo \n")).unwrap().0,
-            "foo".to_string()
-        );
-        assert_eq!(
             string_literal().parse(stream("foo bar")).unwrap().0,
-            "foo bar".to_string()
+            "foo".to_string()
         );
     }
 

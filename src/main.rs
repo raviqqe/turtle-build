@@ -16,6 +16,7 @@ use tokio::io::AsyncReadExt;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let root_module_path = "build.ninja";
+
     run(&compile(
         &read_modules(root_module_path).await?,
         root_module_path,

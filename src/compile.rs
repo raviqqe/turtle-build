@@ -45,6 +45,23 @@ pub fn compile(module: &Module) -> Result<Configuration, String> {
 }
 
 fn interpolate_variables(template: &str, variables: &HashMap<&str, &str>) -> String {
-    // TODO
-    template.into()
+    variables
+        .iter()
+        .fold(template.into(), |template, (name, value)| {
+            template.replace(&("$".to_string() + name), value)
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ast, ir};
+
+    #[test]
+    fn compile_empty_module() {
+        assert_eq!(
+            compile(&ast::Module::new(vec![], vec![], vec![], vec![])).unwrap(),
+            ir::Configuration::new(Default::default())
+        );
+    }
 }

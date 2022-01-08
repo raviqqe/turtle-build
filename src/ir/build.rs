@@ -26,11 +26,11 @@ impl Build {
     }
 
     pub fn command(&self) -> &str {
-        &self.id
+        &self.command
     }
 
     pub fn description(&self) -> &str {
-        &self.id
+        &self.description
     }
 
     pub fn inputs(&self) -> &[String] {

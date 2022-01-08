@@ -4,7 +4,11 @@ use crate::{
 };
 use std::{collections::HashMap, sync::Arc};
 
-pub fn compile(module: &Module) -> Result<Configuration, String> {
+pub fn compile(
+    modules: &HashMap<String, Module>,
+    root_module_path: &str,
+) -> Result<Configuration, String> {
+    let module = &modules[root_module_path];
     let mut build_index = 0;
 
     let variables = [("$", "$".into())]
@@ -73,10 +77,21 @@ mod tests {
     use crate::{ast, ir};
     use pretty_assertions::assert_eq;
 
+    const ROOT_MODULE_PATH: &str = "build.ninja";
+
     #[test]
     fn compile_empty_module() {
         assert_eq!(
-            compile(&ast::Module::new(vec![], vec![], vec![], vec![])).unwrap(),
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.into(),
+                    ast::Module::new(vec![], vec![], vec![], vec![])
+                )]
+                .into_iter()
+                .collect(),
+                ROOT_MODULE_PATH
+            )
+            .unwrap(),
             ir::Configuration::new(Default::default())
         );
     }
@@ -84,12 +99,20 @@ mod tests {
     #[test]
     fn interpolate_variable_in_command() {
         assert_eq!(
-            compile(&ast::Module::new(
-                vec![ast::VariableDefinition::new("x", "42")],
-                vec![ast::Rule::new("foo", "$x", "")],
-                vec![ast::Build::new(vec!["bar".into()], "foo", vec![])],
-                vec![]
-            ))
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.into(),
+                    ast::Module::new(
+                        vec![ast::VariableDefinition::new("x", "42")],
+                        vec![ast::Rule::new("foo", "$x", "")],
+                        vec![ast::Build::new(vec!["bar".into()], "foo", vec![])],
+                        vec![]
+                    )
+                )]
+                .into_iter()
+                .collect(),
+                ROOT_MODULE_PATH
+            )
             .unwrap(),
             ir::Configuration::new(
                 [("bar".into(), Build::new("0", "42", "", vec![]).into())]
@@ -102,12 +125,20 @@ mod tests {
     #[test]
     fn interpolate_dollar_sign_in_command() {
         assert_eq!(
-            compile(&ast::Module::new(
-                vec![ast::VariableDefinition::new("x", "42")],
-                vec![ast::Rule::new("foo", "$$", "")],
-                vec![ast::Build::new(vec!["bar".into()], "foo", vec![])],
-                vec![]
-            ))
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.into(),
+                    ast::Module::new(
+                        vec![ast::VariableDefinition::new("x", "42")],
+                        vec![ast::Rule::new("foo", "$$", "")],
+                        vec![ast::Build::new(vec!["bar".into()], "foo", vec![])],
+                        vec![]
+                    )
+                )]
+                .into_iter()
+                .collect(),
+                ROOT_MODULE_PATH
+            )
             .unwrap(),
             ir::Configuration::new(
                 [("bar".into(), Build::new("0", "$", "", vec![]).into())]
@@ -120,16 +151,24 @@ mod tests {
     #[test]
     fn interpolate_in_variable_in_command() {
         assert_eq!(
-            compile(&ast::Module::new(
-                vec![ast::VariableDefinition::new("x", "42")],
-                vec![ast::Rule::new("foo", "$in", "")],
-                vec![ast::Build::new(
-                    vec!["bar".into()],
-                    "foo",
-                    vec!["baz".into()]
-                )],
-                vec![]
-            ))
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.into(),
+                    ast::Module::new(
+                        vec![ast::VariableDefinition::new("x", "42")],
+                        vec![ast::Rule::new("foo", "$in", "")],
+                        vec![ast::Build::new(
+                            vec!["bar".into()],
+                            "foo",
+                            vec!["baz".into()]
+                        )],
+                        vec![]
+                    )
+                )]
+                .into_iter()
+                .collect(),
+                ROOT_MODULE_PATH
+            )
             .unwrap(),
             ir::Configuration::new(
                 [(
@@ -145,12 +184,20 @@ mod tests {
     #[test]
     fn interpolate_out_variable_in_command() {
         assert_eq!(
-            compile(&ast::Module::new(
-                vec![ast::VariableDefinition::new("x", "42")],
-                vec![ast::Rule::new("foo", "$out", "")],
-                vec![ast::Build::new(vec!["bar".into()], "foo", vec![])],
-                vec![]
-            ))
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.into(),
+                    ast::Module::new(
+                        vec![ast::VariableDefinition::new("x", "42")],
+                        vec![ast::Rule::new("foo", "$out", "")],
+                        vec![ast::Build::new(vec!["bar".into()], "foo", vec![])],
+                        vec![]
+                    )
+                )]
+                .into_iter()
+                .collect(),
+                ROOT_MODULE_PATH
+            )
             .unwrap(),
             ir::Configuration::new(
                 [("bar".into(), Build::new("0", "bar", "", vec![]).into())]
@@ -163,15 +210,23 @@ mod tests {
     #[test]
     fn generate_build_ids() {
         assert_eq!(
-            compile(&ast::Module::new(
-                vec![],
-                vec![ast::Rule::new("foo", "", "")],
-                vec![
-                    ast::Build::new(vec!["bar".into()], "foo", vec![]),
-                    ast::Build::new(vec!["baz".into()], "foo", vec![])
-                ],
-                vec![]
-            ))
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.into(),
+                    ast::Module::new(
+                        vec![],
+                        vec![ast::Rule::new("foo", "", "")],
+                        vec![
+                            ast::Build::new(vec!["bar".into()], "foo", vec![]),
+                            ast::Build::new(vec!["baz".into()], "foo", vec![])
+                        ],
+                        vec![]
+                    )
+                )]
+                .into_iter()
+                .collect(),
+                ROOT_MODULE_PATH
+            )
             .unwrap(),
             ir::Configuration::new(
                 [

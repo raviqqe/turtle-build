@@ -5,6 +5,8 @@ edition = "2021"
 
 [dependencies]
 combine = "4"
+futures = "0.3.19"
 petgraph = "0.6"
+pretty_assertions = "1.0.0"
 regex = "1"
 tokio = { "version" = "1", features = ["full"] }

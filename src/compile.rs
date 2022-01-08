@@ -5,6 +5,8 @@ use crate::{
 use std::{collections::HashMap, sync::Arc};
 
 pub fn compile(module: &Module) -> Result<Configuration, String> {
+    let mut build_index = 0;
+
     let variables = [("$", "$")]
         .into_iter()
         .chain(
@@ -35,6 +37,11 @@ pub fn compile(module: &Module) -> Result<Configuration, String> {
             .iter()
             .flat_map(|build| {
                 let ir = Arc::new(Build::new(
+                    {
+                        let index = build_index;
+                        build_index += 1;
+                        index.to_string()
+                    },
                     rules[build.rule()].clone(),
                     build.inputs().to_vec(),
                 ));
@@ -62,6 +69,7 @@ fn interpolate_variables(template: &str, variables: &HashMap<&str, &str>) -> Str
 mod tests {
     use super::*;
     use crate::{ast, ir};
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn compile_empty_module() {
@@ -84,7 +92,7 @@ mod tests {
             ir::Configuration::new(
                 [(
                     "bar".into(),
-                    Build::new(Rule::new("42", "").into(), vec![]).into()
+                    Build::new("0", Rule::new("42", "").into(), vec![]).into()
                 )]
                 .into_iter()
                 .collect()
@@ -105,8 +113,38 @@ mod tests {
             ir::Configuration::new(
                 [(
                     "bar".into(),
-                    Build::new(Rule::new("$", "").into(), vec![]).into()
+                    Build::new("0", Rule::new("$", "").into(), vec![]).into()
                 )]
+                .into_iter()
+                .collect()
+            )
+        );
+    }
+
+    #[test]
+    fn generate_build_ids() {
+        assert_eq!(
+            compile(&ast::Module::new(
+                vec![],
+                vec![ast::Rule::new("foo", "", "")],
+                vec![
+                    ast::Build::new(vec!["bar".into()], "foo", vec![]),
+                    ast::Build::new(vec!["baz".into()], "foo", vec![])
+                ],
+                vec![]
+            ))
+            .unwrap(),
+            ir::Configuration::new(
+                [
+                    (
+                        "bar".into(),
+                        Build::new("0", Rule::new("", "").into(), vec![]).into()
+                    ),
+                    (
+                        "baz".into(),
+                        Build::new("1", Rule::new("", "").into(), vec![]).into()
+                    )
+                ]
                 .into_iter()
                 .collect()
             )

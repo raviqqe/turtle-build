@@ -1,7 +1,7 @@
 mod build;
-mod module;
+mod configuration;
 mod rule;
 
 pub use build::*;
-pub use module::*;
+pub use configuration::*;
 pub use rule::*;

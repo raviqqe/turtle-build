@@ -26,7 +26,7 @@ impl<P: Display> From<Errors<char, &str, P>> for ParseError {
 impl Error for ParseError {}
 
 impl Display for ParseError {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{}", &self.message)
     }
 }

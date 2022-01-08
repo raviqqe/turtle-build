@@ -5,10 +5,14 @@ use crate::{
 use std::{collections::HashMap, sync::Arc};
 
 pub fn compile(module: &Module) -> Result<Configuration, String> {
-    let variables = module
-        .variable_definitions()
-        .iter()
-        .map(|definition| (definition.name(), definition.value()))
+    let variables = [("$", "$")]
+        .into_iter()
+        .chain(
+            module
+                .variable_definitions()
+                .iter()
+                .map(|definition| (definition.name(), definition.value())),
+        )
         .collect::<HashMap<_, _>>();
 
     let rules = module
@@ -80,6 +84,27 @@ mod tests {
                 [(
                     "bar".into(),
                     Build::new(Rule::new("42", "").into(), vec![]).into()
+                )]
+                .into_iter()
+                .collect()
+            )
+        );
+    }
+
+    #[test]
+    fn interpolate_dollar_sign_in_command() {
+        assert_eq!(
+            compile(&ast::Module::new(
+                vec![ast::VariableDefinition::new("x", "42")],
+                vec![ast::Rule::new("foo", "$$", "")],
+                vec![ast::Build::new(vec!["bar".into()], "foo", vec![])],
+                vec![]
+            ))
+            .unwrap(),
+            ir::Configuration::new(
+                [(
+                    "bar".into(),
+                    Build::new(Rule::new("$", "").into(), vec![]).into()
                 )]
                 .into_iter()
                 .collect()

@@ -12,11 +12,24 @@ pub fn compile(
     modules: &HashMap<String, ast::Module>,
     root_module_path: &str,
 ) -> Result<Configuration, String> {
-    let mut context = CompileContext::new();
+    Ok(Configuration::new(compile_module(
+        &CompileContext::new(modules.clone()),
+        root_module_path,
+        &Default::default(),
+        &[("$", "$".into())].into_iter().collect(),
+    )))
+}
 
-    let module = &modules[root_module_path];
+fn compile_module(
+    context: &CompileContext,
+    module_path: &str,
+    rules: &HashMap<&str, &ast::Rule>,
+    variables: &HashMap<&str, String>,
+) -> HashMap<String, Arc<Build>> {
+    let module = &context.modules()[module_path];
 
-    let variables = [("$", "$".into())]
+    let variables = variables
+        .clone()
         .into_iter()
         .chain(
             module
@@ -26,26 +39,12 @@ pub fn compile(
         )
         .collect::<HashMap<_, _>>();
 
-    let rules = module
-        .rules()
-        .iter()
-        .map(|rule| (rule.name(), rule))
+    let rules = rules
+        .clone()
+        .into_iter()
+        .chain(module.rules().iter().map(|rule| (rule.name(), rule)))
         .collect::<HashMap<_, _>>();
 
-    Ok(Configuration::new(compile_module(
-        &mut context,
-        module,
-        &rules,
-        &variables,
-    )))
-}
-
-fn compile_module(
-    context: &mut CompileContext,
-    module: &ast::Module,
-    rules: &HashMap<&str, &ast::Rule>,
-    variables: &HashMap<&str, String>,
-) -> HashMap<String, Arc<Build>> {
     module
         .builds()
         .iter()

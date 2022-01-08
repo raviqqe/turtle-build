@@ -1,17 +1,28 @@
+use crate::ast::Module;
+use std::{cell::RefCell, collections::HashMap};
+
 #[derive(Debug, Default)]
 pub struct CompileContext {
-    build_index: usize,
+    modules: HashMap<String, Module>,
+    build_index: RefCell<usize>,
 }
 
 impl CompileContext {
-    pub fn new() -> Self {
-        Self { build_index: 0 }
+    pub fn new(modules: HashMap<String, Module>) -> Self {
+        Self {
+            modules,
+            build_index: RefCell::new(0),
+        }
     }
 
-    pub fn generate_build_id(&mut self) -> String {
-        let index = self.build_index;
+    pub fn modules(&self) -> &HashMap<String, Module> {
+        &self.modules
+    }
 
-        self.build_index += 1;
+    pub fn generate_build_id(&self) -> String {
+        let index = *self.build_index.borrow();
+
+        *self.build_index.borrow_mut() += 1;
 
         index.to_string()
     }
@@ -23,7 +34,7 @@ mod tests {
 
     #[test]
     fn generate_build_ids() {
-        let mut context = CompileContext::new();
+        let context = CompileContext::new(Default::default());
 
         assert_eq!(context.generate_build_id(), "0".to_string());
         assert_eq!(context.generate_build_id(), "1".to_string());

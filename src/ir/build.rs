@@ -8,11 +8,8 @@ pub struct Build {
 }
 
 impl Build {
-    pub fn new(rule: Rule, inputs: Vec<String>) -> Self {
-        Self {
-            rule: rule.into(),
-            inputs,
-        }
+    pub fn new(rule: Arc<Rule>, inputs: Vec<String>) -> Self {
+        Self { rule, inputs }
     }
 
     pub fn rule(&self) -> &Rule {

@@ -1,5 +1,5 @@
 use super::stream::Stream;
-use crate::cfg::{Build, Module, Rule, VariableDefinition};
+use crate::cfg::{Build, Module, Rule, Submodule, VariableDefinition};
 use combine::{
     attempt, choice, eof, many, many1, none_of, not_followed_by, one_of, optional,
     parser::char::{alpha_num, char, letter, newline, string},
@@ -12,10 +12,11 @@ pub fn module<'a>() -> impl Parser<Stream<'a>, Output = Module> {
         many(variable_definition()),
         many(rule()),
         many(build()),
+        many(submodule()),
     )
         .skip(eof())
-        .map(|(_, variable_definitions, rules, builds)| {
-            Module::new(variable_definitions, rules, builds, vec![])
+        .map(|(_, variable_definitions, rules, builds, submodules)| {
+            Module::new(variable_definitions, rules, builds, submodules)
         })
 }
 
@@ -54,6 +55,12 @@ fn build<'a>() -> impl Parser<Stream<'a>, Output = Build> {
     )
         .skip(line_break())
         .map(|(_, outputs, _, rule, inputs)| Build::new(outputs, rule, inputs))
+}
+
+fn submodule<'a>() -> impl Parser<Stream<'a>, Output = Submodule> {
+    (keyword("subninja"), string_line())
+        .skip(line_break())
+        .map(|(_, path)| Submodule::new(path))
 }
 
 fn string_line<'a>() -> impl Parser<Stream<'a>, Output = String> {
@@ -189,6 +196,14 @@ mod tests {
         assert_eq!(
             build().parse(stream("build foo: bar baz\n")).unwrap().0,
             Build::new(vec!["foo".into()], "bar", vec!["baz".into()])
+        );
+    }
+
+    #[test]
+    fn parse_submodule() {
+        assert_eq!(
+            submodule().parse(stream("subninja foo\n")).unwrap().0,
+            Submodule::new("foo")
         );
     }
 

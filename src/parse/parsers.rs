@@ -103,7 +103,7 @@ fn line_break<'a>() -> impl Parser<Stream<'a>, Output = ()> {
     many1::<Vec<_>, _, _>(attempt((blank(), newline()))).with(value(()))
 }
 
-#[ast(test)]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::parse::stream::stream;

@@ -5,7 +5,7 @@
 
 Clone of [Ninja build system](https://github.com/ninja-build/ninja) in Rust
 
-Currently, Turtle only supports subset of the Ninja build file syntax. See [issues](https://github.com/raviqqe/turtle/issues) for more information.
+Currently, Turtle only supports a subset of the Ninja build file syntax. See [issues](https://github.com/raviqqe/turtle/issues) for more information.
 
 ## License
 

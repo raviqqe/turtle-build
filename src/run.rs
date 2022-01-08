@@ -2,53 +2,59 @@ mod error;
 
 use crate::ir::{Build, Configuration};
 use error::RunError;
-use futures::future::{FutureExt, Shared};
-use futures::stream::FuturesUnordered;
+use futures::future::{select_all, FutureExt, Shared};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::spawn;
 use tokio::{io::stderr, process::Command};
 
-type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<(), RunError>>>>>;
+type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<(), RunError>> + Send>>>;
 
 pub async fn run(configuration: &Configuration) -> Result<(), RunError> {
     let mut futures = vec![];
     let mut builds = HashMap::new();
 
     for (_, build) in configuration.outputs() {
-        futures.push(run_build(&mut builds, build));
+        futures.push(run_build(configuration, &mut builds, build));
     }
 
-    for future in futures {
-        future.await?;
-    }
+    select_all(futures).await.0?;
 
     Ok(())
 }
 
-fn run_build(builds: &mut HashMap<String, BuildFuture>, build: &Build) -> BuildFuture {
+fn run_build(
+    configuration: &Configuration,
+    builds: &mut HashMap<String, BuildFuture>,
+    build: &Build,
+) -> BuildFuture {
     if let Some(future) = builds.get(build.id()) {
         return future.clone();
     }
 
+    let inputs = Arc::new(
+        build
+            .inputs()
+            .iter()
+            .map(|input| run_build(configuration, builds, &configuration.outputs()[input]))
+            .collect::<Vec<_>>(),
+    );
+
     let rule = build.rule().clone();
-    let handle = spawn(async move { run_command(rule.command()).await });
-    let boxed: Pin<Box<dyn Future<Output = _>>> = Box::pin(async move { handle.await? });
+    let handle = spawn(async move {
+        select_all(inputs.iter().cloned()).await.0?;
+        run_command(rule.command()).await
+    });
+    let boxed: Pin<Box<dyn Future<Output = _> + Send>> = Box::pin(async move { handle.await? });
     let future = boxed.shared();
 
     builds.insert(build.id().into(), future.clone());
 
     future
 }
-
-// TODO
-// fn run_input_builds(
-//     configuration: &Configuration,
-//     builds: &mut HashMap<String, BuildFuture>,
-// ) -> FuturesUnordered<BuildFuture> {
-// }
 
 async fn run_command(command: &str) -> Result<(), RunError> {
     let output = Command::new("sh")

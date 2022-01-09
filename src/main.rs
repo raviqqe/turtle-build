@@ -16,7 +16,7 @@ use tokio::io::AsyncReadExt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let root_module_path = PathBuf::from("build.ninja");
+    let root_module_path = PathBuf::from("build.ninja").canonicalize()?;
     let (modules, dependencies) = read_modules(&root_module_path).await?;
 
     run(&compile(&modules, &dependencies, &root_module_path)?).await?;
@@ -37,7 +37,7 @@ async fn read_modules(
         let submodule_paths = module
             .submodules()
             .iter()
-            .map(|submodule| path.join(submodule.path()).canonicalize())
+            .map(|submodule| path.parent().unwrap().join(submodule.path()).canonicalize())
             .collect::<Result<HashSet<_>, _>>()?;
 
         paths.extend(submodule_paths.clone());

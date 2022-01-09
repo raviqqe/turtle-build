@@ -1,17 +1,21 @@
+mod build_database;
 mod error;
-mod output_database;
 
 use crate::ir::{Build, Configuration};
 use error::RunError;
 use futures::future::{join_all, FutureExt, Shared};
-use std::collections::HashMap;
-use std::future::{ready, Future};
-use std::pin::Pin;
-use std::sync::Arc;
-use tokio::fs::metadata;
-use tokio::io::AsyncWriteExt;
-use tokio::spawn;
-use tokio::{io::stderr, process::Command};
+use std::{
+    collections::HashMap,
+    future::{ready, Future},
+    pin::Pin,
+    sync::Arc,
+};
+use tokio::{
+    fs::metadata,
+    io::{stderr, AsyncWriteExt},
+    process::Command,
+    spawn,
+};
 
 type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), RunError>> + Send>>;
 type BuildFuture = Shared<RawBuildFuture>;

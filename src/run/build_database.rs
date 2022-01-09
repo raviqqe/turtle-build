@@ -4,11 +4,11 @@ use std::path::Path;
 const DEFAULT_DATABASE_FILENAME: &str = ".ninja_deps";
 
 #[derive(Debug)]
-pub struct OutputDatabase {
+pub struct BuildDatabase {
     database: sled::Db,
 }
 
-impl OutputDatabase {
+impl BuildDatabase {
     pub fn new(build_directory: &Path) -> Result<Self, RunError> {
         Ok(Self {
             database: sled::open(build_directory.join(DEFAULT_DATABASE_FILENAME))?,

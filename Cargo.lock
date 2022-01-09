@@ -462,6 +462,7 @@ version = "0.1.0"
 dependencies = [
  "combine",
  "futures",
+ "once_cell",
  "petgraph",
  "pretty_assertions",
  "regex",

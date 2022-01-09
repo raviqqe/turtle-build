@@ -1,21 +1,21 @@
 use crate::ast::Module;
-use std::{cell::RefCell, collections::HashMap};
+use std::{cell::RefCell, collections::HashMap, path::PathBuf};
 
 #[derive(Debug, Default)]
 pub struct CompileContext {
-    modules: HashMap<String, Module>,
+    modules: HashMap<PathBuf, Module>,
     build_index: RefCell<usize>,
 }
 
 impl CompileContext {
-    pub fn new(modules: HashMap<String, Module>) -> Self {
+    pub fn new(modules: HashMap<PathBuf, Module>) -> Self {
         Self {
             modules,
             build_index: RefCell::new(0),
         }
     }
 
-    pub fn modules(&self) -> &HashMap<String, Module> {
+    pub fn modules(&self) -> &HashMap<PathBuf, Module> {
         &self.modules
     }
 

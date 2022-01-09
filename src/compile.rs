@@ -1,16 +1,19 @@
 mod context;
 
+use self::context::CompileContext;
 use crate::{
     ast,
     ir::{Build, Configuration},
 };
-use std::{collections::HashMap, sync::Arc};
-
-use self::context::CompileContext;
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 pub fn compile(
-    modules: &HashMap<String, ast::Module>,
-    root_module_path: &str,
+    modules: &HashMap<PathBuf, ast::Module>,
+    root_module_path: &Path,
 ) -> Result<Configuration, String> {
     Ok(Configuration::new(compile_module(
         &CompileContext::new(modules.clone()),
@@ -22,7 +25,7 @@ pub fn compile(
 
 fn compile_module(
     context: &CompileContext,
-    module_path: &str,
+    module_path: &Path,
     rules: &HashMap<&str, &ast::Rule>,
     variables: &HashMap<&str, String>,
 ) -> HashMap<String, Arc<Build>> {
@@ -87,21 +90,22 @@ fn interpolate_variables(template: &str, variables: &HashMap<&str, String>) -> S
 mod tests {
     use super::*;
     use crate::{ast, ir};
+    use once_cell::sync::Lazy;
     use pretty_assertions::assert_eq;
 
-    const ROOT_MODULE_PATH: &str = "build.ninja";
+    const ROOT_MODULE_PATH: Lazy<PathBuf> = Lazy::new(|| PathBuf::from("build.ninja"));
 
     #[test]
     fn compile_empty_module() {
         assert_eq!(
             compile(
                 &[(
-                    ROOT_MODULE_PATH.into(),
+                    ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![], vec![], vec![], vec![])
                 )]
                 .into_iter()
                 .collect(),
-                ROOT_MODULE_PATH
+                &ROOT_MODULE_PATH
             )
             .unwrap(),
             ir::Configuration::new(Default::default())
@@ -113,7 +117,7 @@ mod tests {
         assert_eq!(
             compile(
                 &[(
-                    ROOT_MODULE_PATH.into(),
+                    ROOT_MODULE_PATH.clone(),
                     ast::Module::new(
                         vec![ast::VariableDefinition::new("x", "42")],
                         vec![ast::Rule::new("foo", "$x", "")],
@@ -123,7 +127,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                ROOT_MODULE_PATH
+                &ROOT_MODULE_PATH
             )
             .unwrap(),
             ir::Configuration::new(
@@ -139,7 +143,7 @@ mod tests {
         assert_eq!(
             compile(
                 &[(
-                    ROOT_MODULE_PATH.into(),
+                    ROOT_MODULE_PATH.clone(),
                     ast::Module::new(
                         vec![ast::VariableDefinition::new("x", "42")],
                         vec![ast::Rule::new("foo", "$$", "")],
@@ -149,7 +153,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                ROOT_MODULE_PATH
+                &ROOT_MODULE_PATH
             )
             .unwrap(),
             ir::Configuration::new(
@@ -165,7 +169,7 @@ mod tests {
         assert_eq!(
             compile(
                 &[(
-                    ROOT_MODULE_PATH.into(),
+                    ROOT_MODULE_PATH.clone(),
                     ast::Module::new(
                         vec![ast::VariableDefinition::new("x", "42")],
                         vec![ast::Rule::new("foo", "$in", "")],
@@ -179,7 +183,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                ROOT_MODULE_PATH
+                &ROOT_MODULE_PATH
             )
             .unwrap(),
             ir::Configuration::new(
@@ -198,7 +202,7 @@ mod tests {
         assert_eq!(
             compile(
                 &[(
-                    ROOT_MODULE_PATH.into(),
+                    ROOT_MODULE_PATH.clone(),
                     ast::Module::new(
                         vec![ast::VariableDefinition::new("x", "42")],
                         vec![ast::Rule::new("foo", "$out", "")],
@@ -208,7 +212,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                ROOT_MODULE_PATH
+                &ROOT_MODULE_PATH
             )
             .unwrap(),
             ir::Configuration::new(
@@ -224,7 +228,7 @@ mod tests {
         assert_eq!(
             compile(
                 &[(
-                    ROOT_MODULE_PATH.into(),
+                    ROOT_MODULE_PATH.clone(),
                     ast::Module::new(
                         vec![],
                         vec![ast::Rule::new("foo", "", "")],
@@ -237,7 +241,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                ROOT_MODULE_PATH
+                &ROOT_MODULE_PATH
             )
             .unwrap(),
             ir::Configuration::new(

@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       # TODO Enable a dead_code rule.
-      - run: cargo clippy -- -D warnings -A dead_code
+      - run: cargo clippy -- -D warnings
   format:
     runs-on: ubuntu-latest
     steps:

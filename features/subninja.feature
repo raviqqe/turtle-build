@@ -1,5 +1,5 @@
-Feature: Build
-  Scenario: Use a subninja statement
+Feature: Subninja statement
+  Scenario: Build an output in a child build file
     Given a file named "build.ninja" with:
     """
     rule hello
@@ -16,7 +16,7 @@ Feature: Build
     When I successfully run `turtle`
     Then the stderr should contain exactly "hello"
 
-  Scenario: Use a nested subninja statement
+  Scenario: Build an output in a grandchild build file
     Given a file named "build.ninja" with:
     """
     rule hello

@@ -99,7 +99,12 @@ mod tests {
     use once_cell::sync::Lazy;
     use pretty_assertions::assert_eq;
 
-    const ROOT_MODULE_PATH: Lazy<PathBuf> = Lazy::new(|| PathBuf::from("build.ninja"));
+    static ROOT_MODULE_PATH: Lazy<PathBuf> = Lazy::new(|| PathBuf::from("build.ninja"));
+    static DEFAULT_DEPENDENCIES: Lazy<HashMap<PathBuf, HashSet<PathBuf>>> = Lazy::new(|| {
+        [(PathBuf::from("build.ninja"), Default::default())]
+            .into_iter()
+            .collect()
+    });
 
     #[test]
     fn compile_empty_module() {
@@ -111,7 +116,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &Default::default(),
+                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
@@ -134,7 +139,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &Default::default(),
+                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
@@ -161,7 +166,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &Default::default(),
+                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
@@ -192,7 +197,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &Default::default(),
+                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
@@ -222,7 +227,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &Default::default(),
+                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
@@ -252,7 +257,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &Default::default(),
+                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH
             )
             .unwrap(),

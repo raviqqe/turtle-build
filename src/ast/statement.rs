@@ -1,8 +1,9 @@
-use super::{Build, Rule, Submodule, VariableDefinition};
+use super::{Build, DefaultOutput, Rule, Submodule, VariableDefinition};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Statement {
     Build(Build),
+    Default(DefaultOutput),
     Rule(Rule),
     Submodule(Submodule),
     VariableDefinition(VariableDefinition),
@@ -20,6 +21,12 @@ impl Statement {
 impl From<Build> for Statement {
     fn from(build: Build) -> Self {
         Self::Build(build)
+    }
+}
+
+impl From<DefaultOutput> for Statement {
+    fn from(default: DefaultOutput) -> Self {
+        Self::Default(default)
     }
 }
 

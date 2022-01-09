@@ -1,22 +1,20 @@
-Feature: Subninja statement
-  Scenario: Build an output in a child build file
+Feature: Default statement
+  Scenario: Build a default output
     Given a file named "build.ninja" with:
     """
     rule hello
       command = echo hello
 
-    subninja foo.ninja
-
-    """
-    And a file named "foo.ninja" with:
-    """
     build foo: hello
+    build bar: hello
+
+    default foo
 
     """
     When I successfully run `turtle`
     Then the stderr should contain exactly "hello"
 
-  Scenario: Build an output in a grandchild build file
+  Scenario: Build a default output in a child build file
     Given a file named "build.ninja" with:
     """
     rule hello
@@ -27,12 +25,10 @@ Feature: Subninja statement
     """
     And a file named "foo.ninja" with:
     """
-    subninja bar.ninja
-
-    """
-    And a file named "bar.ninja" with:
-    """
     build foo: hello
+    build bar: hello
+
+    default foo
 
     """
     When I successfully run `turtle`

@@ -7,7 +7,7 @@ use crate::{
     ir::{Build, Configuration},
 };
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -17,12 +17,19 @@ pub fn compile(
     dependencies: &ModuleDependencyMap,
     root_module_path: &Path,
 ) -> Result<Configuration, String> {
-    Ok(Configuration::new(compile_module(
+    let (outputs, default_outputs) = compile_module(
         &CompileContext::new(modules.clone(), dependencies.clone()),
         root_module_path,
         &Default::default(),
         &[("$", "$".into())].into_iter().collect(),
-    )))
+    );
+    let default_outputs = if default_outputs.is_empty() {
+        outputs.keys().cloned().collect()
+    } else {
+        default_outputs
+    };
+
+    Ok(Configuration::new(outputs, default_outputs))
 }
 
 fn compile_module(
@@ -30,11 +37,12 @@ fn compile_module(
     path: &Path,
     rules: &HashMap<&str, &ast::Rule>,
     variables: &HashMap<&str, String>,
-) -> HashMap<String, Arc<Build>> {
+) -> (HashMap<String, Arc<Build>>, HashSet<String>) {
     let module = &context.modules()[path];
     let mut rules = rules.clone();
     let mut variables = variables.clone();
     let mut outputs = HashMap::new();
+    let mut default_outputs = HashSet::new();
 
     for statement in module.statements() {
         match statement {
@@ -62,16 +70,22 @@ fn compile_module(
                         .map(|output| (output.clone(), ir.clone())),
                 );
             }
+            ast::Statement::Default(default) => {
+                default_outputs.extend(default.outputs().iter().cloned());
+            }
             ast::Statement::Rule(rule) => {
                 rules.insert(rule.name(), rule);
             }
             ast::Statement::Submodule(submodule) => {
-                outputs.extend(compile_module(
+                let (submodule_outputs, submodule_default_outputs) = compile_module(
                     context,
                     &context.dependencies()[path][submodule.path()],
                     &rules,
                     &variables,
-                ));
+                );
+
+                outputs.extend(submodule_outputs);
+                default_outputs.extend(submodule_default_outputs);
             }
             ast::Statement::VariableDefinition(definition) => {
                 variables.insert(definition.name(), definition.value().into());
@@ -79,7 +93,7 @@ fn compile_module(
         }
     }
 
-    outputs
+    (outputs, default_outputs)
 }
 
 // TODO Use rsplit to prevent overlapped interpolation.
@@ -116,7 +130,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            ir::Configuration::new(Default::default())
+            ir::Configuration::new(Default::default(), Default::default())
         );
     }
 
@@ -141,7 +155,8 @@ mod tests {
             ir::Configuration::new(
                 [("bar".into(), Build::new("0", "42", "", vec![]).into())]
                     .into_iter()
-                    .collect()
+                    .collect(),
+                ["bar".into()].into_iter().collect()
             )
         );
     }
@@ -167,7 +182,8 @@ mod tests {
             ir::Configuration::new(
                 [("bar".into(), Build::new("0", "$", "", vec![]).into())]
                     .into_iter()
-                    .collect()
+                    .collect(),
+                ["bar".into()].into_iter().collect()
             )
         );
     }
@@ -196,7 +212,8 @@ mod tests {
                     Build::new("0", "baz", "", vec!["baz".into()]).into()
                 )]
                 .into_iter()
-                .collect()
+                .collect(),
+                ["bar".into()].into_iter().collect()
             )
         );
     }
@@ -222,7 +239,8 @@ mod tests {
             ir::Configuration::new(
                 [("bar".into(), Build::new("0", "bar", "", vec![]).into())]
                     .into_iter()
-                    .collect()
+                    .collect(),
+                ["bar".into()].into_iter().collect()
             )
         );
     }
@@ -251,7 +269,8 @@ mod tests {
                     ("baz".into(), Build::new("1", "", "", vec![]).into())
                 ]
                 .into_iter()
-                .collect()
+                .collect(),
+                ["bar".into(), "baz".into()].into_iter().collect()
             )
         );
     }

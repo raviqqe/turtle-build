@@ -20,9 +20,9 @@ pub async fn run(configuration: &Configuration) -> Result<(), RunError> {
 
     select_builds(
         configuration
-            .outputs()
-            .values()
-            .map(|build| run_build(configuration, &mut builds, build)),
+            .default_outputs()
+            .iter()
+            .map(|output| run_build(configuration, &mut builds, &configuration.outputs()[output])),
     )
     .await?;
 

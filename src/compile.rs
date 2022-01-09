@@ -65,6 +65,7 @@ fn compile_module(
                         .map(|output| (output.clone(), ir.clone())),
                 );
             }
+            ast::Statement::Default(_) => {}
             ast::Statement::Rule(rule) => {
                 rules.insert(rule.name(), rule);
             }

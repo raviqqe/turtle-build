@@ -1,5 +1,5 @@
 use super::stream::Stream;
-use crate::ast::{Build, Module, Rule, Statement, Submodule, VariableDefinition};
+use crate::ast::{Build, DefaultOutput, Module, Rule, Statement, Submodule, VariableDefinition};
 use combine::{
     attempt, choice, eof, many, many1, none_of, not_followed_by, one_of, optional,
     parser::char::{alpha_num, char, letter, newline, string},
@@ -15,6 +15,7 @@ pub fn module<'a>() -> impl Parser<Stream<'a>, Output = Module> {
 fn statement<'a>() -> impl Parser<Stream<'a>, Output = Statement> {
     choice((
         build().map(Statement::from),
+        default().map(Statement::from),
         rule().map(Statement::from),
         submodule().map(Statement::from),
         variable_definition().map(Statement::from),
@@ -56,6 +57,12 @@ fn build<'a>() -> impl Parser<Stream<'a>, Output = Build> {
     )
         .skip(line_break())
         .map(|(_, outputs, _, rule, inputs)| Build::new(outputs, rule, inputs))
+}
+
+fn default<'a>() -> impl Parser<Stream<'a>, Output = DefaultOutput> {
+    (keyword("default"), many1(string_literal()))
+        .skip(line_break())
+        .map(|(_, outputs)| DefaultOutput::new(outputs))
 }
 
 fn submodule<'a>() -> impl Parser<Stream<'a>, Output = Submodule> {

@@ -33,6 +33,7 @@ The subset syntax is fully declarative differently from the original Ninja synta
   - `build` statements
   - `default` statements (WIP)
   - `subninja` statements
+- There are variable scopes for two levels: build files and `build` statements
 
 ## License
 

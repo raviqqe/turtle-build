@@ -17,12 +17,15 @@ pub fn compile(
     dependencies: &ModuleDependencyMap,
     root_module_path: &Path,
 ) -> Result<Configuration, String> {
-    Ok(Configuration::new(compile_module(
+    let outputs = compile_module(
         &CompileContext::new(modules.clone(), dependencies.clone()),
         root_module_path,
         &Default::default(),
         &[("$", "$".into())].into_iter().collect(),
-    )))
+    );
+    let default_outputs = outputs.keys().cloned().collect();
+
+    Ok(Configuration::new(outputs, default_outputs))
 }
 
 fn compile_module(
@@ -116,7 +119,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            ir::Configuration::new(Default::default())
+            ir::Configuration::new(Default::default(), Default::default())
         );
     }
 
@@ -141,7 +144,8 @@ mod tests {
             ir::Configuration::new(
                 [("bar".into(), Build::new("0", "42", "", vec![]).into())]
                     .into_iter()
-                    .collect()
+                    .collect(),
+                ["bar".into()].into_iter().collect()
             )
         );
     }
@@ -167,7 +171,8 @@ mod tests {
             ir::Configuration::new(
                 [("bar".into(), Build::new("0", "$", "", vec![]).into())]
                     .into_iter()
-                    .collect()
+                    .collect(),
+                ["bar".into()].into_iter().collect()
             )
         );
     }
@@ -196,7 +201,8 @@ mod tests {
                     Build::new("0", "baz", "", vec!["baz".into()]).into()
                 )]
                 .into_iter()
-                .collect()
+                .collect(),
+                ["bar".into()].into_iter().collect()
             )
         );
     }
@@ -222,7 +228,8 @@ mod tests {
             ir::Configuration::new(
                 [("bar".into(), Build::new("0", "bar", "", vec![]).into())]
                     .into_iter()
-                    .collect()
+                    .collect(),
+                ["bar".into()].into_iter().collect()
             )
         );
     }
@@ -251,7 +258,8 @@ mod tests {
                     ("baz".into(), Build::new("1", "", "", vec![]).into())
                 ]
                 .into_iter()
-                .collect()
+                .collect(),
+                ["bar".into(), "baz".into()].into_iter().collect()
             )
         );
     }

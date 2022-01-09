@@ -6,6 +6,7 @@ use crate::ir::{Build, Configuration};
 use error::RunError;
 use futures::future::{join_all, FutureExt, Shared};
 use std::hash::{Hash, Hasher};
+use std::time::SystemTime;
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
     future::{ready, Future},
@@ -13,6 +14,7 @@ use std::{
     pin::Pin,
     sync::Arc,
 };
+use tokio::io;
 use tokio::{
     fs::metadata,
     io::{stderr, AsyncWriteExt},
@@ -72,7 +74,7 @@ fn run_build(
         let handle = spawn(async move {
             select_builds(inputs.iter().cloned().collect::<Vec<_>>()).await?;
 
-            if should_build(&cloned_database, &cloned_build)? {
+            if should_build(&cloned_database, &cloned_build).await? {
                 run_command(cloned_build.command()).await?;
             }
 
@@ -87,17 +89,27 @@ fn run_build(
     future
 }
 
-fn should_build(database: &BuildDatabase, build: &Build) -> Result<bool, RunError> {
+async fn should_build(database: &BuildDatabase, build: &Build) -> Result<bool, RunError> {
     let hash = {
         let mut hasher = DefaultHasher::new();
+
         build.command().hash(&mut hasher);
-        // TODO Hash inputs.
+        join_all(build.inputs().iter().map(get_timestamp))
+            .await
+            .into_iter()
+            .collect::<Result<Vec<SystemTime>, _>>()?
+            .hash(&mut hasher);
+
         hasher.finish()
     };
 
     database.set(build.id(), hash)?;
 
     Ok(database.get(build.id())? == hash)
+}
+
+async fn get_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, io::Error> {
+    Ok(metadata(path).await?.modified()?)
 }
 
 async fn select_builds(builds: impl IntoIterator<Item = BuildFuture>) -> Result<(), RunError> {

@@ -59,7 +59,12 @@ fn run_build(
         let cloned_build = build.clone();
         let handle = spawn(async move {
             select_builds(inputs.iter().cloned().collect::<Vec<_>>()).await?;
-            run_command(cloned_build.command()).await
+
+            if should_build()? {
+                run_command(cloned_build.command()).await?;
+            }
+
+            Ok(())
         });
         let raw: RawBuildFuture = Box::pin(async move { handle.await? });
         raw.shared()
@@ -68,6 +73,10 @@ fn run_build(
     builds.insert(build.id().into(), future.clone());
 
     future
+}
+
+fn should_build() -> Result<bool, RunError> {
+    todo!()
 }
 
 async fn select_builds(builds: impl IntoIterator<Item = BuildFuture>) -> Result<(), RunError> {

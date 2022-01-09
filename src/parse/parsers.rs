@@ -1,5 +1,5 @@
 use super::stream::Stream;
-use crate::ast::{Build, Module, Rule, Submodule, VariableDefinition};
+use crate::ast::{Build, Module, Rule, Statement, Submodule, VariableDefinition};
 use combine::{
     attempt, choice, eof, many, many1, none_of, not_followed_by, one_of, optional,
     parser::char::{alpha_num, char, letter, newline, string},
@@ -7,17 +7,18 @@ use combine::{
 };
 
 pub fn module<'a>() -> impl Parser<Stream<'a>, Output = Module> {
-    (
-        optional(line_break()),
-        many(variable_definition()),
-        many(rule()),
-        many(build()),
-        many(submodule()),
-    )
+    (optional(line_break()), many(statement()))
         .skip(eof())
-        .map(|(_, variable_definitions, rules, builds, submodules)| {
-            Module::new(variable_definitions, rules, builds, submodules)
-        })
+        .map(|(_, statements)| Module::new(statements))
+}
+
+fn statement<'a>() -> impl Parser<Stream<'a>, Output = Statement> {
+    choice((
+        build().map(Statement::from),
+        rule().map(Statement::from),
+        submodule().map(Statement::from),
+        variable_definition().map(Statement::from),
+    ))
 }
 
 fn variable_definition<'a>() -> impl Parser<Stream<'a>, Output = VariableDefinition> {
@@ -114,37 +115,24 @@ mod tests {
 
     #[test]
     fn parse_module() {
-        assert_eq!(
-            module().parse(stream("")).unwrap().0,
-            Module::new(vec![], vec![], vec![], vec![])
-        );
+        assert_eq!(module().parse(stream("")).unwrap().0, Module::new(vec![]));
         assert_eq!(
             module().parse(stream("x = 42\n")).unwrap().0,
-            Module::new(
-                vec![VariableDefinition::new("x", "42")],
-                vec![],
-                vec![],
-                vec![]
-            )
+            Module::new(vec![VariableDefinition::new("x", "42").into()])
         );
         assert_eq!(
             module().parse(stream("x = 1\ny = 2\n")).unwrap().0,
-            Module::new(
-                vec![
-                    VariableDefinition::new("x", "1"),
-                    VariableDefinition::new("y", "2"),
-                ],
-                vec![],
-                vec![],
-                vec![]
-            )
+            Module::new(vec![
+                VariableDefinition::new("x", "1").into(),
+                VariableDefinition::new("y", "2").into(),
+            ],)
         );
         assert_eq!(
             module()
                 .parse(stream("rule foo\n command = bar\n"))
                 .unwrap()
                 .0,
-            Module::new(vec![], vec![Rule::new("foo", "bar", "")], vec![], vec![])
+            Module::new(vec![Rule::new("foo", "bar", "").into()])
         );
         assert_eq!(
             module()
@@ -153,12 +141,10 @@ mod tests {
                 ))
                 .unwrap()
                 .0,
-            Module::new(
-                vec![],
-                vec![Rule::new("foo", "bar", ""), Rule::new("baz", "blah", "")],
-                vec![],
-                vec![]
-            )
+            Module::new(vec![
+                Rule::new("foo", "bar", "").into(),
+                Rule::new("baz", "blah", "").into(),
+            ],)
         );
     }
 

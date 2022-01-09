@@ -35,8 +35,9 @@ async fn read_modules(
         let module = read_module(&path).await?;
 
         let submodule_paths = module
-            .submodules()
+            .statements()
             .iter()
+            .filter_map(|statement| statement.as_submodule())
             .map(|submodule| path.parent().unwrap().join(submodule.path()).canonicalize())
             .collect::<Result<HashSet<_>, _>>()?;
 

@@ -29,6 +29,7 @@ impl Build {
         &self.command
     }
 
+    #[allow(dead_code)]
     pub fn description(&self) -> &str {
         &self.description
     }

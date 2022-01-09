@@ -5,8 +5,9 @@ use self::build_database::BuildDatabase;
 use crate::ir::{Build, Configuration};
 use error::RunError;
 use futures::future::{join_all, FutureExt, Shared};
+use std::hash::{Hash, Hasher};
 use std::{
-    collections::HashMap,
+    collections::{hash_map::DefaultHasher, HashMap},
     future::{ready, Future},
     path::Path,
     pin::Pin,
@@ -87,8 +88,12 @@ fn run_build(
 }
 
 fn should_build(database: &BuildDatabase, build: &Build) -> Result<bool, RunError> {
-    // TODO
-    let hash = 0;
+    let hash = {
+        let mut hasher = DefaultHasher::new();
+        build.command().hash(&mut hasher);
+        // TODO Hash inputs.
+        hasher.finish()
+    };
 
     database.set(build.id(), hash)?;
 

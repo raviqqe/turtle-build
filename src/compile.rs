@@ -1,19 +1,20 @@
 mod context;
 
 use self::context::CompileContext;
+pub use self::context::ModuleDependencyMap;
 use crate::{
     ast,
     ir::{Build, Configuration},
 };
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
 pub fn compile(
     modules: &HashMap<PathBuf, ast::Module>,
-    dependencies: &HashMap<PathBuf, HashSet<PathBuf>>,
+    dependencies: &ModuleDependencyMap,
     root_module_path: &Path,
 ) -> Result<Configuration, String> {
     Ok(Configuration::new(compile_module(
@@ -30,58 +31,55 @@ fn compile_module(
     rules: &HashMap<&str, &ast::Rule>,
     variables: &HashMap<&str, String>,
 ) -> HashMap<String, Arc<Build>> {
-    todo!()
-    // let module = &context.modules()[path];
+    let module = &context.modules()[path];
+    let mut rules = rules.clone();
+    let mut variables = variables.clone();
+    let mut outputs = HashMap::new();
 
-    // let variables = variables
-    //     .clone()
-    //     .into_iter()
-    //     .chain(
-    //         module
-    //             .variable_definitions()
-    //             .iter()
-    //             .map(|definition| (definition.name(), definition.value().into())),
-    //     )
-    //     .collect::<HashMap<_, _>>();
+    for statement in module.statements() {
+        match statement {
+            ast::Statement::Build(build) => {
+                let rule = &rules[build.rule()];
+                let variables = variables
+                    .clone()
+                    .into_iter()
+                    .chain([
+                        ("in", build.inputs().join(" ")),
+                        ("out", build.outputs().join(" ")),
+                    ])
+                    .collect();
+                let ir = Arc::new(Build::new(
+                    context.generate_build_id(),
+                    interpolate_variables(rule.command(), &variables),
+                    interpolate_variables(rule.description(), &variables),
+                    build.inputs().to_vec(),
+                ));
 
-    // let rules = rules
-    //     .clone()
-    //     .into_iter()
-    //     .chain(module.rules().iter().map(|rule| (rule.name(), rule)))
-    //     .collect::<HashMap<_, _>>();
+                outputs.extend(
+                    build
+                        .outputs()
+                        .iter()
+                        .map(|output| (output.clone(), ir.clone())),
+                );
+            }
+            ast::Statement::Rule(rule) => {
+                rules.insert(rule.name(), rule);
+            }
+            ast::Statement::Submodule(submodule) => {
+                outputs.extend(compile_module(
+                    context,
+                    &context.dependencies()[path][submodule.path()],
+                    &rules,
+                    &variables,
+                ));
+            }
+            ast::Statement::VariableDefinition(definition) => {
+                variables.insert(definition.name(), definition.value().into());
+            }
+        }
+    }
 
-    // module
-    //     .builds()
-    //     .iter()
-    //     .flat_map(|build| {
-    //         let rule = &rules[build.rule()];
-    //         let variables = variables
-    //             .clone()
-    //             .into_iter()
-    //             .chain([
-    //                 ("in", build.inputs().join(" ")),
-    //                 ("out", build.outputs().join(" ")),
-    //             ])
-    //             .collect();
-    //         let ir = Arc::new(Build::new(
-    //             context.generate_build_id(),
-    //             interpolate_variables(rule.command(), &variables),
-    //             interpolate_variables(rule.description(), &variables),
-    //             build.inputs().to_vec(),
-    //         ));
-
-    //         build
-    //             .outputs()
-    //             .iter()
-    //             .map(|output| (output.clone(), ir.clone()))
-    //             .collect::<Vec<_>>()
-    //     })
-    //     .chain(
-    //         context.dependencies()[path]
-    //             .iter()
-    //             .flat_map(|path| compile_module(context, path, &rules, &variables)),
-    //     )
-    //     .collect()
+    outputs
 }
 
 // TODO Use rsplit to prevent overlapped interpolation.
@@ -101,7 +99,7 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     static ROOT_MODULE_PATH: Lazy<PathBuf> = Lazy::new(|| PathBuf::from("build.ninja"));
-    static DEFAULT_DEPENDENCIES: Lazy<HashMap<PathBuf, HashSet<PathBuf>>> = Lazy::new(|| {
+    static DEFAULT_DEPENDENCIES: Lazy<ModuleDependencyMap> = Lazy::new(|| {
         [(PathBuf::from("build.ninja"), Default::default())]
             .into_iter()
             .collect()

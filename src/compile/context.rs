@@ -1,22 +1,17 @@
 use crate::ast::Module;
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-};
+use std::{cell::RefCell, collections::HashMap, path::PathBuf};
+
+pub type ModuleDependencyMap = HashMap<PathBuf, HashMap<String, PathBuf>>;
 
 #[derive(Debug, Default)]
 pub struct CompileContext {
     modules: HashMap<PathBuf, Module>,
-    dependencies: HashMap<PathBuf, HashSet<PathBuf>>,
+    dependencies: ModuleDependencyMap,
     build_index: RefCell<usize>,
 }
 
 impl CompileContext {
-    pub fn new(
-        modules: HashMap<PathBuf, Module>,
-        dependencies: HashMap<PathBuf, HashSet<PathBuf>>,
-    ) -> Self {
+    pub fn new(modules: HashMap<PathBuf, Module>, dependencies: ModuleDependencyMap) -> Self {
         Self {
             modules,
             dependencies,
@@ -28,7 +23,7 @@ impl CompileContext {
         &self.modules
     }
 
-    pub fn dependencies(&self) -> &HashMap<PathBuf, HashSet<PathBuf>> {
+    pub fn dependencies(&self) -> &ModuleDependencyMap {
         &self.dependencies
     }
 

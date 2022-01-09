@@ -161,7 +161,7 @@ mod tests {
                     ast::Module::new(vec![
                         ast::VariableDefinition::new("x", "42").into(),
                         ast::Rule::new("foo", "$x", "").into(),
-                        ast::Build::new(vec!["bar".into()], "foo", vec![]).into(),
+                        ast::Build::new(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
                 .into_iter()
@@ -188,7 +188,7 @@ mod tests {
                     ast::Module::new(vec![
                         ast::VariableDefinition::new("x", "42").into(),
                         ast::Rule::new("foo", "$$", "").into(),
-                        ast::Build::new(vec!["bar".into()], "foo", vec![]).into()
+                        ast::Build::new(vec!["bar".into()], "foo", vec![], vec![]).into()
                     ])
                 )]
                 .into_iter()
@@ -215,7 +215,8 @@ mod tests {
                     ast::Module::new(vec![
                         ast::VariableDefinition::new("x", "42").into(),
                         ast::Rule::new("foo", "$in", "").into(),
-                        ast::Build::new(vec!["bar".into()], "foo", vec!["baz".into()]).into(),
+                        ast::Build::new(vec!["bar".into()], "foo", vec!["baz".into()], vec![])
+                            .into(),
                     ])
                 )]
                 .into_iter()
@@ -245,7 +246,7 @@ mod tests {
                     ast::Module::new(vec![
                         ast::VariableDefinition::new("x", "42").into(),
                         ast::Rule::new("foo", "$out", "").into(),
-                        ast::Build::new(vec!["bar".into()], "foo", vec![]).into(),
+                        ast::Build::new(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
                 .into_iter()
@@ -271,8 +272,8 @@ mod tests {
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
                         ast::Rule::new("foo", "", "").into(),
-                        ast::Build::new(vec!["bar".into()], "foo", vec![]).into(),
-                        ast::Build::new(vec!["baz".into()], "foo", vec![]).into()
+                        ast::Build::new(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                        ast::Build::new(vec!["baz".into()], "foo", vec![], vec![]).into()
                     ])
                 )]
                 .into_iter()

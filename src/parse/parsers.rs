@@ -57,9 +57,12 @@ fn build<'a>() -> impl Parser<Stream<'a>, Output = Build> {
         sign(":"),
         identifier(),
         many(string_literal()),
+        many(indent().with(variable_definition())),
     )
         .skip(line_break())
-        .map(|(_, outputs, _, rule, inputs)| Build::new(outputs, rule, inputs))
+        .map(|(_, outputs, _, rule, inputs, variable_definitions)| {
+            Build::new(outputs, rule, inputs, variable_definitions)
+        })
 }
 
 fn default<'a>() -> impl Parser<Stream<'a>, Output = DefaultOutput> {
@@ -201,22 +204,27 @@ mod tests {
     fn parse_build() {
         assert_eq!(
             build().parse(stream("build foo: bar\n")).unwrap().0,
-            Build::new(vec!["foo".into()], "bar", vec![])
+            Build::new(vec!["foo".into()], "bar", vec![], vec![])
         );
         assert_eq!(
             build().parse(stream("build foo: bar baz\n")).unwrap().0,
-            Build::new(vec!["foo".into()], "bar", vec!["baz".into()])
+            Build::new(vec!["foo".into()], "bar", vec!["baz".into()], vec![])
         );
         assert_eq!(
             build()
                 .parse(stream("build foo: bar baz blah\n"))
                 .unwrap()
                 .0,
-            Build::new(vec!["foo".into()], "bar", vec!["baz".into(), "blah".into()])
+            Build::new(
+                vec!["foo".into()],
+                "bar",
+                vec!["baz".into(), "blah".into()],
+                vec![]
+            )
         );
         assert_eq!(
             build().parse(stream("build foo bar: baz\n")).unwrap().0,
-            Build::new(vec!["foo".into(), "bar".into()], "baz", vec![])
+            Build::new(vec!["foo".into(), "bar".into()], "baz", vec![], vec![])
         );
     }
 

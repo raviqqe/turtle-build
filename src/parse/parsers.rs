@@ -1,5 +1,7 @@
 use super::stream::Stream;
-use crate::ast::{Build, DefaultOutput, Module, Rule, Statement, Submodule, VariableDefinition};
+use crate::ast::{
+    Build, DefaultOutput, Include, Module, Rule, Statement, Submodule, VariableDefinition,
+};
 use combine::{
     attempt, choice, eof, many, many1, none_of, not_followed_by, one_of, optional,
     parser::char::{alpha_num, char, letter, newline, string},
@@ -16,6 +18,7 @@ fn statement<'a>() -> impl Parser<Stream<'a>, Output = Statement> {
     choice((
         build().map(Statement::from),
         default().map(Statement::from),
+        include().map(Statement::from),
         rule().map(Statement::from),
         submodule().map(Statement::from),
         variable_definition().map(Statement::from),
@@ -65,6 +68,12 @@ fn default<'a>() -> impl Parser<Stream<'a>, Output = DefaultOutput> {
         .map(|(_, outputs)| DefaultOutput::new(outputs))
 }
 
+fn include<'a>() -> impl Parser<Stream<'a>, Output = Include> {
+    (keyword("include"), string_line())
+        .skip(line_break())
+        .map(|(_, path)| Include::new(path))
+}
+
 fn submodule<'a>() -> impl Parser<Stream<'a>, Output = Submodule> {
     (keyword("subninja"), string_line())
         .skip(line_break())
@@ -76,7 +85,7 @@ fn string_line<'a>() -> impl Parser<Stream<'a>, Output = String> {
 }
 
 fn string_literal<'a>() -> impl Parser<Stream<'a>, Output = String> {
-    many1(none_of([' ', '\t', '\r', '\n', ':']))
+    token(many1(none_of([' ', '\t', '\r', '\n', ':'])))
 }
 
 fn keyword<'a>(name: &'static str) -> impl Parser<Stream<'a>, Output = ()> {
@@ -191,12 +200,45 @@ mod tests {
     #[test]
     fn parse_build() {
         assert_eq!(
+            build().parse(stream("build foo: bar\n")).unwrap().0,
+            Build::new(vec!["foo".into()], "bar", vec![])
+        );
+        assert_eq!(
             build().parse(stream("build foo: bar baz\n")).unwrap().0,
             Build::new(vec!["foo".into()], "bar", vec!["baz".into()])
         );
         assert_eq!(
-            build().parse(stream("build foo: bar\n")).unwrap().0,
-            Build::new(vec!["foo".into()], "bar", vec![])
+            build()
+                .parse(stream("build foo: bar baz blah\n"))
+                .unwrap()
+                .0,
+            Build::new(vec!["foo".into()], "bar", vec!["baz".into(), "blah".into()])
+        );
+        assert_eq!(
+            build().parse(stream("build foo bar: baz\n")).unwrap().0,
+            Build::new(vec!["foo".into(), "bar".into()], "baz", vec![])
+        );
+    }
+
+    #[test]
+    fn parse_default() {
+        assert!(default().parse(stream("")).is_err());
+        assert!(default().parse(stream("default\n")).is_err());
+        assert_eq!(
+            default().parse(stream("default foo\n")).unwrap().0,
+            DefaultOutput::new(vec!["foo".into()])
+        );
+        assert_eq!(
+            default().parse(stream("default foo bar\n")).unwrap().0,
+            DefaultOutput::new(vec!["foo".into(), "bar".into()])
+        );
+    }
+
+    #[test]
+    fn parse_include() {
+        assert_eq!(
+            include().parse(stream("include foo\n")).unwrap().0,
+            Include::new("foo")
         );
     }
 

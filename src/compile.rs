@@ -48,14 +48,18 @@ fn compile_module(
         match statement {
             ast::Statement::Build(build) => {
                 let rule = &rules[build.rule()];
-                let variables = variables
-                    .clone()
-                    .into_iter()
-                    .chain([
-                        ("in".into(), build.inputs().join(" ")),
-                        ("out".into(), build.outputs().join(" ")),
-                    ])
-                    .collect();
+                let variables =
+                    variables
+                        .clone()
+                        .into_iter()
+                        .chain(build.variable_definitions().iter().map(|definition| {
+                            (definition.name().into(), definition.value().into())
+                        }))
+                        .chain([
+                            ("in".into(), build.inputs().join(" ")),
+                            ("out".into(), build.outputs().join(" ")),
+                        ])
+                        .collect();
                 let ir = Arc::new(Build::new(
                     context.generate_build_id(),
                     interpolate_variables(rule.command(), &variables),
@@ -161,7 +165,7 @@ mod tests {
                     ast::Module::new(vec![
                         ast::VariableDefinition::new("x", "42").into(),
                         ast::Rule::new("foo", "$x", "").into(),
-                        ast::Build::new(vec!["bar".into()], "foo", vec![]).into(),
+                        ast::Build::new(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
                 .into_iter()
@@ -188,7 +192,7 @@ mod tests {
                     ast::Module::new(vec![
                         ast::VariableDefinition::new("x", "42").into(),
                         ast::Rule::new("foo", "$$", "").into(),
-                        ast::Build::new(vec!["bar".into()], "foo", vec![]).into()
+                        ast::Build::new(vec!["bar".into()], "foo", vec![], vec![]).into()
                     ])
                 )]
                 .into_iter()
@@ -215,7 +219,8 @@ mod tests {
                     ast::Module::new(vec![
                         ast::VariableDefinition::new("x", "42").into(),
                         ast::Rule::new("foo", "$in", "").into(),
-                        ast::Build::new(vec!["bar".into()], "foo", vec!["baz".into()]).into(),
+                        ast::Build::new(vec!["bar".into()], "foo", vec!["baz".into()], vec![])
+                            .into(),
                     ])
                 )]
                 .into_iter()
@@ -245,7 +250,7 @@ mod tests {
                     ast::Module::new(vec![
                         ast::VariableDefinition::new("x", "42").into(),
                         ast::Rule::new("foo", "$out", "").into(),
-                        ast::Build::new(vec!["bar".into()], "foo", vec![]).into(),
+                        ast::Build::new(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
                 .into_iter()
@@ -271,8 +276,8 @@ mod tests {
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
                         ast::Rule::new("foo", "", "").into(),
-                        ast::Build::new(vec!["bar".into()], "foo", vec![]).into(),
-                        ast::Build::new(vec!["baz".into()], "foo", vec![]).into()
+                        ast::Build::new(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                        ast::Build::new(vec!["baz".into()], "foo", vec![], vec![]).into()
                     ])
                 )]
                 .into_iter()
@@ -289,6 +294,38 @@ mod tests {
                 .into_iter()
                 .collect(),
                 ["bar".into(), "baz".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn interpolate_build_local_variable() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast::Rule::new("foo", "$x", "").into(),
+                        ast::Build::new(
+                            vec!["bar".into()],
+                            "foo",
+                            vec![],
+                            vec![ast::VariableDefinition::new("x", "42")]
+                        )
+                        .into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            ir::Configuration::new(
+                [("bar".into(), Build::new("0", "42", "", vec![]).into())]
+                    .into_iter()
+                    .collect(),
+                ["bar".into()].into_iter().collect()
             )
         );
     }

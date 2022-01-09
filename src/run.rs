@@ -1,4 +1,5 @@
 mod error;
+mod output_database;
 
 use crate::ir::{Build, Configuration};
 use error::RunError;

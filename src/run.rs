@@ -35,6 +35,7 @@ fn run_build(
     builds: &mut HashMap<String, BuildFuture>,
     build: &Arc<Build>,
 ) -> BuildFuture {
+    // TODO Lock a build.
     if let Some(future) = builds.get(build.id()) {
         return future.clone();
     }

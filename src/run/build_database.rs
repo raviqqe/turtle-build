@@ -1,7 +1,7 @@
 use super::error::RunError;
 use std::path::Path;
 
-const DATABASE_FILENAME: &str = ".tutle-sled-db";
+const DATABASE_FILENAME: &str = ".turtle-sled-db";
 
 #[derive(Clone, Debug)]
 pub struct BuildDatabase {

@@ -7,6 +7,20 @@ Clone of [Ninja build system](https://github.com/ninja-build/ninja) in Rust
 
 Currently, Turtle only supports a subset of the Ninja build file syntax. See [issues](https://github.com/raviqqe/turtle/issues) for more information.
 
+## Install
+
+```sh
+cargo install --git https://github.com/raviqqe/turtle
+```
+
+## Usage
+
+```sh
+turtle
+```
+
+For more information, see `turtle --help`.
+
 ## License
 
 [MIT](LICENSE)

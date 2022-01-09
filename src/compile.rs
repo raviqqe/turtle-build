@@ -6,17 +6,18 @@ use crate::{
     ir::{Build, Configuration},
 };
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::Arc,
 };
 
 pub fn compile(
     modules: &HashMap<PathBuf, ast::Module>,
+    dependencies: &HashMap<PathBuf, HashSet<PathBuf>>,
     root_module_path: &Path,
 ) -> Result<Configuration, String> {
     Ok(Configuration::new(compile_module(
-        &CompileContext::new(modules.clone()),
+        &CompileContext::new(modules.clone(), dependencies.clone()),
         root_module_path,
         &Default::default(),
         &[("$", "$".into())].into_iter().collect(),
@@ -105,6 +106,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
+                &Default::default(),
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
@@ -127,6 +129,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
+                &Default::default(),
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
@@ -153,6 +156,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
+                &Default::default(),
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
@@ -183,6 +187,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
+                &Default::default(),
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
@@ -212,6 +217,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
+                &Default::default(),
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
@@ -241,6 +247,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
+                &Default::default(),
                 &ROOT_MODULE_PATH
             )
             .unwrap(),

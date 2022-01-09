@@ -10,15 +10,6 @@ pub enum Statement {
     VariableDefinition(VariableDefinition),
 }
 
-impl Statement {
-    pub fn as_submodule(&self) -> Option<&Submodule> {
-        match self {
-            Self::Submodule(submodule) => Some(submodule),
-            _ => None,
-        }
-    }
-}
-
 impl From<Build> for Statement {
     fn from(build: Build) -> Self {
         Self::Build(build)

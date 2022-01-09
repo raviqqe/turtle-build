@@ -1,7 +1,8 @@
+mod compiled_module;
 mod context;
 
-use self::context::CompileContext;
 pub use self::context::ModuleDependencyMap;
+use self::{compiled_module::CompiledModule, context::CompileContext};
 use crate::{
     ast,
     ir::{Build, Configuration},
@@ -17,27 +18,26 @@ pub fn compile(
     dependencies: &ModuleDependencyMap,
     root_module_path: &Path,
 ) -> Result<Configuration, String> {
-    let (outputs, default_outputs) = compile_module(
-        &CompileContext::new(modules.clone(), dependencies.clone()),
-        root_module_path,
-        &Default::default(),
-        &[("$", "$".into())].into_iter().collect(),
-    );
-    let default_outputs = if default_outputs.is_empty() {
-        outputs.keys().cloned().collect()
+    let context = CompileContext::new(modules.clone(), dependencies.clone());
+    let rules = Default::default();
+    let variables = [("$".into(), "$".into())].into_iter().collect();
+    let module = compile_module(&context, root_module_path, &rules, &variables);
+
+    let default_outputs = if module.default_outputs.is_empty() {
+        module.outputs.keys().cloned().collect()
     } else {
-        default_outputs
+        module.default_outputs
     };
 
-    Ok(Configuration::new(outputs, default_outputs))
+    Ok(Configuration::new(module.outputs, default_outputs))
 }
 
 fn compile_module(
     context: &CompileContext,
     path: &Path,
-    rules: &HashMap<&str, &ast::Rule>,
-    variables: &HashMap<&str, String>,
-) -> (HashMap<String, Arc<Build>>, HashSet<String>) {
+    rules: &HashMap<String, ast::Rule>,
+    variables: &HashMap<String, String>,
+) -> CompiledModule {
     let module = &context.modules()[path];
     let mut rules = rules.clone();
     let mut variables = variables.clone();
@@ -52,8 +52,8 @@ fn compile_module(
                     .clone()
                     .into_iter()
                     .chain([
-                        ("in", build.inputs().join(" ")),
-                        ("out", build.outputs().join(" ")),
+                        ("in".into(), build.inputs().join(" ")),
+                        ("out".into(), build.outputs().join(" ")),
                     ])
                     .collect();
                 let ir = Arc::new(Build::new(
@@ -73,32 +73,49 @@ fn compile_module(
             ast::Statement::Default(default) => {
                 default_outputs.extend(default.outputs().iter().cloned());
             }
-            ast::Statement::Include(include) => todo!(),
+            ast::Statement::Include(include) => {
+                let submodule = compile_module(
+                    context,
+                    &context.dependencies()[path][include.path()],
+                    &rules,
+                    &variables,
+                );
+
+                outputs.extend(submodule.outputs);
+                default_outputs.extend(submodule.default_outputs);
+                variables = submodule.variables;
+                rules = submodule.rules;
+            }
             ast::Statement::Rule(rule) => {
-                rules.insert(rule.name(), rule);
+                rules.insert(rule.name().into(), rule.clone());
             }
             ast::Statement::Submodule(submodule) => {
-                let (submodule_outputs, submodule_default_outputs) = compile_module(
+                let submodule = compile_module(
                     context,
                     &context.dependencies()[path][submodule.path()],
                     &rules,
                     &variables,
                 );
 
-                outputs.extend(submodule_outputs);
-                default_outputs.extend(submodule_default_outputs);
+                outputs.extend(submodule.outputs);
+                default_outputs.extend(submodule.default_outputs);
             }
             ast::Statement::VariableDefinition(definition) => {
-                variables.insert(definition.name(), definition.value().into());
+                variables.insert(definition.name().into(), definition.value().into());
             }
         }
     }
 
-    (outputs, default_outputs)
+    CompiledModule {
+        outputs,
+        default_outputs,
+        rules,
+        variables,
+    }
 }
 
 // TODO Use rsplit to prevent overlapped interpolation.
-fn interpolate_variables(template: &str, variables: &HashMap<&str, String>) -> String {
+fn interpolate_variables(template: &str, variables: &HashMap<String, String>) -> String {
     variables
         .iter()
         .fold(template.into(), |template, (name, value)| {

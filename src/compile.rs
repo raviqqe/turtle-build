@@ -26,11 +26,11 @@ pub fn compile(
 
 fn compile_module(
     context: &CompileContext,
-    module_path: &Path,
+    path: &Path,
     rules: &HashMap<&str, &ast::Rule>,
     variables: &HashMap<&str, String>,
 ) -> HashMap<String, Arc<Build>> {
-    let module = &context.modules()[module_path];
+    let module = &context.modules()[path];
 
     let variables = variables
         .clone()
@@ -75,6 +75,11 @@ fn compile_module(
                 .map(|output| (output.clone(), ir.clone()))
                 .collect::<Vec<_>>()
         })
+        .chain(
+            context.dependencies()[path]
+                .iter()
+                .flat_map(|path| compile_module(context, path, &rules, &variables)),
+        )
         .collect()
 }
 

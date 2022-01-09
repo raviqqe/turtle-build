@@ -1,5 +1,6 @@
 mod build;
 mod default_output;
+mod include;
 mod module;
 mod rule;
 mod statement;
@@ -8,6 +9,7 @@ mod variable_definition;
 
 pub use build::*;
 pub use default_output::*;
+pub use include::*;
 pub use module::*;
 pub use rule::*;
 pub use statement::*;

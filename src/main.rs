@@ -4,7 +4,7 @@ mod ir;
 mod parse;
 mod run;
 
-use ast::Module;
+use ast::{Module, Statement};
 use compile::{compile, ModuleDependencyMap};
 use parse::parse;
 use run::run;
@@ -38,14 +38,15 @@ async fn read_modules(
         let submodule_paths = module
             .statements()
             .iter()
-            .filter_map(|statement| statement.as_submodule())
-            .map(|submodule| {
+            .filter_map(|statement| match statement {
+                Statement::Include(include) => Some(include.path()),
+                Statement::Submodule(submodule) => Some(submodule.path()),
+                _ => None,
+            })
+            .map(|submodule_path| {
                 Ok((
-                    submodule.path().into(),
-                    path.parent()
-                        .unwrap()
-                        .join(submodule.path())
-                        .canonicalize()?,
+                    submodule_path.into(),
+                    path.parent().unwrap().join(submodule_path).canonicalize()?,
                 ))
             })
             .collect::<Result<HashMap<_, _>, io::Error>>()?;

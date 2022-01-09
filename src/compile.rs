@@ -73,6 +73,7 @@ fn compile_module(
             ast::Statement::Default(default) => {
                 default_outputs.extend(default.outputs().iter().cloned());
             }
+            ast::Statement::Include(include) => todo!(),
             ast::Statement::Rule(rule) => {
                 rules.insert(rule.name(), rule);
             }

@@ -1,12 +1,14 @@
 mod build_database;
 mod error;
 
+use self::build_database::BuildDatabase;
 use crate::ir::{Build, Configuration};
 use error::RunError;
 use futures::future::{join_all, FutureExt, Shared};
 use std::{
     collections::HashMap,
     future::{ready, Future},
+    path::Path,
     pin::Pin,
     sync::Arc,
 };
@@ -20,21 +22,25 @@ use tokio::{
 type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), RunError>> + Send>>;
 type BuildFuture = Shared<RawBuildFuture>;
 
-pub async fn run(configuration: &Configuration) -> Result<(), RunError> {
+pub async fn run(configuration: &Configuration, build_directory: &Path) -> Result<(), RunError> {
+    let database = BuildDatabase::new(build_directory)?;
     let mut builds = HashMap::new();
 
-    select_builds(
-        configuration
-            .default_outputs()
-            .iter()
-            .map(|output| run_build(configuration, &mut builds, &configuration.outputs()[output])),
-    )
+    select_builds(configuration.default_outputs().iter().map(|output| {
+        run_build(
+            &database,
+            configuration,
+            &mut builds,
+            &configuration.outputs()[output],
+        )
+    }))
     .await?;
 
     Ok(())
 }
 
 fn run_build(
+    database: &BuildDatabase,
     configuration: &Configuration,
     builds: &mut HashMap<String, BuildFuture>,
     build: &Arc<Build>,
@@ -49,7 +55,7 @@ fn run_build(
             .iter()
             .map(|input| {
                 if let Some(build) = configuration.outputs().get(input) {
-                    run_build(configuration, builds, build)
+                    run_build(database, configuration, builds, build)
                 } else {
                     let input = input.to_string();
                     let raw: RawBuildFuture = Box::pin(async move { run_leaf_input(&input).await });
@@ -60,11 +66,12 @@ fn run_build(
     );
 
     let future = {
+        let cloned_database = database.clone();
         let cloned_build = build.clone();
         let handle = spawn(async move {
             select_builds(inputs.iter().cloned().collect::<Vec<_>>()).await?;
 
-            if should_build()? {
+            if should_build(&cloned_database, &cloned_build)? {
                 run_command(cloned_build.command()).await?;
             }
 
@@ -79,8 +86,13 @@ fn run_build(
     future
 }
 
-fn should_build() -> Result<bool, RunError> {
-    todo!()
+fn should_build(database: &BuildDatabase, build: &Build) -> Result<bool, RunError> {
+    // TODO
+    let hash = 0;
+
+    database.set(build.id(), hash)?;
+
+    Ok(database.get(build.id())? == hash)
 }
 
 async fn select_builds(builds: impl IntoIterator<Item = BuildFuture>) -> Result<(), RunError> {

@@ -1,4 +1,4 @@
-use super::error::InfrastructureError;
+use crate::error::InfrastructureError;
 use std::path::Path;
 
 const DATABASE_FILENAME: &str = ".turtle-sled-db";

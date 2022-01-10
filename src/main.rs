@@ -1,6 +1,7 @@
 mod arguments;
 mod ast;
 mod compile;
+mod error;
 mod ir;
 mod parse;
 mod run;
@@ -9,6 +10,7 @@ use arguments::Arguments;
 use ast::{Module, Statement};
 use clap::Parser;
 use compile::{compile, ModuleDependencyMap};
+use error::InfrastructureError;
 use parse::parse;
 use run::run;
 use std::{
@@ -34,8 +36,12 @@ async fn main() {
 async fn execute() -> Result<(), Box<dyn Error>> {
     let arguments = Arguments::parse();
 
-    let root_module_path =
-        PathBuf::from(&arguments.file.as_deref().unwrap_or(DEFAULT_BUILD_FILE)).canonicalize()?;
+    let root_module_path = {
+        let path = PathBuf::from(&arguments.file.as_deref().unwrap_or(DEFAULT_BUILD_FILE));
+
+        path.canonicalize()
+            .map_err(|error| InfrastructureError::with_path(error, path))?
+    };
     let (modules, dependencies) = read_modules(&root_module_path).await?;
 
     run(

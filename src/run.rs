@@ -1,9 +1,8 @@
 mod build_database;
-mod error;
 
 use self::build_database::BuildDatabase;
+use crate::error::InfrastructureError;
 use crate::ir::{Build, Configuration};
-use error::InfrastructureError;
 use futures::future::{join_all, FutureExt, Shared};
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
@@ -24,7 +23,10 @@ use tokio::{
 type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), InfrastructureError>> + Send>>;
 type BuildFuture = Shared<RawBuildFuture>;
 
-pub async fn run(configuration: &Configuration, build_directory: &Path) -> Result<(), InfrastructureError> {
+pub async fn run(
+    configuration: &Configuration,
+    build_directory: &Path,
+) -> Result<(), InfrastructureError> {
     let database = BuildDatabase::new(build_directory)?;
     let mut builds = HashMap::new();
 
@@ -125,7 +127,9 @@ async fn get_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, Infrastruct
         .map_err(|error| InfrastructureError::with_path(error, path))?)
 }
 
-async fn select_builds(builds: impl IntoIterator<Item = BuildFuture>) -> Result<(), InfrastructureError> {
+async fn select_builds(
+    builds: impl IntoIterator<Item = BuildFuture>,
+) -> Result<(), InfrastructureError> {
     let future: Pin<Box<dyn Future<Output = _> + Send>> = Box::pin(ready(Ok(())));
 
     for result in join_all(builds.into_iter().chain([future.shared()])).await {
@@ -158,6 +162,9 @@ async fn run_command(command: &str) -> Result<(), InfrastructureError> {
     } else {
         stderr().write_all(&output.stderr).await?;
 
-        Err(InfrastructureError::CommandExit(command.into(), output.status.code()))
+        Err(InfrastructureError::CommandExit(
+            command.into(),
+            output.status.code(),
+        ))
     }
 }

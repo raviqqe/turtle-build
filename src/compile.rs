@@ -123,6 +123,7 @@ fn compile_module(
 }
 
 fn interpolate_variables(template: &str, variables: &ChainMap<String, String>) -> String {
+    // spell-checker: disable-next-line
     Regex::new(r"\$([[:alpha:]][[:alnum:]]*)")
         .unwrap()
         .replace(template, |captures: &Captures| {

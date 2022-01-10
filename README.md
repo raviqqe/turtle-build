@@ -21,7 +21,7 @@ For more information, see `turtle --help`.
 
 ## Compatibility
 
-Turtle aims to support full syntax of the Ninja build files.
+Turtle aims to support full syntax of the Ninja build files. Command line arguments are supported only partially excluding ones for debugging purposes.
 
 - Syntax
   - [x] `build` statement

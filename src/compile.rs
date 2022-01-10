@@ -1,4 +1,5 @@
 mod compiled_module;
+mod chain_map;
 mod context;
 
 pub use self::context::ModuleDependencyMap;

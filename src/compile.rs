@@ -11,12 +11,16 @@ use crate::{
     ast,
     ir::{Build, Configuration},
 };
+use once_cell::sync::Lazy;
 use regex::{Captures, Regex};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
 };
+
+static VARIABLE_PATTERN: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\$([[:alpha:]][[:alnum:]]*)").unwrap());
 
 pub fn compile(
     modules: &HashMap<PathBuf, ast::Module>,
@@ -123,9 +127,7 @@ fn compile_module(
 }
 
 fn interpolate_variables(template: &str, variables: &ChainMap<String, String>) -> String {
-    // spell-checker: disable-next-line
-    Regex::new(r"\$([[:alpha:]][[:alnum:]]*)")
-        .unwrap()
+    VARIABLE_PATTERN
         .replace(template, |captures: &Captures| {
             variables.get(&captures[1]).cloned().unwrap_or_default()
         })

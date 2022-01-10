@@ -1,9 +1,9 @@
-mod compiled_module;
 mod chain_map;
+mod compile_state;
 mod context;
 
 pub use self::context::ModuleDependencyMap;
-use self::{compiled_module::CompiledModule, context::CompileContext};
+use self::{compile_state::CompileState, context::CompileContext};
 use crate::{
     ast,
     ir::{Build, Configuration},
@@ -20,7 +20,7 @@ pub fn compile(
     root_module_path: &Path,
 ) -> Result<Configuration, String> {
     let context = CompileContext::new(modules.clone(), dependencies.clone());
-    let mut state = CompiledModule {
+    let mut state = CompileState {
         outputs: Default::default(),
         default_outputs: Default::default(),
         rules: Default::default(),
@@ -37,7 +37,7 @@ pub fn compile(
     Ok(Configuration::new(state.outputs, default_outputs))
 }
 
-fn compile_module(context: &CompileContext, state: &mut CompiledModule, path: &Path) {
+fn compile_module(context: &CompileContext, state: &mut CompileState, path: &Path) {
     let module = &context.modules()[path];
 
     for statement in module.statements() {

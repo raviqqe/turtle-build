@@ -5,7 +5,7 @@ use std::{
 };
 
 #[derive(Clone, Debug)]
-pub struct CompiledModule {
+pub struct CompileState {
     pub outputs: HashMap<String, Arc<Build>>,
     pub default_outputs: HashSet<String>,
     pub rules: HashMap<String, ast::Rule>,

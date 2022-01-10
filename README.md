@@ -9,12 +9,13 @@ Clone of the [Ninja build system](https://github.com/ninja-build/ninja) in Rust
 
 - Safe (no `unsafe`) and fast reimplementation of the Ninja build system in Rust
 - Improved frontend support
-  - More customizable progress/error output
+  - Full output from build rules and no output from Turtle by default
+  - More customizable build/rule/progress/error output
 
 ## Install
 
 ```sh
-cargo install --git https://github.com/raviqqe/turtle
+cargo install turtle-build
 ```
 
 ## Usage

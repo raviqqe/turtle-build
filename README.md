@@ -34,8 +34,8 @@ Turtle aims to support full syntax of the Ninja build files. Command line argume
   - [x] `build` statement
     - [x] Explicit outputs
     - [x] Explicit inputs
-    - [ ] Implicit outputs
-    - [ ] Implicit inputs
+    - [x] Implicit outputs
+    - [x] Implicit inputs
     - [ ] Order-only inputs
     - [ ] `phony` rule
   - [x] `rule` statement

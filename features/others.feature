@@ -60,3 +60,15 @@ Feature: Others
     hello
     hello
     """
+
+  Scenario: Use a custom build file location
+    Given a file named "foo.ninja" with:
+    """
+    rule echo
+      command = echo hello
+
+    build foo: echo
+
+    """
+    When I successfully run `turtle -f foo.ninja`
+    Then the stderr should contain exactly "hello"

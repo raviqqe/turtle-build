@@ -1,10 +1,13 @@
+mod arguments;
 mod ast;
 mod compile;
 mod ir;
 mod parse;
 mod run;
 
+use arguments::Arguments;
 use ast::{Module, Statement};
+use clap::Parser;
 use compile::{compile, ModuleDependencyMap};
 use parse::parse;
 use run::run;
@@ -16,9 +19,14 @@ use std::{
 };
 use tokio::{fs::File, io::AsyncReadExt};
 
+const DEFAULT_BUILD_FILE: &str = "build.ninja";
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let root_module_path = PathBuf::from("build.ninja").canonicalize()?;
+    let arguments = Arguments::parse();
+
+    let root_module_path =
+        PathBuf::from(&arguments.file.as_deref().unwrap_or(DEFAULT_BUILD_FILE)).canonicalize()?;
     let (modules, dependencies) = read_modules(&root_module_path).await?;
 
     run(

@@ -42,6 +42,7 @@ Turtle aims to support full syntax of the Ninja build files. Command line argume
   - [x] `default` statement
   - [x] `include` statement
   - [x] `subninja` statement
+  - [ ] `pool` statement
   - [x] Global variables
   - [x] Build-local variables
   - [x] `in` and `out` special variable

@@ -5,6 +5,12 @@
 
 Clone of the [Ninja build system](https://github.com/ninja-build/ninja) in Rust
 
+## Goals
+
+- Safe (no `unsafe`) and fast reimplementation of the Ninja build system in Rust
+- Improved frontend support
+  - More customizable progress/error output
+
 ## Install
 
 ```sh

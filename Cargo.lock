@@ -646,7 +646,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "turtle"
+name = "turtle-build"
 version = "0.1.0"
 dependencies = [
  "clap",

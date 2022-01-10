@@ -1,7 +1,11 @@
 [package]
-name = "turtle"
+name = "turtle-build"
 version = "0.1.0"
 edition = "2021"
+
+[[bin]]
+name = "turtle"
+path = "src/main.rs"
 
 [dependencies]
 clap = { version = "3", features = ["derive"] }

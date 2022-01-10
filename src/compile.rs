@@ -24,34 +24,45 @@ pub fn compile(
     root_module_path: &Path,
 ) -> Result<Configuration, String> {
     let context = Context::new(modules.clone(), dependencies.clone());
-    let mut state = GlobalState {
+
+    let mut global_state = GlobalState {
         outputs: Default::default(),
         default_outputs: Default::default(),
-        module: ModuleState {
-            rules: ChainMap::new(),
-            variables: ChainMap::new(),
-        },
     };
-    compile_module(&context, &mut state, root_module_path);
+    let mut module_state = ModuleState {
+        rules: ChainMap::new(),
+        variables: ChainMap::new(),
+    };
 
-    let default_outputs = if state.default_outputs.is_empty() {
-        state.outputs.keys().cloned().collect()
+    compile_module(
+        &context,
+        &mut global_state,
+        &mut module_state,
+        root_module_path,
+    );
+
+    let default_outputs = if global_state.default_outputs.is_empty() {
+        global_state.outputs.keys().cloned().collect()
     } else {
-        state.default_outputs
+        global_state.default_outputs
     };
 
-    Ok(Configuration::new(state.outputs, default_outputs))
+    Ok(Configuration::new(global_state.outputs, default_outputs))
 }
 
-fn compile_module(context: &Context, state: &mut GlobalState, path: &Path) {
+fn compile_module(
+    context: &Context,
+    global_state: &mut GlobalState,
+    module_state: &mut ModuleState,
+    path: &Path,
+) {
     let module = &context.modules()[path];
 
     for statement in module.statements() {
         match statement {
             ast::Statement::Build(build) => {
-                let rule = &state.module.rules.get(build.rule()).unwrap();
-                let mut variables = state.module.variables.derive();
-
+                let rule = &module_state.rules.get(build.rule()).unwrap();
+                let mut variables = module_state.variables.derive();
                 variables.extend(
                     build
                         .variable_definitions()
@@ -70,7 +81,7 @@ fn compile_module(context: &Context, state: &mut GlobalState, path: &Path) {
                     build.inputs().to_vec(),
                 ));
 
-                state.outputs.extend(
+                global_state.outputs.extend(
                     build
                         .outputs()
                         .iter()
@@ -78,31 +89,32 @@ fn compile_module(context: &Context, state: &mut GlobalState, path: &Path) {
                 );
             }
             ast::Statement::Default(default) => {
-                state
+                global_state
                     .default_outputs
                     .extend(default.outputs().iter().cloned());
             }
             ast::Statement::Include(include) => {
                 compile_module(
                     context,
-                    state,
+                    global_state,
+                    module_state,
                     &context.dependencies()[path][include.path()],
                 );
             }
             ast::Statement::Rule(rule) => {
-                state.module.rules.insert(rule.name().into(), rule.clone());
+                module_state.rules.insert(rule.name().into(), rule.clone());
             }
             ast::Statement::Submodule(submodule) => {
                 // TODO
                 compile_module(
                     context,
-                    state,
+                    global_state,
+                    &mut module_state.derive(),
                     &context.dependencies()[path][submodule.path()],
                 );
             }
             ast::Statement::VariableDefinition(definition) => {
-                state
-                    .module
+                module_state
                     .variables
                     .insert(definition.name().into(), definition.value().into());
             }

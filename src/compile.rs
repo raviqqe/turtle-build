@@ -128,7 +128,7 @@ fn compile_module(
 
 fn interpolate_variables(template: &str, variables: &ChainMap<String, String>) -> String {
     VARIABLE_PATTERN
-        .replace(template, |captures: &Captures| {
+        .replace_all(template, |captures: &Captures| {
             variables.get(&captures[1]).cloned().unwrap_or_default()
         })
         .replace("$$", "$")
@@ -183,6 +183,34 @@ mod tests {
             .unwrap(),
             ir::Configuration::new(
                 [("bar".into(), Build::new("0", "42", "", vec![]).into())]
+                    .into_iter()
+                    .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn interpolate_two_variables_in_command() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast::VariableDefinition::new("x", "1").into(),
+                        ast::VariableDefinition::new("y", "2").into(),
+                        ast::Rule::new("foo", "$x $y", "").into(),
+                        ast::Build::new(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            ir::Configuration::new(
+                [("bar".into(), Build::new("0", "1 2", "", vec![]).into())]
                     .into_iter()
                     .collect(),
                 ["bar".into()].into_iter().collect()

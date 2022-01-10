@@ -1,11 +1,13 @@
 mod chain_map;
 mod context;
+mod error;
 mod global_state;
 mod module_state;
 
 pub use self::context::ModuleDependencyMap;
 use self::{
-    chain_map::ChainMap, context::Context, global_state::GlobalState, module_state::ModuleState,
+    chain_map::ChainMap, context::Context, error::CompileError, global_state::GlobalState,
+    module_state::ModuleState,
 };
 use crate::{
     ast,
@@ -26,7 +28,7 @@ pub fn compile(
     modules: &HashMap<PathBuf, ast::Module>,
     dependencies: &ModuleDependencyMap,
     root_module_path: &Path,
-) -> Result<Configuration, String> {
+) -> Result<Configuration, CompileError> {
     let context = Context::new(modules.clone(), dependencies.clone());
 
     let mut global_state = GlobalState {
@@ -43,7 +45,7 @@ pub fn compile(
         &mut global_state,
         &mut module_state,
         root_module_path,
-    );
+    )?;
 
     let default_outputs = if global_state.default_outputs.is_empty() {
         global_state.outputs.keys().cloned().collect()
@@ -59,14 +61,21 @@ fn compile_module(
     global_state: &mut GlobalState,
     module_state: &mut ModuleState,
     path: &Path,
-) {
-    let module = &context.modules()[path];
+) -> Result<(), CompileError> {
+    let module = &context
+        .modules()
+        .get(path)
+        .ok_or_else(|| CompileError::ModuleNotFound(path.into()))?;
 
     for statement in module.statements() {
         match statement {
             ast::Statement::Build(build) => {
-                let rule = &module_state.rules.get(build.rule()).unwrap();
+                let rule = &module_state
+                    .rules
+                    .get(build.rule())
+                    .ok_or_else(|| CompileError::RuleNotFound(build.rule().into()))?;
                 let mut variables = module_state.variables.fork();
+
                 variables.extend(
                     build
                         .variable_definitions()
@@ -102,20 +111,19 @@ fn compile_module(
                     context,
                     global_state,
                     module_state,
-                    &context.dependencies()[path][include.path()],
-                );
+                    resolve_dependency(context, path, include.path())?,
+                )?;
             }
             ast::Statement::Rule(rule) => {
                 module_state.rules.insert(rule.name().into(), rule.clone());
             }
             ast::Statement::Submodule(submodule) => {
-                // TODO
                 compile_module(
                     context,
                     global_state,
                     &mut module_state.fork(),
-                    &context.dependencies()[path][submodule.path()],
-                );
+                    resolve_dependency(context, path, submodule.path())?,
+                )?;
             }
             ast::Statement::VariableDefinition(definition) => {
                 module_state
@@ -124,6 +132,21 @@ fn compile_module(
             }
         }
     }
+
+    Ok(())
+}
+
+fn resolve_dependency<'a>(
+    context: &'a Context,
+    module_path: &Path,
+    submodule_path: &str,
+) -> Result<&'a Path, CompileError> {
+    Ok(context
+        .dependencies()
+        .get(module_path)
+        .ok_or_else(|| CompileError::ModuleNotFound(module_path.into()))?
+        .get(submodule_path)
+        .ok_or_else(|| CompileError::ModuleNotFound(submodule_path.into()))?)
 }
 
 fn interpolate_variables(template: &str, variables: &ChainMap<String, String>) -> String {

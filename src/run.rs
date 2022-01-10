@@ -1,9 +1,10 @@
 mod build_database;
-mod error;
 
 use self::build_database::BuildDatabase;
-use crate::ir::{Build, Configuration};
-use error::RunError;
+use crate::{
+    error::InfrastructureError,
+    ir::{Build, Configuration},
+};
 use futures::future::{join_all, FutureExt, Shared};
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
@@ -16,27 +17,38 @@ use std::{
 };
 use tokio::{
     fs::metadata,
-    io,
     io::{stderr, AsyncWriteExt},
     process::Command,
     spawn,
 };
 
-type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), RunError>> + Send>>;
+type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), InfrastructureError>> + Send>>;
 type BuildFuture = Shared<RawBuildFuture>;
 
-pub async fn run(configuration: &Configuration, build_directory: &Path) -> Result<(), RunError> {
+pub async fn run(
+    configuration: &Configuration,
+    build_directory: &Path,
+) -> Result<(), InfrastructureError> {
     let database = BuildDatabase::new(build_directory)?;
     let mut builds = HashMap::new();
 
-    select_builds(configuration.default_outputs().iter().map(|output| {
-        run_build(
-            &database,
-            configuration,
-            &mut builds,
-            &configuration.outputs()[output],
-        )
-    }))
+    select_builds(
+        configuration
+            .default_outputs()
+            .iter()
+            .map(|output| {
+                Ok(run_build(
+                    &database,
+                    configuration,
+                    &mut builds,
+                    configuration
+                        .outputs()
+                        .get(output)
+                        .ok_or_else(|| InfrastructureError::DefaultOutputNotFound(output.into()))?,
+                ))
+            })
+            .collect::<Result<Vec<_>, InfrastructureError>>()?,
+    )
     .await?;
 
     Ok(())
@@ -69,14 +81,19 @@ fn run_build(
     );
 
     let future = {
-        let cloned_database = database.clone();
-        let cloned_build = build.clone();
+        let environment = (database.clone(), build.clone());
         let handle = spawn(async move {
+            let (database, build) = environment;
+
             select_builds(inputs.iter().cloned().collect::<Vec<_>>()).await?;
 
-            if should_build(&cloned_database, &cloned_build).await? {
-                run_command(cloned_build.command()).await?;
+            let hash = hash_build(&build).await?;
+
+            if hash != database.get(build.id())? {
+                run_command(build.command()).await?;
             }
+
+            database.set(build.id(), hash)?;
 
             Ok(())
         });
@@ -89,32 +106,32 @@ fn run_build(
     future
 }
 
-async fn should_build(database: &BuildDatabase, build: &Build) -> Result<bool, RunError> {
-    let hash = {
-        let mut hasher = DefaultHasher::new();
+async fn hash_build(build: &Build) -> Result<u64, InfrastructureError> {
+    let mut hasher = DefaultHasher::new();
 
-        build.command().hash(&mut hasher);
-        join_all(build.inputs().iter().map(get_timestamp))
-            .await
-            .into_iter()
-            .collect::<Result<Vec<SystemTime>, _>>()?
-            .hash(&mut hasher);
+    build.command().hash(&mut hasher);
+    join_all(build.inputs().iter().map(get_timestamp))
+        .await
+        .into_iter()
+        .collect::<Result<Vec<SystemTime>, _>>()?
+        .hash(&mut hasher);
 
-        hasher.finish()
-    };
-
-    let old = database.get(build.id())?;
-
-    database.set(build.id(), hash)?;
-
-    Ok(hash != old)
+    Ok(hasher.finish())
 }
 
-async fn get_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, io::Error> {
-    Ok(metadata(path).await?.modified()?)
+async fn get_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, InfrastructureError> {
+    let path = path.as_ref();
+
+    Ok(metadata(path)
+        .await
+        .map_err(|error| InfrastructureError::with_path(error, path))?
+        .modified()
+        .map_err(|error| InfrastructureError::with_path(error, path))?)
 }
 
-async fn select_builds(builds: impl IntoIterator<Item = BuildFuture>) -> Result<(), RunError> {
+async fn select_builds(
+    builds: impl IntoIterator<Item = BuildFuture>,
+) -> Result<(), InfrastructureError> {
     let future: Pin<Box<dyn Future<Output = _> + Send>> = Box::pin(ready(Ok(())));
 
     for result in join_all(builds.into_iter().chain([future.shared()])).await {
@@ -124,13 +141,15 @@ async fn select_builds(builds: impl IntoIterator<Item = BuildFuture>) -> Result<
     Ok(())
 }
 
-async fn run_leaf_input(output: &str) -> Result<(), RunError> {
-    metadata(output).await?;
+async fn run_leaf_input(output: &str) -> Result<(), InfrastructureError> {
+    metadata(output)
+        .await
+        .map_err(|error| InfrastructureError::with_path(error, output))?;
 
     Ok(())
 }
 
-async fn run_command(command: &str) -> Result<(), RunError> {
+async fn run_command(command: &str) -> Result<(), InfrastructureError> {
     let output = Command::new("sh")
         .arg("-e")
         .arg("-c")
@@ -145,6 +164,9 @@ async fn run_command(command: &str) -> Result<(), RunError> {
     } else {
         stderr().write_all(&output.stderr).await?;
 
-        Err(RunError::ChildExit(output.status.code()))
+        Err(InfrastructureError::CommandExit(
+            command.into(),
+            output.status.code(),
+        ))
     }
 }

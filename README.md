@@ -25,6 +25,7 @@ Turtle aims to support full syntax of the Ninja build files.
 
 - Syntax
   - [x] `build` statement
+    - [ ] `phony` rule
   - [x] `rule` statement
   - [x] `default` statement
   - [x] `include` statement
@@ -35,8 +36,12 @@ Turtle aims to support full syntax of the Ninja build files.
   - [ ] `builddir` special variable
 - Command line arguments
   - [x] `-f` custom build file option
-  - [x] `-j` job limit option
+  - [ ] `-j` job limit option
   - [ ] `-k` keep-going option
+- Others
+  - [ ] Circular output dependency detection (#15)
+  - [ ] Circular build file dependency detection (#19)
+  - [ ] Windows support
 
 For more information, see [issues](https://github.com/raviqqe/turtle/issues).
 

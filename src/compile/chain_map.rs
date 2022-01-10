@@ -31,7 +31,7 @@ impl<'a, K: Eq + Hash, V> ChainMap<'a, K, V> {
         self.map.insert(key, value)
     }
 
-    pub fn derive(&'a self) -> Self {
+    pub fn fork(&'a self) -> Self {
         Self {
             map: Default::default(),
             parent: Some(self),

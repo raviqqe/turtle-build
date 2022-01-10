@@ -66,7 +66,7 @@ fn compile_module(
         match statement {
             ast::Statement::Build(build) => {
                 let rule = &module_state.rules.get(build.rule()).unwrap();
-                let mut variables = module_state.variables.derive();
+                let mut variables = module_state.variables.fork();
                 variables.extend(
                     build
                         .variable_definitions()
@@ -113,7 +113,7 @@ fn compile_module(
                 compile_module(
                     context,
                     global_state,
-                    &mut module_state.derive(),
+                    &mut module_state.fork(),
                     &context.dependencies()[path][submodule.path()],
                 );
             }

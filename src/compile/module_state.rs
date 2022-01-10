@@ -8,10 +8,10 @@ pub struct ModuleState<'a> {
 }
 
 impl<'a> ModuleState<'a> {
-    pub fn derive(&'a self) -> Self {
+    pub fn fork(&'a self) -> Self {
         Self {
-            rules: self.rules.derive(),
-            variables: self.variables.derive(),
+            rules: self.rules.fork(),
+            variables: self.variables.fork(),
         }
     }
 }

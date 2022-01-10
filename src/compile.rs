@@ -11,6 +11,7 @@ use crate::{
     ast,
     ir::{Build, Configuration},
 };
+use regex::{Captures, Regex};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -28,7 +29,7 @@ pub fn compile(
         default_outputs: Default::default(),
         module: ModuleState {
             rules: ChainMap::new(Default::default()),
-            variables: ChainMap::new([("$".into(), "$".into())].into_iter().collect()),
+            variables: ChainMap::new(Default::default()),
         },
     };
     compile_module(&context, &mut state, root_module_path);
@@ -109,9 +110,14 @@ fn compile_module(context: &Context, state: &mut GlobalState, path: &Path) {
     }
 }
 
-// TODO Use rsplit to prevent overlapped interpolation.
-fn interpolate_variables(_template: &str, _variables: &ChainMap<String, String>) -> String {
-    todo!()
+fn interpolate_variables(template: &str, variables: &ChainMap<String, String>) -> String {
+    Regex::new(r"\$([[:alpha:]][[:alnum:]]*)")
+        .unwrap()
+        .replace(template, |captures: &Captures| {
+            variables.get(&captures[1]).cloned().unwrap_or_default()
+        })
+        .replace("$$", "$")
+        .into()
 }
 
 #[cfg(test)]

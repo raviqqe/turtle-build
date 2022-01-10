@@ -111,7 +111,7 @@ fn compile_module(
                     context,
                     global_state,
                     module_state,
-                    &resolve_dependency(context, path, include.path())?,
+                    resolve_dependency(context, path, include.path())?,
                 )?;
             }
             ast::Statement::Rule(rule) => {
@@ -122,7 +122,7 @@ fn compile_module(
                     context,
                     global_state,
                     &mut module_state.fork(),
-                    &resolve_dependency(context, path, submodule.path())?,
+                    resolve_dependency(context, path, submodule.path())?,
                 )?;
             }
             ast::Statement::VariableDefinition(definition) => {
@@ -141,7 +141,7 @@ fn resolve_dependency<'a>(
     module_path: &Path,
     submodule_path: &str,
 ) -> Result<&'a Path, CompileError> {
-    Ok(&context
+    Ok(context
         .dependencies()
         .get(module_path)
         .ok_or_else(|| CompileError::ModuleNotFound(module_path.into()))?

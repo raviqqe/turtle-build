@@ -19,11 +19,14 @@ use std::{
 };
 use tokio::{fs::File, io::AsyncReadExt};
 
+const DEFAULT_BUILD_FILE: &str = "build.ninja";
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let arguments = Arguments::parse();
 
-    let root_module_path = PathBuf::from(&arguments.file).canonicalize()?;
+    let root_module_path =
+        PathBuf::from(&arguments.file.as_deref().unwrap_or(DEFAULT_BUILD_FILE)).canonicalize()?;
     let (modules, dependencies) = read_modules(&root_module_path).await?;
 
     run(

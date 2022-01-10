@@ -15,11 +15,11 @@ pub enum RunError {
 
 impl RunError {
     pub fn with_path(error: io::Error, path: impl AsRef<Path>) -> Self {
-        Self::Other(format!("{} (path: {})", error, path.as_ref().display()))
+        Self::Other(format!("{}: {}", path.as_ref().display(), error))
     }
 
     pub fn with_command(error: io::Error, command: &str) -> Self {
-        Self::Other(format!("Failed to run command: {} ({})", command, error))
+        Self::Other(format!("{}: {}", command, error))
     }
 }
 

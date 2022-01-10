@@ -8,7 +8,7 @@ use crate::{
     ir::{Build, Configuration},
 };
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -19,55 +19,54 @@ pub fn compile(
     root_module_path: &Path,
 ) -> Result<Configuration, String> {
     let context = CompileContext::new(modules.clone(), dependencies.clone());
-    let rules = Default::default();
-    let variables = [("$".into(), "$".into())].into_iter().collect();
-    let module = compile_module(&context, root_module_path, &rules, &variables);
+    let mut state = CompiledModule {
+        outputs: Default::default(),
+        default_outputs: Default::default(),
+        rules: Default::default(),
+        variables: [("$".into(), "$".into())].into_iter().collect(),
+    };
+    compile_module(&context, &mut state, root_module_path);
 
-    let default_outputs = if module.default_outputs.is_empty() {
-        module.outputs.keys().cloned().collect()
+    let default_outputs = if state.default_outputs.is_empty() {
+        state.outputs.keys().cloned().collect()
     } else {
-        module.default_outputs
+        state.default_outputs
     };
 
-    Ok(Configuration::new(module.outputs, default_outputs))
+    Ok(Configuration::new(state.outputs, default_outputs))
 }
 
-fn compile_module(
-    context: &CompileContext,
-    path: &Path,
-    rules: &HashMap<String, ast::Rule>,
-    variables: &HashMap<String, String>,
-) -> CompiledModule {
+fn compile_module(context: &CompileContext, state: &mut CompiledModule, path: &Path) {
     let module = &context.modules()[path];
-    let mut rules = rules.clone();
-    let mut variables = variables.clone();
-    let mut outputs = HashMap::new();
-    let mut default_outputs = HashSet::new();
 
     for statement in module.statements() {
         match statement {
             ast::Statement::Build(build) => {
-                let rule = &rules[build.rule()];
-                let variables =
-                    variables
-                        .clone()
-                        .into_iter()
-                        .chain(build.variable_definitions().iter().map(|definition| {
-                            (definition.name().into(), definition.value().into())
-                        }))
-                        .chain([
-                            ("in".into(), build.inputs().join(" ")),
-                            ("out".into(), build.outputs().join(" ")),
-                        ])
-                        .collect();
+                let rule = &state.rules[build.rule()];
+                let local_variables = build
+                    .variable_definitions()
+                    .iter()
+                    .map(|definition| (definition.name().into(), definition.value().into()))
+                    .chain([
+                        ("in".into(), build.inputs().join(" ")),
+                        ("out".into(), build.outputs().join(" ")),
+                    ])
+                    .collect();
+
                 let ir = Arc::new(Build::new(
                     context.generate_build_id(),
-                    interpolate_variables(rule.command(), &variables),
-                    interpolate_variables(rule.description(), &variables),
+                    interpolate_variables(
+                        &interpolate_variables(rule.command(), &local_variables),
+                        &state.variables,
+                    ),
+                    interpolate_variables(
+                        &interpolate_variables(rule.description(), &local_variables),
+                        &state.variables,
+                    ),
                     build.inputs().to_vec(),
                 ));
 
-                outputs.extend(
+                state.outputs.extend(
                     build
                         .outputs()
                         .iter()
@@ -75,46 +74,34 @@ fn compile_module(
                 );
             }
             ast::Statement::Default(default) => {
-                default_outputs.extend(default.outputs().iter().cloned());
+                state
+                    .default_outputs
+                    .extend(default.outputs().iter().cloned());
             }
             ast::Statement::Include(include) => {
-                let submodule = compile_module(
+                compile_module(
                     context,
+                    state,
                     &context.dependencies()[path][include.path()],
-                    &rules,
-                    &variables,
                 );
-
-                outputs.extend(submodule.outputs);
-                default_outputs.extend(submodule.default_outputs);
-                variables = submodule.variables;
-                rules = submodule.rules;
             }
             ast::Statement::Rule(rule) => {
-                rules.insert(rule.name().into(), rule.clone());
+                state.rules.insert(rule.name().into(), rule.clone());
             }
             ast::Statement::Submodule(submodule) => {
-                let submodule = compile_module(
+                // TODO
+                compile_module(
                     context,
+                    state,
                     &context.dependencies()[path][submodule.path()],
-                    &rules,
-                    &variables,
                 );
-
-                outputs.extend(submodule.outputs);
-                default_outputs.extend(submodule.default_outputs);
             }
             ast::Statement::VariableDefinition(definition) => {
-                variables.insert(definition.name().into(), definition.value().into());
+                state
+                    .variables
+                    .insert(definition.name().into(), definition.value().into());
             }
         }
-    }
-
-    CompiledModule {
-        outputs,
-        default_outputs,
-        rules,
-        variables,
     }
 }
 

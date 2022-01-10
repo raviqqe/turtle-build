@@ -8,19 +8,24 @@ use ast::{Module, Statement};
 use compile::{compile, ModuleDependencyMap};
 use parse::parse;
 use run::run;
-use std::collections::HashMap;
-use std::error::Error;
-use std::io;
-use std::path::{Path, PathBuf};
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
+use std::{
+    collections::HashMap,
+    error::Error,
+    io,
+    path::{Path, PathBuf},
+};
+use tokio::{fs::File, io::AsyncReadExt};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let root_module_path = PathBuf::from("build.ninja").canonicalize()?;
     let (modules, dependencies) = read_modules(&root_module_path).await?;
 
-    run(&compile(&modules, &dependencies, &root_module_path)?).await?;
+    run(
+        &compile(&modules, &dependencies, &root_module_path)?,
+        root_module_path.parent().unwrap(),
+    )
+    .await?;
 
     Ok(())
 }

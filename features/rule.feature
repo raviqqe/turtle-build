@@ -68,7 +68,7 @@ Feature: Rule statement
     rule echo
       command = echo $x
 
-    build foo: echo 
+    build foo: echo
       x = hello
 
     """
@@ -82,7 +82,7 @@ Feature: Rule statement
     rule echo
       command = echo $x $y
 
-    build foo: echo 
+    build foo: echo
       x = hello
       y = world
 

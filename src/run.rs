@@ -1,35 +1,49 @@
+mod build_database;
 mod error;
 
+use self::build_database::BuildDatabase;
 use crate::ir::{Build, Configuration};
 use error::RunError;
 use futures::future::{join_all, FutureExt, Shared};
-use std::collections::HashMap;
-use std::future::{ready, Future};
-use std::pin::Pin;
-use std::sync::Arc;
-use tokio::fs::metadata;
-use tokio::io::AsyncWriteExt;
-use tokio::spawn;
-use tokio::{io::stderr, process::Command};
+use std::hash::{Hash, Hasher};
+use std::time::SystemTime;
+use std::{
+    collections::{hash_map::DefaultHasher, HashMap},
+    future::{ready, Future},
+    path::Path,
+    pin::Pin,
+    sync::Arc,
+};
+use tokio::io;
+use tokio::{
+    fs::metadata,
+    io::{stderr, AsyncWriteExt},
+    process::Command,
+    spawn,
+};
 
 type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), RunError>> + Send>>;
 type BuildFuture = Shared<RawBuildFuture>;
 
-pub async fn run(configuration: &Configuration) -> Result<(), RunError> {
+pub async fn run(configuration: &Configuration, build_directory: &Path) -> Result<(), RunError> {
+    let database = BuildDatabase::new(build_directory)?;
     let mut builds = HashMap::new();
 
-    select_builds(
-        configuration
-            .default_outputs()
-            .iter()
-            .map(|output| run_build(configuration, &mut builds, &configuration.outputs()[output])),
-    )
+    select_builds(configuration.default_outputs().iter().map(|output| {
+        run_build(
+            &database,
+            configuration,
+            &mut builds,
+            &configuration.outputs()[output],
+        )
+    }))
     .await?;
 
     Ok(())
 }
 
 fn run_build(
+    database: &BuildDatabase,
     configuration: &Configuration,
     builds: &mut HashMap<String, BuildFuture>,
     build: &Arc<Build>,
@@ -44,7 +58,7 @@ fn run_build(
             .iter()
             .map(|input| {
                 if let Some(build) = configuration.outputs().get(input) {
-                    run_build(configuration, builds, build)
+                    run_build(database, configuration, builds, build)
                 } else {
                     let input = input.to_string();
                     let raw: RawBuildFuture = Box::pin(async move { run_leaf_input(&input).await });
@@ -55,10 +69,16 @@ fn run_build(
     );
 
     let future = {
+        let cloned_database = database.clone();
         let cloned_build = build.clone();
         let handle = spawn(async move {
             select_builds(inputs.iter().cloned().collect::<Vec<_>>()).await?;
-            run_command(cloned_build.command()).await
+
+            if should_build(&cloned_database, &cloned_build).await? {
+                run_command(cloned_build.command()).await?;
+            }
+
+            Ok(())
         });
         let raw: RawBuildFuture = Box::pin(async move { handle.await? });
         raw.shared()
@@ -67,6 +87,31 @@ fn run_build(
     builds.insert(build.id().into(), future.clone());
 
     future
+}
+
+async fn should_build(database: &BuildDatabase, build: &Build) -> Result<bool, RunError> {
+    let hash = {
+        let mut hasher = DefaultHasher::new();
+
+        build.command().hash(&mut hasher);
+        join_all(build.inputs().iter().map(get_timestamp))
+            .await
+            .into_iter()
+            .collect::<Result<Vec<SystemTime>, _>>()?
+            .hash(&mut hasher);
+
+        hasher.finish()
+    };
+
+    let old = database.get(build.id())?;
+
+    database.set(build.id(), hash)?;
+
+    Ok(hash != old)
+}
+
+async fn get_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, io::Error> {
+    Ok(metadata(path).await?.modified()?)
 }
 
 async fn select_builds(builds: impl IntoIterator<Item = BuildFuture>) -> Result<(), RunError> {

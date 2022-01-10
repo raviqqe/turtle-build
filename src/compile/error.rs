@@ -8,7 +8,6 @@ use std::{
 pub enum CompileError {
     ModuleNotFound(PathBuf),
     RuleNotFound(String),
-    VariableNotFound(String),
 }
 
 impl Error for CompileError {}
@@ -21,9 +20,6 @@ impl Display for CompileError {
             }
             Self::RuleNotFound(rule) => {
                 write!(formatter, "rule \"{}\" not found", rule)
-            }
-            Self::VariableNotFound(variable) => {
-                write!(formatter, "variable \"{}\" not found", variable)
             }
         }
     }

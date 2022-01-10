@@ -72,3 +72,21 @@ Feature: Others
     """
     When I successfully run `turtle -f foo.ninja`
     Then the stderr should contain exactly "hello"
+
+  Scenario: Rerun a failed rule
+    Given a file named "build.ninja" with:
+    """
+    rule fail
+      command = exit 1
+
+    build foo: fail
+
+    """
+    When I run `turtle`
+    And I run `turtle`
+    Then the exit status should not be 0
+    And the stderr should contain exactly:
+    """
+    hello
+    hello
+    """

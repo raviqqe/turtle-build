@@ -6,7 +6,7 @@ use std::{
 };
 
 #[derive(Clone, Debug)]
-pub struct CompileState<'a> {
+pub struct GlobalState<'a> {
     pub outputs: HashMap<String, Arc<Build>>,
     pub default_outputs: HashSet<String>,
     pub module: ModuleState<'a>,

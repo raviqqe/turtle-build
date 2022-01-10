@@ -1,11 +1,11 @@
 mod chain_map;
-mod compile_state;
+mod global_state;
 mod context;
 mod module_state;
 
 pub use self::context::ModuleDependencyMap;
 use self::{
-    chain_map::ChainMap, compile_state::CompileState, context::CompileContext,
+    chain_map::ChainMap, global_state::GlobalState, context::CompileContext,
     module_state::ModuleState,
 };
 use crate::{
@@ -24,7 +24,7 @@ pub fn compile(
     root_module_path: &Path,
 ) -> Result<Configuration, String> {
     let context = CompileContext::new(modules.clone(), dependencies.clone());
-    let mut state = CompileState {
+    let mut state = GlobalState {
         outputs: Default::default(),
         default_outputs: Default::default(),
         module: ModuleState {
@@ -43,7 +43,7 @@ pub fn compile(
     Ok(Configuration::new(state.outputs, default_outputs))
 }
 
-fn compile_module(context: &CompileContext, state: &mut CompileState, path: &Path) {
+fn compile_module(context: &CompileContext, state: &mut GlobalState, path: &Path) {
     let module = &context.modules()[path];
 
     for statement in module.statements() {

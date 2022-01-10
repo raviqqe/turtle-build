@@ -103,9 +103,11 @@ async fn should_build(database: &BuildDatabase, build: &Build) -> Result<bool, R
         hasher.finish()
     };
 
+    let old = database.get(build.id())?;
+
     database.set(build.id(), hash)?;
 
-    Ok(database.get(build.id())? == hash)
+    Ok(hash != old)
 }
 
 async fn get_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, io::Error> {

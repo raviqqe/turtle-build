@@ -54,15 +54,36 @@ fn build<'a>() -> impl Parser<Stream<'a>, Output = Build> {
     (
         keyword("build"),
         many1(string_literal()),
+        optional(sign("|").with(many1::<Vec<_>, _, _>(string_literal()))),
         sign(":"),
         identifier(),
         many(string_literal()),
+        optional(sign("|").with(many1::<Vec<_>, _, _>(string_literal()))),
         line_break(),
         many(indent().with(variable_definition())),
     )
-        .map(|(_, outputs, _, rule, inputs, _, variable_definitions)| {
-            Build::new(outputs, rule, inputs, variable_definitions)
-        })
+        .map(
+            |(
+                _,
+                outputs,
+                implicit_outputs,
+                _,
+                rule,
+                inputs,
+                implicit_inputs,
+                _,
+                variable_definitions,
+            )| {
+                Build::new(
+                    outputs,
+                    implicit_outputs.into_iter().flatten().collect(),
+                    rule,
+                    inputs,
+                    implicit_inputs.into_iter().flatten().collect(),
+                    variable_definitions,
+                )
+            },
+        )
 }
 
 fn default<'a>() -> impl Parser<Stream<'a>, Output = DefaultOutput> {
@@ -88,7 +109,7 @@ fn string_line<'a>() -> impl Parser<Stream<'a>, Output = String> {
 }
 
 fn string_literal<'a>() -> impl Parser<Stream<'a>, Output = String> {
-    token(many1(none_of([' ', '\t', '\r', '\n', ':'])))
+    token(many1(none_of([' ', '\t', '\r', '\n', ':', '|'])))
 }
 
 fn keyword<'a>(name: &'static str) -> impl Parser<Stream<'a>, Output = ()> {
@@ -131,6 +152,15 @@ fn line_break<'a>() -> impl Parser<Stream<'a>, Output = ()> {
 mod tests {
     use super::*;
     use crate::parse::stream::stream;
+
+    fn explicit_build(
+        outputs: Vec<String>,
+        rule: impl Into<String>,
+        inputs: Vec<String>,
+        variable_definitions: Vec<VariableDefinition>,
+    ) -> Build {
+        Build::new(outputs, vec![], rule, inputs, vec![], variable_definitions)
+    }
 
     #[test]
     fn parse_module() {
@@ -204,18 +234,18 @@ mod tests {
     fn parse_build() {
         assert_eq!(
             build().parse(stream("build foo: bar\n")).unwrap().0,
-            Build::new(vec!["foo".into()], "bar", vec![], vec![])
+            explicit_build(vec!["foo".into()], "bar", vec![], vec![])
         );
         assert_eq!(
             build().parse(stream("build foo: bar baz\n")).unwrap().0,
-            Build::new(vec!["foo".into()], "bar", vec!["baz".into()], vec![])
+            explicit_build(vec!["foo".into()], "bar", vec!["baz".into()], vec![])
         );
         assert_eq!(
             build()
                 .parse(stream("build foo: bar baz blah\n"))
                 .unwrap()
                 .0,
-            Build::new(
+            explicit_build(
                 vec!["foo".into()],
                 "bar",
                 vec!["baz".into(), "blah".into()],
@@ -224,11 +254,11 @@ mod tests {
         );
         assert_eq!(
             build().parse(stream("build foo bar: baz\n")).unwrap().0,
-            Build::new(vec!["foo".into(), "bar".into()], "baz", vec![], vec![])
+            explicit_build(vec!["foo".into(), "bar".into()], "baz", vec![], vec![])
         );
         assert_eq!(
             build().parse(stream("build foo: bar\n x = 1\n")).unwrap().0,
-            Build::new(
+            explicit_build(
                 vec!["foo".into()],
                 "bar",
                 vec![],
@@ -240,7 +270,7 @@ mod tests {
                 .parse(stream("build foo: bar\n x = 1\n y = 2\n"))
                 .unwrap()
                 .0,
-            Build::new(
+            explicit_build(
                 vec!["foo".into()],
                 "bar",
                 vec![],
@@ -248,6 +278,50 @@ mod tests {
                     VariableDefinition::new("x", "1"),
                     VariableDefinition::new("y", "2")
                 ]
+            )
+        );
+        assert_eq!(
+            build().parse(stream("build x1 | x2: rule\n")).unwrap().0,
+            Build::new(
+                vec!["x1".into()],
+                vec!["x2".into()],
+                "rule",
+                vec![],
+                vec![],
+                vec![]
+            )
+        );
+        assert_eq!(
+            build().parse(stream("build x1 | x2 x3: rule\n")).unwrap().0,
+            Build::new(
+                vec!["x1".into()],
+                vec!["x2".into(), "x3".into()],
+                "rule",
+                vec![],
+                vec![],
+                vec![]
+            )
+        );
+        assert_eq!(
+            build().parse(stream("build x1: rule | x2\n")).unwrap().0,
+            Build::new(
+                vec!["x1".into()],
+                vec![],
+                "rule",
+                vec![],
+                vec!["x2".into()],
+                vec![]
+            )
+        );
+        assert_eq!(
+            build().parse(stream("build x1: rule | x2 x3\n")).unwrap().0,
+            Build::new(
+                vec!["x1".into()],
+                vec![],
+                "rule",
+                vec![],
+                vec!["x2".into(), "x3".into()],
+                vec![]
             )
         );
     }

@@ -5,18 +5,18 @@ use self::build_database::BuildDatabase;
 use crate::ir::{Build, Configuration};
 use error::RunError;
 use futures::future::{join_all, FutureExt, Shared};
-use std::hash::{Hash, Hasher};
-use std::time::SystemTime;
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
     future::{ready, Future},
+    hash::{Hash, Hasher},
     path::Path,
     pin::Pin,
     sync::Arc,
+    time::SystemTime,
 };
-use tokio::io;
 use tokio::{
     fs::metadata,
+    io,
     io::{stderr, AsyncWriteExt},
     process::Command,
     spawn,

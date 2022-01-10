@@ -1,65 +1,83 @@
-mod compiled_module;
+mod chain_map;
 mod context;
+mod global_state;
+mod module_state;
 
 pub use self::context::ModuleDependencyMap;
-use self::{compiled_module::CompiledModule, context::CompileContext};
+use self::{
+    chain_map::ChainMap, context::Context, global_state::GlobalState, module_state::ModuleState,
+};
 use crate::{
     ast,
     ir::{Build, Configuration},
 };
+use once_cell::sync::Lazy;
+use regex::{Captures, Regex};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
 };
+
+static VARIABLE_PATTERN: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\$([[:alpha:]][[:alnum:]]*)").unwrap());
 
 pub fn compile(
     modules: &HashMap<PathBuf, ast::Module>,
     dependencies: &ModuleDependencyMap,
     root_module_path: &Path,
 ) -> Result<Configuration, String> {
-    let context = CompileContext::new(modules.clone(), dependencies.clone());
-    let rules = Default::default();
-    let variables = [("$".into(), "$".into())].into_iter().collect();
-    let module = compile_module(&context, root_module_path, &rules, &variables);
+    let context = Context::new(modules.clone(), dependencies.clone());
 
-    let default_outputs = if module.default_outputs.is_empty() {
-        module.outputs.keys().cloned().collect()
-    } else {
-        module.default_outputs
+    let mut global_state = GlobalState {
+        outputs: Default::default(),
+        default_outputs: Default::default(),
+    };
+    let mut module_state = ModuleState {
+        rules: ChainMap::new(),
+        variables: ChainMap::new(),
     };
 
-    Ok(Configuration::new(module.outputs, default_outputs))
+    compile_module(
+        &context,
+        &mut global_state,
+        &mut module_state,
+        root_module_path,
+    );
+
+    let default_outputs = if global_state.default_outputs.is_empty() {
+        global_state.outputs.keys().cloned().collect()
+    } else {
+        global_state.default_outputs
+    };
+
+    Ok(Configuration::new(global_state.outputs, default_outputs))
 }
 
 fn compile_module(
-    context: &CompileContext,
+    context: &Context,
+    global_state: &mut GlobalState,
+    module_state: &mut ModuleState,
     path: &Path,
-    rules: &HashMap<String, ast::Rule>,
-    variables: &HashMap<String, String>,
-) -> CompiledModule {
+) {
     let module = &context.modules()[path];
-    let mut rules = rules.clone();
-    let mut variables = variables.clone();
-    let mut outputs = HashMap::new();
-    let mut default_outputs = HashSet::new();
 
     for statement in module.statements() {
         match statement {
             ast::Statement::Build(build) => {
-                let rule = &rules[build.rule()];
-                let variables =
-                    variables
-                        .clone()
-                        .into_iter()
-                        .chain(build.variable_definitions().iter().map(|definition| {
-                            (definition.name().into(), definition.value().into())
-                        }))
+                let rule = &module_state.rules.get(build.rule()).unwrap();
+                let mut variables = module_state.variables.fork();
+                variables.extend(
+                    build
+                        .variable_definitions()
+                        .iter()
+                        .map(|definition| (definition.name().into(), definition.value().into()))
                         .chain([
                             ("in".into(), build.inputs().join(" ")),
                             ("out".into(), build.outputs().join(" ")),
-                        ])
-                        .collect();
+                        ]),
+                );
+
                 let ir = Arc::new(Build::new(
                     context.generate_build_id(),
                     interpolate_variables(rule.command(), &variables),
@@ -67,7 +85,7 @@ fn compile_module(
                     build.inputs().to_vec(),
                 ));
 
-                outputs.extend(
+                global_state.outputs.extend(
                     build
                         .outputs()
                         .iter()
@@ -75,56 +93,45 @@ fn compile_module(
                 );
             }
             ast::Statement::Default(default) => {
-                default_outputs.extend(default.outputs().iter().cloned());
+                global_state
+                    .default_outputs
+                    .extend(default.outputs().iter().cloned());
             }
             ast::Statement::Include(include) => {
-                let submodule = compile_module(
+                compile_module(
                     context,
+                    global_state,
+                    module_state,
                     &context.dependencies()[path][include.path()],
-                    &rules,
-                    &variables,
                 );
-
-                outputs.extend(submodule.outputs);
-                default_outputs.extend(submodule.default_outputs);
-                variables = submodule.variables;
-                rules = submodule.rules;
             }
             ast::Statement::Rule(rule) => {
-                rules.insert(rule.name().into(), rule.clone());
+                module_state.rules.insert(rule.name().into(), rule.clone());
             }
             ast::Statement::Submodule(submodule) => {
-                let submodule = compile_module(
+                // TODO
+                compile_module(
                     context,
+                    global_state,
+                    &mut module_state.fork(),
                     &context.dependencies()[path][submodule.path()],
-                    &rules,
-                    &variables,
                 );
-
-                outputs.extend(submodule.outputs);
-                default_outputs.extend(submodule.default_outputs);
             }
             ast::Statement::VariableDefinition(definition) => {
-                variables.insert(definition.name().into(), definition.value().into());
+                module_state
+                    .variables
+                    .insert(definition.name().into(), definition.value().into());
             }
         }
     }
-
-    CompiledModule {
-        outputs,
-        default_outputs,
-        rules,
-        variables,
-    }
 }
 
-// TODO Use rsplit to prevent overlapped interpolation.
-fn interpolate_variables(template: &str, variables: &HashMap<String, String>) -> String {
-    variables
-        .iter()
-        .fold(template.into(), |template, (name, value)| {
-            template.replace(&("$".to_string() + name), value)
+fn interpolate_variables(template: &str, variables: &ChainMap<String, String>) -> String {
+    VARIABLE_PATTERN
+        .replace_all(template, |captures: &Captures| {
+            variables.get(&captures[1]).cloned().unwrap_or_default()
         })
+        .replace("$$", "$")
 }
 
 #[cfg(test)]
@@ -136,7 +143,7 @@ mod tests {
 
     static ROOT_MODULE_PATH: Lazy<PathBuf> = Lazy::new(|| PathBuf::from("build.ninja"));
     static DEFAULT_DEPENDENCIES: Lazy<ModuleDependencyMap> = Lazy::new(|| {
-        [(PathBuf::from("build.ninja"), Default::default())]
+        [(ROOT_MODULE_PATH.clone(), Default::default())]
             .into_iter()
             .collect()
     });
@@ -176,6 +183,34 @@ mod tests {
             .unwrap(),
             ir::Configuration::new(
                 [("bar".into(), Build::new("0", "42", "", vec![]).into())]
+                    .into_iter()
+                    .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn interpolate_two_variables_in_command() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast::VariableDefinition::new("x", "1").into(),
+                        ast::VariableDefinition::new("y", "2").into(),
+                        ast::Rule::new("foo", "$x $y", "").into(),
+                        ast::Build::new(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            ir::Configuration::new(
+                [("bar".into(), Build::new("0", "1 2", "", vec![]).into())]
                     .into_iter()
                     .collect(),
                 ["bar".into()].into_iter().collect()
@@ -328,5 +363,145 @@ mod tests {
                 ["bar".into()].into_iter().collect()
             )
         );
+    }
+
+    mod submodule {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[test]
+        fn reference_variable_in_parent_module() {
+            const SUBMODULE_PATH: &str = "foo.ninja";
+
+            assert_eq!(
+                compile(
+                    &[
+                        (
+                            ROOT_MODULE_PATH.clone(),
+                            ast::Module::new(vec![
+                                ast::VariableDefinition::new("x", "42").into(),
+                                ast::Submodule::new(SUBMODULE_PATH).into(),
+                            ])
+                        ),
+                        (
+                            SUBMODULE_PATH.into(),
+                            ast::Module::new(vec![
+                                ast::Rule::new("foo", "$x", "").into(),
+                                ast::Build::new(vec!["bar".into()], "foo", vec![], vec![]).into()
+                            ])
+                        )
+                    ]
+                    .into_iter()
+                    .collect(),
+                    &[(
+                        ROOT_MODULE_PATH.clone(),
+                        [(SUBMODULE_PATH.into(), PathBuf::from(SUBMODULE_PATH))]
+                            .into_iter()
+                            .collect()
+                    )]
+                    .into_iter()
+                    .collect(),
+                    &ROOT_MODULE_PATH
+                )
+                .unwrap(),
+                ir::Configuration::new(
+                    [("bar".into(), Build::new("0", "42", "", vec![]).into())]
+                        .into_iter()
+                        .collect(),
+                    ["bar".into()].into_iter().collect()
+                )
+            );
+        }
+
+        #[test]
+        fn reference_rule_in_parent_module() {
+            const SUBMODULE_PATH: &str = "foo.ninja";
+
+            assert_eq!(
+                compile(
+                    &[
+                        (
+                            ROOT_MODULE_PATH.clone(),
+                            ast::Module::new(vec![
+                                ast::VariableDefinition::new("x", "42").into(),
+                                ast::Rule::new("foo", "$x", "").into(),
+                                ast::Submodule::new(SUBMODULE_PATH).into(),
+                            ])
+                        ),
+                        (
+                            SUBMODULE_PATH.into(),
+                            ast::Module::new(vec![ast::Build::new(
+                                vec!["bar".into()],
+                                "foo",
+                                vec![],
+                                vec![]
+                            )
+                            .into()])
+                        )
+                    ]
+                    .into_iter()
+                    .collect(),
+                    &[(
+                        ROOT_MODULE_PATH.clone(),
+                        [(SUBMODULE_PATH.into(), PathBuf::from(SUBMODULE_PATH))]
+                            .into_iter()
+                            .collect()
+                    )]
+                    .into_iter()
+                    .collect(),
+                    &ROOT_MODULE_PATH
+                )
+                .unwrap(),
+                ir::Configuration::new(
+                    [("bar".into(), Build::new("0", "42", "", vec![]).into())]
+                        .into_iter()
+                        .collect(),
+                    ["bar".into()].into_iter().collect()
+                )
+            );
+        }
+
+        #[test]
+        fn do_not_overwrite_variable_in_parent_module() {
+            const SUBMODULE_PATH: &str = "foo.ninja";
+
+            assert_eq!(
+                compile(
+                    &[
+                        (
+                            ROOT_MODULE_PATH.clone(),
+                            ast::Module::new(vec![
+                                ast::VariableDefinition::new("x", "42").into(),
+                                ast::Rule::new("foo", "$x", "").into(),
+                                ast::Submodule::new(SUBMODULE_PATH).into(),
+                                ast::Build::new(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                            ])
+                        ),
+                        (
+                            SUBMODULE_PATH.into(),
+                            ast::Module::new(vec![ast::VariableDefinition::new("x", "13").into(),])
+                        )
+                    ]
+                    .into_iter()
+                    .collect(),
+                    &[(
+                        ROOT_MODULE_PATH.clone(),
+                        [(SUBMODULE_PATH.into(), PathBuf::from(SUBMODULE_PATH))]
+                            .into_iter()
+                            .collect()
+                    )]
+                    .into_iter()
+                    .collect(),
+                    &ROOT_MODULE_PATH
+                )
+                .unwrap(),
+                ir::Configuration::new(
+                    [("bar".into(), Build::new("0", "42", "", vec![]).into())]
+                        .into_iter()
+                        .collect(),
+                    ["bar".into()].into_iter().collect()
+                )
+            );
+        }
     }
 }

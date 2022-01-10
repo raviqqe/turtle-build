@@ -132,7 +132,6 @@ fn interpolate_variables(template: &str, variables: &ChainMap<String, String>) -
             variables.get(&captures[1]).cloned().unwrap_or_default()
         })
         .replace("$$", "$")
-        .into()
 }
 
 #[cfg(test)]

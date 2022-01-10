@@ -123,7 +123,7 @@ mod tests {
 
     static ROOT_MODULE_PATH: Lazy<PathBuf> = Lazy::new(|| PathBuf::from("build.ninja"));
     static DEFAULT_DEPENDENCIES: Lazy<ModuleDependencyMap> = Lazy::new(|| {
-        [(PathBuf::from("build.ninja"), Default::default())]
+        [(ROOT_MODULE_PATH.clone(), Default::default())]
             .into_iter()
             .collect()
     });
@@ -315,5 +315,145 @@ mod tests {
                 ["bar".into()].into_iter().collect()
             )
         );
+    }
+
+    mod submodule {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[test]
+        fn reference_variable_in_parent_module() {
+            const SUBMODULE_PATH: &str = "foo.ninja";
+
+            assert_eq!(
+                compile(
+                    &[
+                        (
+                            ROOT_MODULE_PATH.clone(),
+                            ast::Module::new(vec![
+                                ast::VariableDefinition::new("x", "42").into(),
+                                ast::Submodule::new(SUBMODULE_PATH).into(),
+                            ])
+                        ),
+                        (
+                            SUBMODULE_PATH.into(),
+                            ast::Module::new(vec![
+                                ast::Rule::new("foo", "$x", "").into(),
+                                ast::Build::new(vec!["bar".into()], "foo", vec![], vec![]).into()
+                            ])
+                        )
+                    ]
+                    .into_iter()
+                    .collect(),
+                    &[(
+                        ROOT_MODULE_PATH.clone(),
+                        [(SUBMODULE_PATH.into(), PathBuf::from(SUBMODULE_PATH))]
+                            .into_iter()
+                            .collect()
+                    )]
+                    .into_iter()
+                    .collect(),
+                    &ROOT_MODULE_PATH
+                )
+                .unwrap(),
+                ir::Configuration::new(
+                    [("bar".into(), Build::new("0", "42", "", vec![]).into())]
+                        .into_iter()
+                        .collect(),
+                    ["bar".into()].into_iter().collect()
+                )
+            );
+        }
+
+        #[test]
+        fn reference_rule_in_parent_module() {
+            const SUBMODULE_PATH: &str = "foo.ninja";
+
+            assert_eq!(
+                compile(
+                    &[
+                        (
+                            ROOT_MODULE_PATH.clone(),
+                            ast::Module::new(vec![
+                                ast::VariableDefinition::new("x", "42").into(),
+                                ast::Rule::new("foo", "$x", "").into(),
+                                ast::Submodule::new(SUBMODULE_PATH).into(),
+                            ])
+                        ),
+                        (
+                            SUBMODULE_PATH.into(),
+                            ast::Module::new(vec![ast::Build::new(
+                                vec!["bar".into()],
+                                "foo",
+                                vec![],
+                                vec![]
+                            )
+                            .into()])
+                        )
+                    ]
+                    .into_iter()
+                    .collect(),
+                    &[(
+                        ROOT_MODULE_PATH.clone(),
+                        [(SUBMODULE_PATH.into(), PathBuf::from(SUBMODULE_PATH))]
+                            .into_iter()
+                            .collect()
+                    )]
+                    .into_iter()
+                    .collect(),
+                    &ROOT_MODULE_PATH
+                )
+                .unwrap(),
+                ir::Configuration::new(
+                    [("bar".into(), Build::new("0", "42", "", vec![]).into())]
+                        .into_iter()
+                        .collect(),
+                    ["bar".into()].into_iter().collect()
+                )
+            );
+        }
+
+        #[test]
+        fn do_not_overwrite_variable_in_parent_module() {
+            const SUBMODULE_PATH: &str = "foo.ninja";
+
+            assert_eq!(
+                compile(
+                    &[
+                        (
+                            ROOT_MODULE_PATH.clone(),
+                            ast::Module::new(vec![
+                                ast::VariableDefinition::new("x", "42").into(),
+                                ast::Rule::new("foo", "$x", "").into(),
+                                ast::Submodule::new(SUBMODULE_PATH).into(),
+                                ast::Build::new(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                            ])
+                        ),
+                        (
+                            SUBMODULE_PATH.into(),
+                            ast::Module::new(vec![ast::VariableDefinition::new("x", "13").into(),])
+                        )
+                    ]
+                    .into_iter()
+                    .collect(),
+                    &[(
+                        ROOT_MODULE_PATH.clone(),
+                        [(SUBMODULE_PATH.into(), PathBuf::from(SUBMODULE_PATH))]
+                            .into_iter()
+                            .collect()
+                    )]
+                    .into_iter()
+                    .collect(),
+                    &ROOT_MODULE_PATH
+                )
+                .unwrap(),
+                ir::Configuration::new(
+                    [("bar".into(), Build::new("0", "42", "", vec![]).into())]
+                        .into_iter()
+                        .collect(),
+                    ["bar".into()].into_iter().collect()
+                )
+            );
+        }
     }
 }

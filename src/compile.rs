@@ -28,8 +28,8 @@ pub fn compile(
         outputs: Default::default(),
         default_outputs: Default::default(),
         module: ModuleState {
-            rules: ChainMap::new(Default::default()),
-            variables: ChainMap::new(Default::default()),
+            rules: ChainMap::new(),
+            variables: ChainMap::new(),
         },
     };
     compile_module(&context, &mut state, root_module_path);

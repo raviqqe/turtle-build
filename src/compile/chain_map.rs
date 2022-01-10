@@ -7,8 +7,11 @@ pub struct ChainMap<'a, K, V> {
 }
 
 impl<'a, K: Eq + Hash, V> ChainMap<'a, K, V> {
-    pub fn new(map: HashMap<K, V>) -> Self {
-        Self { map, parent: None }
+    pub fn new() -> Self {
+        Self {
+            map: Default::default(),
+            parent: None,
+        }
     }
 
     pub fn get<Q: Eq + Hash + ?Sized>(&self, key: &Q) -> Option<&V>

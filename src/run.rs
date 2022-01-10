@@ -16,7 +16,6 @@ use std::{
 };
 use tokio::{
     fs::metadata,
-    io,
     io::{stderr, AsyncWriteExt},
     process::Command,
     spawn,
@@ -119,8 +118,14 @@ async fn should_build(database: &BuildDatabase, build: &Build) -> Result<bool, R
     Ok(hash != old)
 }
 
-async fn get_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, io::Error> {
-    Ok(metadata(path).await?.modified()?)
+async fn get_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, RunError> {
+    let path = path.as_ref();
+
+    Ok(metadata(path)
+        .await
+        .map_err(|error| RunError::with_path(error, path))?
+        .modified()
+        .map_err(|error| RunError::with_path(error, path))?)
 }
 
 async fn select_builds(builds: impl IntoIterator<Item = BuildFuture>) -> Result<(), RunError> {
@@ -134,7 +139,9 @@ async fn select_builds(builds: impl IntoIterator<Item = BuildFuture>) -> Result<
 }
 
 async fn run_leaf_input(output: &str) -> Result<(), RunError> {
-    metadata(output).await?;
+    metadata(output)
+        .await
+        .map_err(|error| RunError::with_path(error, output))?;
 
     Ok(())
 }
@@ -145,14 +152,21 @@ async fn run_command(command: &str) -> Result<(), RunError> {
         .arg("-c")
         .arg(command)
         .output()
-        .await?;
+        .await
+        .map_err(|error| RunError::with_command(error, command))?;
 
-    stderr().write_all(&output.stdout).await?;
+    stderr()
+        .write_all(&output.stdout)
+        .await
+        .map_err(|error| RunError::with_command(error, command))?;
 
     if output.status.success() {
         Ok(())
     } else {
-        stderr().write_all(&output.stderr).await?;
+        stderr()
+            .write_all(&output.stderr)
+            .await
+            .map_err(|error| RunError::with_command(error, command))?;
 
         Err(RunError::ChildExit(output.status.code()))
     }

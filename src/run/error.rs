@@ -1,6 +1,7 @@
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
+    path::Path,
 };
 use tokio::{io, task::JoinError};
 
@@ -10,6 +11,16 @@ pub enum RunError {
     DefaultOutputNotFound(String),
     Other(String),
     Sled(sled::Error),
+}
+
+impl RunError {
+    pub fn with_path(error: io::Error, path: impl AsRef<Path>) -> Self {
+        Self::Other(format!("{} (path: {})", error, path.as_ref().display()))
+    }
+
+    pub fn with_command(error: io::Error, command: &str) -> Self {
+        Self::Other(format!("Failed to run command: {} ({})", command, error))
+    }
 }
 
 impl Error for RunError {}
@@ -34,12 +45,6 @@ impl Display for RunError {
             Self::Other(message) => write!(formatter, "{}", message),
             Self::Sled(error) => write!(formatter, "{}", error),
         }
-    }
-}
-
-impl From<io::Error> for RunError {
-    fn from(error: io::Error) -> Self {
-        Self::Other(format!("{}", &error))
     }
 }
 

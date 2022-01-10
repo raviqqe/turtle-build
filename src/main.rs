@@ -16,13 +16,22 @@ use std::{
     error::Error,
     io,
     path::{Path, PathBuf},
+    process::exit,
 };
 use tokio::{fs::File, io::AsyncReadExt};
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() {
+    if let Err(error) = execute().await {
+        eprintln!("{}", error);
+
+        exit(1)
+    }
+}
+
+async fn execute() -> Result<(), Box<dyn Error>> {
     let arguments = Arguments::parse();
 
     let root_module_path =

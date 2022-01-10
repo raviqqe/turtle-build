@@ -6,22 +6,22 @@ use std::{
 use tokio::{io, task::JoinError};
 
 #[derive(Clone, Debug)]
-pub enum RunError {
+pub enum InfrastructureError {
     CommandExit(String, Option<i32>),
     DefaultOutputNotFound(String),
     Other(String),
     Sled(sled::Error),
 }
 
-impl RunError {
+impl InfrastructureError {
     pub fn with_path(error: io::Error, path: impl AsRef<Path>) -> Self {
         Self::Other(format!("{}: {}", error, path.as_ref().display()))
     }
 }
 
-impl Error for RunError {}
+impl Error for InfrastructureError {}
 
-impl Display for RunError {
+impl Display for InfrastructureError {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
             Self::CommandExit(command, code) => {
@@ -45,19 +45,19 @@ impl Display for RunError {
     }
 }
 
-impl From<io::Error> for RunError {
+impl From<io::Error> for InfrastructureError {
     fn from(error: io::Error) -> Self {
         Self::Other(format!("{}", &error))
     }
 }
 
-impl From<JoinError> for RunError {
+impl From<JoinError> for InfrastructureError {
     fn from(error: JoinError) -> Self {
         Self::Other(format!("{}", &error))
     }
 }
 
-impl From<sled::Error> for RunError {
+impl From<sled::Error> for InfrastructureError {
     fn from(error: sled::Error) -> Self {
         Self::Sled(error)
     }

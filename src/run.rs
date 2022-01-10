@@ -3,7 +3,7 @@ mod error;
 
 use self::build_database::BuildDatabase;
 use crate::ir::{Build, Configuration};
-use error::RunError;
+use error::InfrastructureError;
 use futures::future::{join_all, FutureExt, Shared};
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
@@ -21,10 +21,10 @@ use tokio::{
     spawn,
 };
 
-type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), RunError>> + Send>>;
+type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), InfrastructureError>> + Send>>;
 type BuildFuture = Shared<RawBuildFuture>;
 
-pub async fn run(configuration: &Configuration, build_directory: &Path) -> Result<(), RunError> {
+pub async fn run(configuration: &Configuration, build_directory: &Path) -> Result<(), InfrastructureError> {
     let database = BuildDatabase::new(build_directory)?;
     let mut builds = HashMap::new();
 
@@ -40,10 +40,10 @@ pub async fn run(configuration: &Configuration, build_directory: &Path) -> Resul
                     configuration
                         .outputs()
                         .get(output)
-                        .ok_or_else(|| RunError::DefaultOutputNotFound(output.into()))?,
+                        .ok_or_else(|| InfrastructureError::DefaultOutputNotFound(output.into()))?,
                 ))
             })
-            .collect::<Result<Vec<_>, RunError>>()?,
+            .collect::<Result<Vec<_>, InfrastructureError>>()?,
     )
     .await?;
 
@@ -102,7 +102,7 @@ fn run_build(
     future
 }
 
-async fn hash_build(build: &Build) -> Result<u64, RunError> {
+async fn hash_build(build: &Build) -> Result<u64, InfrastructureError> {
     let mut hasher = DefaultHasher::new();
 
     build.command().hash(&mut hasher);
@@ -115,17 +115,17 @@ async fn hash_build(build: &Build) -> Result<u64, RunError> {
     Ok(hasher.finish())
 }
 
-async fn get_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, RunError> {
+async fn get_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, InfrastructureError> {
     let path = path.as_ref();
 
     Ok(metadata(path)
         .await
-        .map_err(|error| RunError::with_path(error, path))?
+        .map_err(|error| InfrastructureError::with_path(error, path))?
         .modified()
-        .map_err(|error| RunError::with_path(error, path))?)
+        .map_err(|error| InfrastructureError::with_path(error, path))?)
 }
 
-async fn select_builds(builds: impl IntoIterator<Item = BuildFuture>) -> Result<(), RunError> {
+async fn select_builds(builds: impl IntoIterator<Item = BuildFuture>) -> Result<(), InfrastructureError> {
     let future: Pin<Box<dyn Future<Output = _> + Send>> = Box::pin(ready(Ok(())));
 
     for result in join_all(builds.into_iter().chain([future.shared()])).await {
@@ -135,15 +135,15 @@ async fn select_builds(builds: impl IntoIterator<Item = BuildFuture>) -> Result<
     Ok(())
 }
 
-async fn run_leaf_input(output: &str) -> Result<(), RunError> {
+async fn run_leaf_input(output: &str) -> Result<(), InfrastructureError> {
     metadata(output)
         .await
-        .map_err(|error| RunError::with_path(error, output))?;
+        .map_err(|error| InfrastructureError::with_path(error, output))?;
 
     Ok(())
 }
 
-async fn run_command(command: &str) -> Result<(), RunError> {
+async fn run_command(command: &str) -> Result<(), InfrastructureError> {
     let output = Command::new("sh")
         .arg("-e")
         .arg("-c")
@@ -158,6 +158,6 @@ async fn run_command(command: &str) -> Result<(), RunError> {
     } else {
         stderr().write_all(&output.stderr).await?;
 
-        Err(RunError::CommandExit(command.into(), output.status.code()))
+        Err(InfrastructureError::CommandExit(command.into(), output.status.code()))
     }
 }

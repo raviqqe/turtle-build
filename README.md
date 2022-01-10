@@ -3,7 +3,7 @@
 [![GitHub Action](https://img.shields.io/github/workflow/status/raviqqe/turtle/test?style=flat-square)](https://github.com/raviqqe/turtle/actions)
 [![License](https://img.shields.io/github/license/raviqqe/turtle.svg?style=flat-square)](LICENSE)
 
-Clone of the [Ninja build system](https://github.com/ninja-build/ninja) in Rust
+Clone of the [Ninja build system](https://github.com/ninja-build/ninja) written in Rust
 
 ## Goals
 
@@ -65,4 +65,4 @@ For more information, see [issues](https://github.com/raviqqe/turtle/issues).
 
 ## License
 
-[MIT](LICENSE)
+Dual-licensed under [MIT](LICENSE-MIT) and [Apache 2.0](LICENSE-APACHE).

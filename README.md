@@ -1,7 +1,7 @@
 # Turtle
 
 [![GitHub Action](https://img.shields.io/github/workflow/status/raviqqe/turtle/test?style=flat-square)](https://github.com/raviqqe/turtle/actions)
-[![License](https://img.shields.io/github/license/raviqqe/turtle.svg?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT%20%2B%20Apache%202.0-yellow?style=flat-square)](#License)
 
 Clone of the [Ninja build system](https://github.com/ninja-build/ninja) written in Rust
 

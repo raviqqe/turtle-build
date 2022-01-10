@@ -7,6 +7,7 @@ use tokio::{io, task::JoinError};
 #[derive(Clone, Debug)]
 pub enum RunError {
     ChildExit(Option<i32>),
+    DefaultOutputNotFound(String),
     Other(String),
     Sled(sled::Error),
 }
@@ -22,12 +23,11 @@ impl Display for RunError {
             Self::ChildExit(None) => {
                 write!(formatter, "child process exited without status code")
             }
-            Self::Other(message) => {
-                write!(formatter, "{}", message)
+            Self::DefaultOutputNotFound(output) => {
+                write!(formatter, "default output \"{}\" not found", output)
             }
-            Self::Sled(error) => {
-                write!(formatter, "{}", error)
-            }
+            Self::Other(message) => write!(formatter, "{}", message),
+            Self::Sled(error) => write!(formatter, "{}", error),
         }
     }
 }

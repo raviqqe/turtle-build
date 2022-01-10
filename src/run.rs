@@ -29,14 +29,23 @@ pub async fn run(configuration: &Configuration, build_directory: &Path) -> Resul
     let database = BuildDatabase::new(build_directory)?;
     let mut builds = HashMap::new();
 
-    select_builds(configuration.default_outputs().iter().map(|output| {
-        run_build(
-            &database,
-            configuration,
-            &mut builds,
-            &configuration.outputs()[output],
-        )
-    }))
+    select_builds(
+        configuration
+            .default_outputs()
+            .iter()
+            .map(|output| {
+                Ok(run_build(
+                    &database,
+                    configuration,
+                    &mut builds,
+                    configuration
+                        .outputs()
+                        .get(output)
+                        .ok_or_else(|| RunError::DefaultOutputNotFound(output.into()))?,
+                ))
+            })
+            .collect::<Result<Vec<_>, RunError>>()?,
+    )
     .await?;
 
     Ok(())

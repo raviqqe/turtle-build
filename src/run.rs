@@ -77,14 +77,19 @@ fn run_build(
     );
 
     let future = {
-        let cloned_database = database.clone();
-        let cloned_build = build.clone();
+        let environment = (database.clone(), build.clone());
         let handle = spawn(async move {
+            let (database, build) = environment;
+
             select_builds(inputs.iter().cloned().collect::<Vec<_>>()).await?;
 
-            if should_build(&cloned_database, &cloned_build).await? {
-                run_command(cloned_build.command()).await?;
+            let hash = hash_build(&build).await?;
+
+            if hash != database.get(build.id())? {
+                run_command(build.command()).await?;
             }
+
+            database.set(build.id(), hash)?;
 
             Ok(())
         });
@@ -97,25 +102,17 @@ fn run_build(
     future
 }
 
-async fn should_build(database: &BuildDatabase, build: &Build) -> Result<bool, RunError> {
-    let hash = {
-        let mut hasher = DefaultHasher::new();
+async fn hash_build(build: &Build) -> Result<u64, RunError> {
+    let mut hasher = DefaultHasher::new();
 
-        build.command().hash(&mut hasher);
-        join_all(build.inputs().iter().map(get_timestamp))
-            .await
-            .into_iter()
-            .collect::<Result<Vec<SystemTime>, _>>()?
-            .hash(&mut hasher);
+    build.command().hash(&mut hasher);
+    join_all(build.inputs().iter().map(get_timestamp))
+        .await
+        .into_iter()
+        .collect::<Result<Vec<SystemTime>, _>>()?
+        .hash(&mut hasher);
 
-        hasher.finish()
-    };
-
-    let old = database.get(build.id())?;
-
-    database.set(build.id(), hash)?;
-
-    Ok(hash != old)
+    Ok(hasher.finish())
 }
 
 async fn get_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, RunError> {

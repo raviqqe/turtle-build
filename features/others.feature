@@ -83,10 +83,6 @@ Feature: Others
 
     """
     When I run `turtle`
-    And I run `turtle`
-    Then the exit status should not be 0
-    And the stderr should contain exactly:
-    """
-    hello
-    hello
-    """
+    And the exit status should not be 0
+    Then I run `turtle`
+    And the exit status should not be 0

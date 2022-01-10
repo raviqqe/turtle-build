@@ -21,8 +21,7 @@ For more information, see `turtle --help`.
 
 ## Compatibility
 
-Turtle aims to support full syntax of the Ninja build files. 
-
+Turtle aims to support full syntax of the Ninja build files.
 
 - Syntax
   - [x] `build` statement
@@ -34,6 +33,10 @@ Turtle aims to support full syntax of the Ninja build files.
   - [x] Build-local variables
   - [x] `in` and `out` special variable
   - [ ] `builddir` special variable
+- Command line arguments
+  - [x] `-f` custom build file option
+  - [x] `-j` job limit option
+  - [ ] `-k` keep-going option
 
 For more information, see [issues](https://github.com/raviqqe/turtle/issues).
 

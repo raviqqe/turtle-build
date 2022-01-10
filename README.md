@@ -15,7 +15,7 @@ Clone of the [Ninja build system](https://github.com/ninja-build/ninja) in Rust
 ## Install
 
 ```sh
-cargo install --git https://github.com/raviqqe/turtle
+cargo install turtle-build
 ```
 
 ## Usage

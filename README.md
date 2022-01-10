@@ -39,11 +39,17 @@ Turtle aims to support full syntax of the Ninja build files.
   - [ ] `-j` job limit option
   - [ ] `-k` keep-going option
 - Others
-  - [ ] Circular output dependency detection (#15)
-  - [ ] Circular build file dependency detection (#19)
+  - [ ] Dynamic dependencies
+  - [ ] Circular output dependency detection
+  - [ ] Circular build file dependency detection
   - [ ] Windows support
 
 For more information, see [issues](https://github.com/raviqqe/turtle/issues).
+
+## Similar projects
+
+- [`ninja-rs/ninja-rs`](https://github.com/ninja-rs/ninja-rs)
+- [`nikhilm/ninja-rs`](https://github.com/nikhilm/ninja-rs)
 
 ## License
 

@@ -1,8 +1,10 @@
 mod build_database;
 
 use self::build_database::BuildDatabase;
-use crate::error::InfrastructureError;
-use crate::ir::{Build, Configuration};
+use crate::{
+    error::InfrastructureError,
+    ir::{Build, Configuration},
+};
 use futures::future::{join_all, FutureExt, Shared};
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},

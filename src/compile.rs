@@ -1,9 +1,13 @@
 mod chain_map;
 mod compile_state;
 mod context;
+mod module_state;
 
 pub use self::context::ModuleDependencyMap;
-use self::{compile_state::CompileState, context::CompileContext};
+use self::{
+    chain_map::ChainMap, compile_state::CompileState, context::CompileContext,
+    module_state::ModuleState,
+};
 use crate::{
     ast,
     ir::{Build, Configuration},
@@ -23,8 +27,10 @@ pub fn compile(
     let mut state = CompileState {
         outputs: Default::default(),
         default_outputs: Default::default(),
-        rules: Default::default(),
-        variables: [("$".into(), "$".into())].into_iter().collect(),
+        module: ModuleState {
+            rules: ChainMap::new(Default::default()),
+            variables: ChainMap::new([("$".into(), "$".into())].into_iter().collect()),
+        },
     };
     compile_module(&context, &mut state, root_module_path);
 
@@ -43,27 +49,24 @@ fn compile_module(context: &CompileContext, state: &mut CompileState, path: &Pat
     for statement in module.statements() {
         match statement {
             ast::Statement::Build(build) => {
-                let rule = &state.rules[build.rule()];
-                let local_variables = build
-                    .variable_definitions()
-                    .iter()
-                    .map(|definition| (definition.name().into(), definition.value().into()))
-                    .chain([
-                        ("in".into(), build.inputs().join(" ")),
-                        ("out".into(), build.outputs().join(" ")),
-                    ])
-                    .collect();
+                let rule = &state.module.rules.get(build.rule()).unwrap();
+                let mut variables = state.module.variables.derive();
+
+                variables.extend(
+                    build
+                        .variable_definitions()
+                        .iter()
+                        .map(|definition| (definition.name().into(), definition.value().into()))
+                        .chain([
+                            ("in".into(), build.inputs().join(" ")),
+                            ("out".into(), build.outputs().join(" ")),
+                        ]),
+                );
 
                 let ir = Arc::new(Build::new(
                     context.generate_build_id(),
-                    interpolate_variables(
-                        &interpolate_variables(rule.command(), &local_variables),
-                        &state.variables,
-                    ),
-                    interpolate_variables(
-                        &interpolate_variables(rule.description(), &local_variables),
-                        &state.variables,
-                    ),
+                    interpolate_variables(rule.command(), &variables),
+                    interpolate_variables(rule.description(), &variables),
                     build.inputs().to_vec(),
                 ));
 
@@ -87,7 +90,7 @@ fn compile_module(context: &CompileContext, state: &mut CompileState, path: &Pat
                 );
             }
             ast::Statement::Rule(rule) => {
-                state.rules.insert(rule.name().into(), rule.clone());
+                state.module.rules.insert(rule.name().into(), rule.clone());
             }
             ast::Statement::Submodule(submodule) => {
                 // TODO
@@ -99,6 +102,7 @@ fn compile_module(context: &CompileContext, state: &mut CompileState, path: &Pat
             }
             ast::Statement::VariableDefinition(definition) => {
                 state
+                    .module
                     .variables
                     .insert(definition.name().into(), definition.value().into());
             }
@@ -107,12 +111,8 @@ fn compile_module(context: &CompileContext, state: &mut CompileState, path: &Pat
 }
 
 // TODO Use rsplit to prevent overlapped interpolation.
-fn interpolate_variables(template: &str, variables: &HashMap<String, String>) -> String {
-    variables
-        .iter()
-        .fold(template.into(), |template, (name, value)| {
-            template.replace(&("$".to_string() + name), value)
-        })
+fn interpolate_variables(template: &str, variables: &ChainMap<String, String>) -> String {
+    todo!()
 }
 
 #[cfg(test)]

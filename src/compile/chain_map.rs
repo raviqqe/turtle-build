@@ -28,10 +28,16 @@ impl<'a, K: Eq + Hash, V> ChainMap<'a, K, V> {
         self.map.insert(key, value)
     }
 
-    pub fn derive(&self, parent: &'a ChainMap<'a, K, V>) -> Self {
+    pub fn derive(&'a self) -> Self {
         Self {
             map: Default::default(),
-            parent: Some(parent),
+            parent: Some(self),
         }
+    }
+}
+
+impl<'a, K: Eq + Hash, V> Extend<(K, V)> for ChainMap<'a, K, V> {
+    fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iterator: T) {
+        self.map.extend(iterator)
     }
 }

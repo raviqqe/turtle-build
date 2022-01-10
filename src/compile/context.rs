@@ -4,13 +4,13 @@ use std::{cell::RefCell, collections::HashMap, path::PathBuf};
 pub type ModuleDependencyMap = HashMap<PathBuf, HashMap<String, PathBuf>>;
 
 #[derive(Debug, Default)]
-pub struct CompileContext {
+pub struct Context {
     modules: HashMap<PathBuf, Module>,
     dependencies: ModuleDependencyMap,
     build_index: RefCell<usize>,
 }
 
-impl CompileContext {
+impl Context {
     pub fn new(modules: HashMap<PathBuf, Module>, dependencies: ModuleDependencyMap) -> Self {
         Self {
             modules,
@@ -42,7 +42,7 @@ mod tests {
 
     #[test]
     fn generate_build_ids() {
-        let context = CompileContext::new(Default::default(), Default::default());
+        let context = Context::new(Default::default(), Default::default());
 
         assert_eq!(context.generate_build_id(), "0".to_string());
         assert_eq!(context.generate_build_id(), "1".to_string());

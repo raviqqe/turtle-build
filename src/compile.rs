@@ -1,12 +1,11 @@
 mod chain_map;
-mod global_state;
 mod context;
+mod global_state;
 mod module_state;
 
 pub use self::context::ModuleDependencyMap;
 use self::{
-    chain_map::ChainMap, global_state::GlobalState, context::CompileContext,
-    module_state::ModuleState,
+    chain_map::ChainMap, context::Context, global_state::GlobalState, module_state::ModuleState,
 };
 use crate::{
     ast,
@@ -23,7 +22,7 @@ pub fn compile(
     dependencies: &ModuleDependencyMap,
     root_module_path: &Path,
 ) -> Result<Configuration, String> {
-    let context = CompileContext::new(modules.clone(), dependencies.clone());
+    let context = Context::new(modules.clone(), dependencies.clone());
     let mut state = GlobalState {
         outputs: Default::default(),
         default_outputs: Default::default(),
@@ -43,7 +42,7 @@ pub fn compile(
     Ok(Configuration::new(state.outputs, default_outputs))
 }
 
-fn compile_module(context: &CompileContext, state: &mut GlobalState, path: &Path) {
+fn compile_module(context: &Context, state: &mut GlobalState, path: &Path) {
     let module = &context.modules()[path];
 
     for statement in module.statements() {
@@ -111,7 +110,7 @@ fn compile_module(context: &CompileContext, state: &mut GlobalState, path: &Path
 }
 
 // TODO Use rsplit to prevent overlapped interpolation.
-fn interpolate_variables(template: &str, variables: &ChainMap<String, String>) -> String {
+fn interpolate_variables(_template: &str, _variables: &ChainMap<String, String>) -> String {
     todo!()
 }
 

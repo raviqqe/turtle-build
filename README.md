@@ -21,7 +21,21 @@ For more information, see `turtle --help`.
 
 ## Compatibility
 
-Currently, Turtle only supports a subset of the Ninja build file syntax. See [issues](https://github.com/raviqqe/turtle/issues) for more information.
+Turtle aims to support full syntax of the Ninja build files. 
+
+
+- Syntax
+  - [x] `build` statement
+  - [x] `rule` statement
+  - [x] `default` statement
+  - [x] `include` statement
+  - [x] `subninja` statement
+  - [x] Global variables
+  - [x] Build-local variables
+  - [x] `in` and `out` special variable
+  - [ ] `builddir` special variable
+
+For more information, see [issues](https://github.com/raviqqe/turtle/issues).
 
 ## License
 

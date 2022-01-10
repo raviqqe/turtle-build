@@ -15,7 +15,7 @@ pub enum RunError {
 
 impl RunError {
     pub fn with_path(error: io::Error, path: impl AsRef<Path>) -> Self {
-        Self::Other(format!("{}: {}", path.as_ref().display(), error))
+        Self::Other(format!("{}: {}", error, path.as_ref().display()))
     }
 }
 

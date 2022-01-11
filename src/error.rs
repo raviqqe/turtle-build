@@ -10,7 +10,6 @@ pub enum InfrastructureError {
     CommandExit(String, Option<i32>),
     DefaultOutputNotFound(String),
     Other(String),
-    RuntimeCircularBuildDependency,
     Sled(sled::Error),
 }
 
@@ -41,9 +40,6 @@ impl Display for InfrastructureError {
                 write!(formatter, "default output \"{}\" not found", output)
             }
             Self::Other(message) => write!(formatter, "{}", message),
-            Self::RuntimeCircularBuildDependency => {
-                write!(formatter, "circular build dependency detected at runtime")
-            }
             Self::Sled(error) => write!(formatter, "{}", error),
         }
     }

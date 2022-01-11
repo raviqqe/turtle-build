@@ -68,20 +68,17 @@ async fn create_build_future(
     builds: &Arc<RwLock<HashMap<String, BuildFuture>>>,
     build: &Arc<Build>,
 ) -> Result<(), InfrastructureError> {
+    if builds.read().await.contains_key(build.id()) {
+        return Ok(());
+    }
+
     let mut inputs = vec![];
 
     for input in build.inputs().iter().chain(build.order_only_inputs()) {
         inputs.push(if let Some(build) = configuration.outputs().get(input) {
-            if !builds.read().await.contains_key(build.id()) {
-                create_build_future(context, configuration, builds, build).await?
-            }
+            create_build_future(context, configuration, builds, build).await?;
 
-            builds
-                .read()
-                .await
-                .get(build.id())
-                .ok_or_else(|| InfrastructureError::RuntimeCircularBuildDependency)?
-                .clone()
+            builds.read().await[build.id()].clone()
         } else {
             let input = input.to_string();
             let raw: RawBuildFuture = Box::pin(async move { run_leaf_input(&input).await });

@@ -1,7 +1,7 @@
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Build {
     id: String,
-    command: String,
+    command: Option<String>,
     description: String,
     inputs: Vec<String>,
     order_only_inputs: Vec<String>,
@@ -10,14 +10,14 @@ pub struct Build {
 impl Build {
     pub fn new(
         id: impl Into<String>,
-        command: impl Into<String>,
+        command: Option<String>,
         description: impl Into<String>,
         inputs: Vec<String>,
         order_only_inputs: Vec<String>,
     ) -> Self {
         Self {
             id: id.into(),
-            command: command.into(),
+            command,
             description: description.into(),
             inputs,
             order_only_inputs,
@@ -28,8 +28,8 @@ impl Build {
         &self.id
     }
 
-    pub fn command(&self) -> &str {
-        &self.command
+    pub fn command(&self) -> Option<&str> {
+        self.command.as_deref()
     }
 
     #[allow(dead_code)]

@@ -21,6 +21,8 @@ use std::{
     sync::Arc,
 };
 
+const PHONY_RULE: &str = "phony";
+
 static VARIABLE_PATTERN: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\$([[:alpha:]][[:alnum:]]*)").unwrap());
 
@@ -70,10 +72,6 @@ fn compile_module(
     for statement in module.statements() {
         match statement {
             ast::Statement::Build(build) => {
-                let rule = &module_state
-                    .rules
-                    .get(build.rule())
-                    .ok_or_else(|| CompileError::RuleNotFound(build.rule().into()))?;
                 let mut variables = module_state.variables.fork();
 
                 variables.extend(
@@ -87,10 +85,24 @@ fn compile_module(
                         ]),
                 );
 
+                let rule = &module_state
+                    .rules
+                    .get(build.rule())
+                    .ok_or_else(|| CompileError::RuleNotFound(build.rule().into()))?;
+
                 let ir = Arc::new(Build::new(
                     context.generate_build_id(),
-                    interpolate_variables(rule.command(), &variables),
-                    interpolate_variables(rule.description(), &variables),
+                    if build.rule() == PHONY_RULE {
+                        None
+                    } else {
+                        Some(interpolate_variables(rule.command(), &variables))
+                    },
+                    // TODO
+                    if build.rule() == PHONY_RULE {
+                        "".into()
+                    } else {
+                        interpolate_variables(rule.description(), &variables)
+                    },
                     build
                         .inputs()
                         .iter()
@@ -231,7 +243,7 @@ mod tests {
             ir::Configuration::new(
                 [(
                     "bar".into(),
-                    Build::new("0", "42", "", vec![], vec![]).into()
+                    Build::new("0", Some("42".into()), "", vec![], vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -262,7 +274,7 @@ mod tests {
             ir::Configuration::new(
                 [(
                     "bar".into(),
-                    Build::new("0", "1 2", "", vec![], vec![]).into()
+                    Build::new("0", Some("1 2".into()), "", vec![], vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -291,7 +303,7 @@ mod tests {
             ir::Configuration::new(
                 [(
                     "bar".into(),
-                    Build::new("0", "$", "", vec![], vec![]).into()
+                    Build::new("0", Some("$".into()), "", vec![], vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -321,7 +333,7 @@ mod tests {
             ir::Configuration::new(
                 [(
                     "bar".into(),
-                    Build::new("0", "baz", "", vec!["baz".into()], vec![]).into()
+                    Build::new("0", Some("baz".into()), "", vec!["baz".into()], vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -359,7 +371,14 @@ mod tests {
             ir::Configuration::new(
                 [(
                     "bar".into(),
-                    Build::new("0", "baz", "", vec!["baz".into(), "blah".into()], vec![]).into()
+                    Build::new(
+                        "0",
+                        Some("baz".into()),
+                        "",
+                        vec!["baz".into(), "blah".into()],
+                        vec![]
+                    )
+                    .into()
                 )]
                 .into_iter()
                 .collect(),
@@ -388,7 +407,7 @@ mod tests {
             ir::Configuration::new(
                 [(
                     "bar".into(),
-                    Build::new("0", "bar", "", vec![], vec![]).into()
+                    Build::new("0", Some("bar".into()), "", vec![], vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -399,7 +418,7 @@ mod tests {
 
     #[test]
     fn interpolate_out_variable_with_implicit_output() {
-        let build = Arc::new(Build::new("0", "bar", "", vec![], vec![]));
+        let build = Arc::new(Build::new("0", Some("bar".into()), "", vec![], vec![]));
 
         assert_eq!(
             compile(
@@ -463,7 +482,7 @@ mod tests {
             ir::Configuration::new(
                 [(
                     "bar".into(),
-                    Build::new("0", "", "", vec![], vec!["baz".into()]).into()
+                    Build::new("0", Some("".into()), "", vec![], vec!["baz".into()]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -492,8 +511,14 @@ mod tests {
             .unwrap(),
             ir::Configuration::new(
                 [
-                    ("bar".into(), Build::new("0", "", "", vec![], vec![]).into()),
-                    ("baz".into(), Build::new("1", "", "", vec![], vec![]).into())
+                    (
+                        "bar".into(),
+                        Build::new("0", Some("".into()), "", vec![], vec![]).into()
+                    ),
+                    (
+                        "baz".into(),
+                        Build::new("1", Some("".into()), "", vec![], vec![]).into()
+                    )
                 ]
                 .into_iter()
                 .collect(),
@@ -528,11 +553,43 @@ mod tests {
             ir::Configuration::new(
                 [(
                     "bar".into(),
-                    Build::new("0", "42", "", vec![], vec![]).into()
+                    Build::new("0", Some("42".into()), "", vec![], vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
                 ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn compile_phony_rule() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![explicit_build(
+                        vec!["foo".into()],
+                        "phony",
+                        vec!["bar".into()],
+                        vec![]
+                    )
+                    .into(),])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            ir::Configuration::new(
+                [(
+                    "foo".into(),
+                    Build::new("0", None, "", vec!["bar".into()], vec![]).into()
+                )]
+                .into_iter()
+                .collect(),
+                ["foo".into()].into_iter().collect()
             )
         );
     }
@@ -579,7 +636,7 @@ mod tests {
                 ir::Configuration::new(
                     [(
                         "bar".into(),
-                        Build::new("0", "42", "", vec![], vec![]).into()
+                        Build::new("0", Some("42".into()), "", vec![], vec![]).into()
                     )]
                     .into_iter()
                     .collect(),
@@ -630,7 +687,7 @@ mod tests {
                 ir::Configuration::new(
                     [(
                         "bar".into(),
-                        Build::new("0", "42", "", vec![], vec![]).into()
+                        Build::new("0", Some("42".into()), "", vec![], vec![]).into()
                     )]
                     .into_iter()
                     .collect(),
@@ -676,7 +733,7 @@ mod tests {
                 ir::Configuration::new(
                     [(
                         "bar".into(),
-                        Build::new("0", "42", "", vec![], vec![]).into()
+                        Build::new("0", Some("42".into()), "", vec![], vec![]).into()
                     )]
                     .into_iter()
                     .collect(),

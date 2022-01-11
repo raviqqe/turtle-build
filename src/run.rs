@@ -91,7 +91,9 @@ fn run_build(
             let hash = hash_build(&build).await?;
 
             if hash != database.get(build.id())? {
-                run_command(build.command()).await?;
+                if let Some(command) = build.command() {
+                    run_command(command).await?;
+                }
             }
 
             database.set(build.id(), hash)?;

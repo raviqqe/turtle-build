@@ -186,7 +186,7 @@ fn interpolate_variables(template: &str, variables: &ChainMap<String, String>) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ast, ir};
+    use crate::ast;
     use once_cell::sync::Lazy;
     use pretty_assertions::assert_eq;
 

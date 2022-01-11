@@ -57,10 +57,10 @@ Turtle aims to support full syntax of the Ninja build files. Command line argume
 
 ### Others
 
+- [x] Circular output dependency detection
+- [x] Circular build file dependency detection
 - [x] `builddir` special variable
 - [ ] Dynamic dependencies
-- [ ] Circular output dependency detection
-- [ ] Circular build file dependency detection
 - [ ] C/C++ header dependencies
   - [ ] `depfile` option
   - [ ] `deps` option

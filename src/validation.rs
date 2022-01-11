@@ -9,7 +9,7 @@ use petgraph::{algo::toposort, Graph};
 use std::{collections::HashMap, path::Path, sync::Arc};
 
 pub fn validate_configuration(configuration: &Configuration) -> Result<(), ValidationError> {
-    if is_output_dependency_circular(&configuration.outputs()) {
+    if is_output_dependency_circular(configuration.outputs()) {
         return Err(ValidationError::CircularOutputDependency);
     }
 
@@ -21,7 +21,7 @@ fn is_output_dependency_circular(dependencies: &HashMap<String, Arc<Build>>) -> 
     let mut indices = HashMap::<&str, _>::new();
 
     for output in dependencies.keys() {
-        indices.insert(&output, graph.add_node(&output));
+        indices.insert(output, graph.add_node(output));
     }
 
     for (output, build) in dependencies {
@@ -34,7 +34,7 @@ fn is_output_dependency_circular(dependencies: &HashMap<String, Arc<Build>>) -> 
 }
 
 pub fn validate_modules(modules: &ModuleDependencyMap) -> Result<(), ValidationError> {
-    if is_module_dependency_circular(&modules) {
+    if is_module_dependency_circular(modules) {
         return Err(ValidationError::CircularModuleDependency);
     }
 
@@ -46,7 +46,7 @@ fn is_module_dependency_circular(modules: &ModuleDependencyMap) -> bool {
     let mut indices = HashMap::<&Path, _>::new();
 
     for output in modules.keys() {
-        indices.insert(&output, graph.add_node(&output));
+        indices.insert(output, graph.add_node(output));
     }
 
     for (output, build) in modules {

@@ -5,6 +5,7 @@
     "canonicalize",
     "cpus",
     "depfile",
+    "dyndep",
     "hasher",
     "nikhilm",
     "petgraph",

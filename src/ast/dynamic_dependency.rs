@@ -1,4 +1,4 @@
-use super::{Build, DynamicBuild};
+use super::DynamicBuild;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DynamicDependency {

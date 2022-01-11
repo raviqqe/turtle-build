@@ -229,7 +229,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            ir::Configuration::new(Default::default(), Default::default(), None)
+            Configuration::new(Default::default(), Default::default(), None)
         );
     }
 
@@ -251,7 +251,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            ir::Configuration::new(
+            Configuration::new(
                 [(
                     "bar".into(),
                     ir_explicit_build("0", Rule::new("42", ""), vec![]).into()
@@ -283,7 +283,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            ir::Configuration::new(
+            Configuration::new(
                 [(
                     "bar".into(),
                     ir_explicit_build("0", Rule::new("1 2", ""), vec![]).into()
@@ -313,7 +313,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            ir::Configuration::new(
+            Configuration::new(
                 [(
                     "bar".into(),
                     ir_explicit_build("0", Rule::new("$", ""), vec![]).into()
@@ -344,7 +344,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            ir::Configuration::new(
+            Configuration::new(
                 [(
                     "bar".into(),
                     ir_explicit_build("0", Rule::new("baz", ""), vec!["baz".into()]).into()
@@ -383,7 +383,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            ir::Configuration::new(
+            Configuration::new(
                 [(
                     "bar".into(),
                     ir_explicit_build("0", Rule::new("baz", ""), vec!["baz".into(), "blah".into()])
@@ -414,7 +414,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            ir::Configuration::new(
+            Configuration::new(
                 [(
                     "bar".into(),
                     ir_explicit_build("0", Rule::new("bar", ""), vec![]).into()
@@ -455,7 +455,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            ir::Configuration::new(
+            Configuration::new(
                 [("baz".into(), build.clone()), ("bar".into(), build)]
                     .into_iter()
                     .collect(),
@@ -491,7 +491,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            ir::Configuration::new(
+            Configuration::new(
                 [(
                     "bar".into(),
                     Build::new(
@@ -529,7 +529,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            ir::Configuration::new(
+            Configuration::new(
                 [
                     (
                         "bar".into(),
@@ -571,7 +571,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            ir::Configuration::new(
+            Configuration::new(
                 [(
                     "bar".into(),
                     ir_explicit_build("0", Rule::new("42", ""), vec![]).into()
@@ -631,7 +631,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            ir::Configuration::new(Default::default(), Default::default(), Some("foo".into()))
+            Configuration::new(Default::default(), Default::default(), Some("foo".into()))
         );
     }
 
@@ -708,7 +708,7 @@ mod tests {
                     &ROOT_MODULE_PATH
                 )
                 .unwrap(),
-                ir::Configuration::new(
+                Configuration::new(
                     [(
                         "bar".into(),
                         ir_explicit_build("0", Rule::new("42", ""), vec![]).into()
@@ -760,7 +760,7 @@ mod tests {
                     &ROOT_MODULE_PATH
                 )
                 .unwrap(),
-                ir::Configuration::new(
+                Configuration::new(
                     [(
                         "bar".into(),
                         ir_explicit_build("0", Rule::new("42", ""), vec![]).into()
@@ -808,7 +808,7 @@ mod tests {
                     &ROOT_MODULE_PATH
                 )
                 .unwrap(),
-                ir::Configuration::new(
+                Configuration::new(
                     [(
                         "bar".into(),
                         ir_explicit_build("0", Rule::new("42", ""), vec![]).into()

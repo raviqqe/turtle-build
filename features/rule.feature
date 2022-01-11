@@ -104,4 +104,4 @@ Feature: Rule statement
 
     """
     When I successfully run `turtle`
-    Then the file named "foo" contains exactly ""
+    Then the file named "foo" should exist

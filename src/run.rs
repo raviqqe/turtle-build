@@ -72,7 +72,7 @@ async fn create_build_future(
 
     for input in build.inputs().iter().chain(build.order_only_inputs()) {
         inputs.push(if let Some(build) = configuration.outputs().get(input) {
-            if builds.read().await.contains_key(build.id()) {
+            if !builds.read().await.contains_key(build.id()) {
                 create_build_future(context, configuration, builds, build).await?
             }
 

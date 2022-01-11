@@ -65,6 +65,7 @@ async fn run_build(
     builds: &Arc<RwLock<HashMap<String, BuildFuture>>>,
     build: &Arc<Build>,
 ) -> Result<BuildFuture, InfrastructureError> {
+    // TODO Move this into the input side.
     if let Some(future) = builds.read().await.get(build.id()) {
         return Ok(future.clone());
     }

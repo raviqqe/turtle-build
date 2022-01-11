@@ -3,6 +3,7 @@
     "alnum",
     "builddir",
     "canonicalize",
+    "depfile",
     "hasher",
     "nikhilm",
     "reimplementation",

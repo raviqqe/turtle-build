@@ -1,4 +1,5 @@
 mod build_database;
+mod context;
 
 use self::build_database::BuildDatabase;
 use crate::{

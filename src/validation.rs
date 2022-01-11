@@ -70,6 +70,10 @@ mod tests {
     mod outputs {
         use super::*;
 
+        fn ir_explicit_build(id: impl Into<String>, rule: Rule, inputs: Vec<String>) -> Build {
+            Build::new(id, rule.into(), inputs, vec![], None)
+        }
+
         #[test]
         fn validate_empty() {
             assert_eq!(
@@ -88,7 +92,7 @@ mod tests {
                 validate_configuration(&Configuration::new(
                     [(
                         "foo".into(),
-                        Build::new("", Rule::new("", "").into(), vec![], vec![]).into()
+                        ir_explicit_build("", Rule::new("", ""), vec![]).into()
                     )]
                     .into_iter()
                     .collect(),
@@ -105,7 +109,7 @@ mod tests {
                 validate_configuration(&Configuration::new(
                     [(
                         "foo".into(),
-                        Build::new("", Rule::new("", "").into(), vec!["bar".into()], vec![]).into()
+                        ir_explicit_build("", Rule::new("", ""), vec!["bar".into()]).into()
                     )]
                     .into_iter()
                     .collect(),
@@ -122,7 +126,14 @@ mod tests {
                 validate_configuration(&Configuration::new(
                     [(
                         "foo".into(),
-                        Build::new("", Rule::new("", "").into(), vec![], vec!["bar".into()]).into()
+                        Build::new(
+                            "",
+                            Rule::new("", "").into(),
+                            vec![],
+                            vec!["bar".into()],
+                            None
+                        )
+                        .into()
                     )]
                     .into_iter()
                     .collect(),
@@ -139,7 +150,7 @@ mod tests {
                 validate_configuration(&Configuration::new(
                     [(
                         "foo".into(),
-                        Build::new("", Rule::new("", "").into(), vec!["foo".into()], vec![]).into()
+                        ir_explicit_build("", Rule::new("", ""), vec!["foo".into()]).into()
                     )]
                     .into_iter()
                     .collect(),
@@ -156,7 +167,14 @@ mod tests {
                 validate_configuration(&Configuration::new(
                     [(
                         "foo".into(),
-                        Build::new("", Rule::new("", "").into(), vec![], vec!["foo".into()]).into()
+                        Build::new(
+                            "",
+                            Rule::new("", "").into(),
+                            vec![],
+                            vec!["foo".into()],
+                            None
+                        )
+                        .into()
                     )]
                     .into_iter()
                     .collect(),
@@ -174,12 +192,11 @@ mod tests {
                     [
                         (
                             "foo".into(),
-                            Build::new("", Rule::new("", "").into(), vec!["bar".into()], vec![])
-                                .into()
+                            ir_explicit_build("", Rule::new("", ""), vec!["bar".into()]).into()
                         ),
                         (
                             "bar".into(),
-                            Build::new("", Rule::new("", "").into(), vec![], vec![]).into()
+                            ir_explicit_build("", Rule::new("", ""), vec![]).into()
                         )
                     ]
                     .into_iter()
@@ -198,13 +215,18 @@ mod tests {
                     [
                         (
                             "foo".into(),
-                            Build::new("", Rule::new("", "").into(), vec!["bar".into()], vec![])
-                                .into()
+                            ir_explicit_build("", Rule::new("", ""), vec!["bar".into()]).into()
                         ),
                         (
                             "bar".into(),
-                            Build::new("", Rule::new("", "").into(), vec!["foo".into()], vec![])
-                                .into()
+                            Build::new(
+                                "",
+                                Rule::new("", "").into(),
+                                vec!["foo".into()],
+                                vec![],
+                                None
+                            )
+                            .into()
                         )
                     ]
                     .into_iter()

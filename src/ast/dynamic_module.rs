@@ -1,12 +1,12 @@
 use super::DynamicBuild;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DynamicDependency {
+pub struct DynamicModule {
     version: String,
     builds: Vec<DynamicBuild>,
 }
 
-impl DynamicDependency {
+impl DynamicModule {
     pub fn new(version: impl Into<String>, builds: Vec<DynamicBuild>) -> Self {
         Self {
             version: version.into(),

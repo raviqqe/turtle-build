@@ -1,6 +1,6 @@
 use super::stream::Stream;
 use crate::ast::{
-    Build, DefaultOutput, DynamicBuild, DynamicDependency, Include, Module, Rule, Statement,
+    Build, DefaultOutput, DynamicBuild, DynamicModule, Include, Module, Rule, Statement,
     Submodule, VariableDefinition,
 };
 use combine::{
@@ -10,7 +10,7 @@ use combine::{
 };
 
 const OPERATOR_CHARACTERS: &[char] = &['|', ':'];
-const DYNAMIC_DEPENDENCY_VERSION_VARIABLE: &str = "ninja_dyndep_version";
+const DYNAMIC_MODULE_VERSION_VARIABLE: &str = "ninja_dyndep_version";
 
 pub fn module<'a>() -> impl Parser<Stream<'a>, Output = Module> {
     (optional(line_break()), many(statement()))
@@ -18,14 +18,14 @@ pub fn module<'a>() -> impl Parser<Stream<'a>, Output = Module> {
         .map(|(_, statements)| Module::new(statements))
 }
 
-pub fn dynamic_dependency<'a>() -> impl Parser<Stream<'a>, Output = DynamicDependency> {
+pub fn dynamic_module<'a>() -> impl Parser<Stream<'a>, Output = DynamicModule> {
     (
         optional(line_break()),
-        dynamic_dependency_version(),
+        dynamic_module_version(),
         many(dynamic_build()),
     )
         .skip(eof())
-        .map(|(_, version, builds)| DynamicDependency::new(version, builds))
+        .map(|(_, version, builds)| DynamicModule::new(version, builds))
 }
 
 fn statement<'a>() -> impl Parser<Stream<'a>, Output = Statement> {
@@ -45,8 +45,8 @@ fn variable_definition<'a>() -> impl Parser<Stream<'a>, Output = VariableDefinit
         .map(|(name, value)| VariableDefinition::new(name, value))
 }
 
-fn dynamic_dependency_version<'a>() -> impl Parser<Stream<'a>, Output = String> {
-    attempt((keyword(DYNAMIC_DEPENDENCY_VERSION_VARIABLE), sign("=")))
+fn dynamic_module_version<'a>() -> impl Parser<Stream<'a>, Output = String> {
+    attempt((keyword(DYNAMIC_MODULE_VERSION_VARIABLE), sign("=")))
         .with(string_line())
         .skip(line_break())
 }
@@ -252,29 +252,29 @@ mod tests {
     }
 
     #[test]
-    fn parse_dynamic_dependency() {
+    fn parse_dynamic_module() {
         assert_eq!(
-            dynamic_dependency()
+            dynamic_module()
                 .parse(stream("ninja_dyndep_version = 1\n"))
                 .unwrap()
                 .0,
-            DynamicDependency::new("1", vec![])
+            DynamicModule::new("1", vec![])
         );
         assert_eq!(
-            dynamic_dependency()
+            dynamic_module()
                 .parse(stream("ninja_dyndep_version = 1\nbuild foo: dyndep\n"))
                 .unwrap()
                 .0,
-            DynamicDependency::new("1", vec![DynamicBuild::new("foo", vec![])])
+            DynamicModule::new("1", vec![DynamicBuild::new("foo", vec![])])
         );
         assert_eq!(
-            dynamic_dependency()
+            dynamic_module()
                 .parse(stream(
                     "ninja_dyndep_version = 1\nbuild foo: dyndep\nbuild bar: dyndep\n"
                 ))
                 .unwrap()
                 .0,
-            DynamicDependency::new(
+            DynamicModule::new(
                 "1",
                 vec![
                     DynamicBuild::new("foo", vec![]),
@@ -300,9 +300,9 @@ mod tests {
     }
 
     #[test]
-    fn parse_dynamic_dependency_version() {
+    fn parse_dynamic_module_version() {
         assert_eq!(
-            dynamic_dependency_version()
+            dynamic_module_version()
                 .parse(stream("ninja_dyndep_version = 42\n"))
                 .unwrap()
                 .0,

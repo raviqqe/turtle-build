@@ -12,6 +12,8 @@ Clone of [the Ninja build system](https://github.com/ninja-build/ninja) written 
   - Full output from build rules and no output from Turtle by default
   - More customizable build/rule/progress/error output
 
+Turtle is originally written for and battle-tested with [the Pen programming language](https://github.com/pen-lang/pen). Therefore, we only support dynamic dependencies currently. But contribution is welcome! 😄
+
 ## Install
 
 ```sh

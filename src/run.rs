@@ -53,7 +53,7 @@ pub async fn run(
         .await?;
     }
 
-    // TODO Consider await only default outputs.
+    // TODO Consider await only builds of default outputs.
     select_builds(builds.read().await.values().cloned()).await?;
 
     Ok(())

@@ -12,7 +12,7 @@ Clone of [the Ninja build system](https://github.com/ninja-build/ninja) written 
   - Full output from build rules and no output from Turtle by default
   - More customizable build/rule/progress/error output
 
-Turtle is originally written for [the Pen programming language](https://github.com/pen-lang/pen). Therefore, we only support dynamic dependencies currently. But your contribution is welcome! 😄
+Turtle is originally written for [the Pen programming language](https://github.com/pen-lang/pen). Therefore, we support only dynamic dependencies but not C/C++ header dependencies currently. Your contribution is welcome! 😄
 
 ## Install
 
@@ -59,10 +59,13 @@ Turtle aims to support full syntax of the Ninja build files. Command line argume
 
 ### Others
 
-- [x] Circular output dependency detection
+- [x] Circular build dependency detection
 - [x] Circular build file dependency detection
 - [x] `builddir` special variable
 - [x] Dynamic dependencies
+  - [x] Implicit inputs
+  - [ ] Implicit outputs
+  - [ ] Circular build dependency detection
 - [ ] C/C++ header dependencies
   - [ ] `depfile` option
   - [ ] `deps` option

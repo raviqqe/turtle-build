@@ -1,7 +1,7 @@
 use super::stream::Stream;
 use crate::ast::{
-    Build, DefaultOutput, DynamicBuild, DynamicModule, Include, Module, Rule, Statement,
-    Submodule, VariableDefinition,
+    Build, DefaultOutput, DynamicBuild, DynamicModule, Include, Module, Rule, Statement, Submodule,
+    VariableDefinition,
 };
 use combine::{
     attempt, choice, eof, many, many1, none_of, not_followed_by, one_of, optional,

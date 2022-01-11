@@ -41,7 +41,7 @@ pub async fn run(
     let builds = Arc::new(RwLock::new(HashMap::new()));
 
     for output in configuration.default_outputs() {
-        let _ = run_build(
+        let _ = create_build_future(
             &context,
             configuration,
             &builds,
@@ -58,8 +58,9 @@ pub async fn run(
     Ok(())
 }
 
+// This function creates futures for all builds sequentially.
 #[async_recursion]
-async fn run_build(
+async fn create_build_future(
     context: &Arc<Context>,
     configuration: &Configuration,
     builds: &Arc<RwLock<HashMap<String, BuildFuture>>>,
@@ -74,7 +75,7 @@ async fn run_build(
 
     for input in build.inputs().iter().chain(build.order_only_inputs()) {
         inputs.push(if let Some(build) = configuration.outputs().get(input) {
-            run_build(context, configuration, builds, build).await?
+            create_build_future(context, configuration, builds, build).await?
         } else {
             let input = input.to_string();
             let raw: RawBuildFuture = Box::pin(async move { run_leaf_input(&input).await });

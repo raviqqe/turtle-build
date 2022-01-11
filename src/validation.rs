@@ -10,7 +10,7 @@ use std::{collections::HashMap, path::Path, sync::Arc};
 
 pub fn validate_configuration(configuration: &Configuration) -> Result<(), ValidationError> {
     if is_output_dependency_circular(configuration.outputs()) {
-        return Err(ValidationError::CircularOutputDependency);
+        return Err(ValidationError::CircularBuildDependency);
     }
 
     Ok(())
@@ -157,7 +157,7 @@ mod tests {
                     Default::default(),
                     None,
                 )),
-                Err(ValidationError::CircularOutputDependency)
+                Err(ValidationError::CircularBuildDependency)
             );
         }
 
@@ -181,7 +181,7 @@ mod tests {
                     Default::default(),
                     None,
                 )),
-                Err(ValidationError::CircularOutputDependency)
+                Err(ValidationError::CircularBuildDependency)
             );
         }
 
@@ -234,7 +234,7 @@ mod tests {
                     Default::default(),
                     None,
                 )),
-                Err(ValidationError::CircularOutputDependency)
+                Err(ValidationError::CircularBuildDependency)
             );
         }
     }

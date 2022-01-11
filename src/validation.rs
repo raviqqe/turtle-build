@@ -20,7 +20,11 @@ fn is_output_dependency_circular(dependencies: &HashMap<String, Arc<Build>>) -> 
     let mut graph = Graph::<&str, ()>::new();
     let mut indices = HashMap::<&str, _>::new();
 
-    for output in dependencies.keys() {
+    for output in dependencies.iter().flat_map(|(output, build)| {
+        [output]
+            .into_iter()
+            .chain(build.inputs().iter().chain(build.order_only_inputs()))
+    }) {
         indices.insert(output, graph.add_node(output));
     }
 
@@ -79,12 +83,46 @@ mod tests {
         }
 
         #[test]
-        fn validate_single_build() {
+        fn validate_single_build_without_input() {
             assert_eq!(
                 validate_configuration(&Configuration::new(
                     [(
                         "foo".into(),
                         Build::new("", Rule::new("", "").into(), vec![], vec![]).into()
+                    )]
+                    .into_iter()
+                    .collect(),
+                    Default::default(),
+                    None,
+                )),
+                Ok(())
+            );
+        }
+
+        #[test]
+        fn validate_single_build_with_explicit_input() {
+            assert_eq!(
+                validate_configuration(&Configuration::new(
+                    [(
+                        "foo".into(),
+                        Build::new("", Rule::new("", "").into(), vec!["bar".into()], vec![]).into()
+                    )]
+                    .into_iter()
+                    .collect(),
+                    Default::default(),
+                    None,
+                )),
+                Ok(())
+            );
+        }
+
+        #[test]
+        fn validate_single_build_with_order_only_input() {
+            assert_eq!(
+                validate_configuration(&Configuration::new(
+                    [(
+                        "foo".into(),
+                        Build::new("", Rule::new("", "").into(), vec![], vec!["bar".into()]).into()
                     )]
                     .into_iter()
                     .collect(),

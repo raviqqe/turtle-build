@@ -446,7 +446,7 @@ mod tests {
     #[test]
     fn parse_keyword() {
         assert!(keyword("foo").parse(stream("foo")).is_ok());
-        assert!(keyword("foo").parse(stream("fooo")).is_err());
+        assert!(keyword("fo").parse(stream("foo")).is_err());
     }
 
     #[test]

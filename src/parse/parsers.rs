@@ -122,7 +122,7 @@ fn string_literal<'a>() -> impl Parser<Stream<'a>, Output = String> {
 }
 
 fn keyword<'a>(name: &'static str) -> impl Parser<Stream<'a>, Output = ()> {
-    token(attempt(string(name)).skip(not_followed_by(alpha_num()))).with(value(()))
+    token(attempt(string(name).skip(not_followed_by(alpha_num())))).with(value(()))
 }
 
 fn identifier<'a>() -> impl Parser<Stream<'a>, Output = String> {
@@ -212,6 +212,10 @@ mod tests {
                 Rule::new("foo", "bar", "").into(),
                 Rule::new("baz", "blah", "").into(),
             ],)
+        );
+        assert_eq!(
+            module().parse(stream("builddir = foo\n")).unwrap().0,
+            Module::new(vec![VariableDefinition::new("builddir", "foo").into()])
         );
     }
 

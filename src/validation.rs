@@ -83,7 +83,7 @@ mod tests {
         }
 
         #[test]
-        fn validate_single_build_without_input() {
+        fn validate_build_without_input() {
             assert_eq!(
                 validate_configuration(&Configuration::new(
                     [(
@@ -100,7 +100,7 @@ mod tests {
         }
 
         #[test]
-        fn validate_single_build_with_explicit_input() {
+        fn validate_build_with_explicit_input() {
             assert_eq!(
                 validate_configuration(&Configuration::new(
                     [(
@@ -117,7 +117,7 @@ mod tests {
         }
 
         #[test]
-        fn validate_single_build_with_order_only_input() {
+        fn validate_build_with_order_only_input() {
             assert_eq!(
                 validate_configuration(&Configuration::new(
                     [(
@@ -226,7 +226,7 @@ mod tests {
         }
 
         #[test]
-        fn validate_single_module() {
+        fn validate_module() {
             assert_eq!(
                 validate_modules(&[("foo".into(), Default::default())].into_iter().collect()),
                 Ok(())

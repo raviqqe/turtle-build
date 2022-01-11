@@ -8,6 +8,8 @@ use combine::{
     value, Parser,
 };
 
+const OPERATOR_CHARACTERS: &[char] = &['|', ':'];
+
 pub fn module<'a>() -> impl Parser<Stream<'a>, Output = Module> {
     (optional(line_break()), many(statement()))
         .skip(eof())
@@ -112,7 +114,11 @@ fn string_line<'a>() -> impl Parser<Stream<'a>, Output = String> {
 }
 
 fn string_literal<'a>() -> impl Parser<Stream<'a>, Output = String> {
-    token(many1(none_of([' ', '\t', '\r', '\n', ':', '|'])))
+    token(many1(none_of(
+        [' ', '\t', '\r', '\n']
+            .into_iter()
+            .chain(OPERATOR_CHARACTERS.iter().cloned()),
+    )))
 }
 
 fn keyword<'a>(name: &'static str) -> impl Parser<Stream<'a>, Output = ()> {
@@ -130,7 +136,8 @@ fn identifier<'a>() -> impl Parser<Stream<'a>, Output = String> {
 }
 
 fn sign<'a>(sign: &'static str) -> impl Parser<Stream<'a>, Output = ()> {
-    token(string(sign)).with(value(()))
+    attempt(token(string(sign)).skip(not_followed_by(one_of(OPERATOR_CHARACTERS.iter().cloned()))))
+        .with(value(()))
 }
 
 fn token<'a, O, P: Parser<Stream<'a>, Output = O>>(

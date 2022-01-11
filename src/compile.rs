@@ -223,7 +223,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            ir::Configuration::new(Default::default(), Default::default())
+            ir::Configuration::new(Default::default(), Default::default(), None)
         );
     }
 
@@ -252,7 +252,8 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                ["bar".into()].into_iter().collect()
+                ["bar".into()].into_iter().collect(),
+                None
             )
         );
     }
@@ -283,7 +284,8 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                ["bar".into()].into_iter().collect()
+                ["bar".into()].into_iter().collect(),
+                None
             )
         );
     }
@@ -312,7 +314,8 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                ["bar".into()].into_iter().collect()
+                ["bar".into()].into_iter().collect(),
+                None
             )
         );
     }
@@ -342,7 +345,8 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                ["bar".into()].into_iter().collect()
+                ["bar".into()].into_iter().collect(),
+                None
             )
         );
     }
@@ -386,7 +390,8 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                ["bar".into()].into_iter().collect()
+                ["bar".into()].into_iter().collect(),
+                None
             )
         );
     }
@@ -415,7 +420,8 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                ["bar".into()].into_iter().collect()
+                ["bar".into()].into_iter().collect(),
+                None
             )
         );
     }
@@ -452,7 +458,8 @@ mod tests {
                 [("baz".into(), build.clone()), ("bar".into(), build.clone())]
                     .into_iter()
                     .collect(),
-                ["baz".into(), "bar".into()].into_iter().collect()
+                ["baz".into(), "bar".into()].into_iter().collect(),
+                None
             )
         );
     }
@@ -490,7 +497,8 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                ["bar".into()].into_iter().collect()
+                ["bar".into()].into_iter().collect(),
+                None
             )
         );
     }
@@ -526,7 +534,8 @@ mod tests {
                 ]
                 .into_iter()
                 .collect(),
-                ["bar".into(), "baz".into()].into_iter().collect()
+                ["bar".into(), "baz".into()].into_iter().collect(),
+                None
             )
         );
     }
@@ -561,7 +570,8 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                ["bar".into()].into_iter().collect()
+                ["bar".into()].into_iter().collect(),
+                None
             )
         );
     }
@@ -593,8 +603,27 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                ["foo".into()].into_iter().collect()
+                ["foo".into()].into_iter().collect(),
+                None
             )
+        );
+    }
+
+    #[test]
+    fn compile_build_directory() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![ast::VariableDefinition::new("builddir", "foo").into()])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            ir::Configuration::new(Default::default(), Default::default(), Some("foo".into()))
         );
     }
 
@@ -644,7 +673,8 @@ mod tests {
                     )]
                     .into_iter()
                     .collect(),
-                    ["bar".into()].into_iter().collect()
+                    ["bar".into()].into_iter().collect(),
+                    None
                 )
             );
         }
@@ -695,7 +725,8 @@ mod tests {
                     )]
                     .into_iter()
                     .collect(),
-                    ["bar".into()].into_iter().collect()
+                    ["bar".into()].into_iter().collect(),
+                    None
                 )
             );
         }
@@ -741,7 +772,8 @@ mod tests {
                     )]
                     .into_iter()
                     .collect(),
-                    ["bar".into()].into_iter().collect()
+                    ["bar".into()].into_iter().collect(),
+                    None,
                 )
             );
         }

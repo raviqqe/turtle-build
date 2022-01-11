@@ -18,7 +18,7 @@ impl Display for ValidationError {
                 write!(formatter, "circular output dependency detected")
             }
             Self::CircularModuleDependency => {
-                write!(formatter, "circular module dependency detected")
+                write!(formatter, "circular build file dependency detected")
             }
         }
     }

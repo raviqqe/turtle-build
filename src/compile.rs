@@ -240,7 +240,7 @@ mod tests {
             ir::Configuration::new(
                 [(
                     "bar".into(),
-                    Build::new("0", Some("42".into()), "", vec![], vec![]).into()
+                    Build::new("0", Some(Rule::new("42", "")), vec![], vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -271,7 +271,7 @@ mod tests {
             ir::Configuration::new(
                 [(
                     "bar".into(),
-                    Build::new("0", Some("1 2".into()), "", vec![], vec![]).into()
+                    Build::new("0", Some(Rule::new("1 2", "")), vec![], vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -300,7 +300,7 @@ mod tests {
             ir::Configuration::new(
                 [(
                     "bar".into(),
-                    Build::new("0", Some("$".into()), "", vec![], vec![]).into()
+                    Build::new("0", Some(Rule::new("$", "")), vec![], vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -330,7 +330,7 @@ mod tests {
             ir::Configuration::new(
                 [(
                     "bar".into(),
-                    Build::new("0", Some("baz".into()), "", vec!["baz".into()], vec![]).into()
+                    Build::new("0", Some(Rule::new("baz", "")), vec!["baz".into()], vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -370,8 +370,7 @@ mod tests {
                     "bar".into(),
                     Build::new(
                         "0",
-                        Some("baz".into()),
-                        "",
+                        Some(Rule::new("baz", "")),
                         vec!["baz".into(), "blah".into()],
                         vec![]
                     )
@@ -404,7 +403,7 @@ mod tests {
             ir::Configuration::new(
                 [(
                     "bar".into(),
-                    Build::new("0", Some("bar".into()), "", vec![], vec![]).into()
+                    Build::new("0", Some(Rule::new("bar", "")), vec![], vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -415,7 +414,7 @@ mod tests {
 
     #[test]
     fn interpolate_out_variable_with_implicit_output() {
-        let build = Arc::new(Build::new("0", Some("bar".into()), "", vec![], vec![]));
+        let build = Arc::new(Build::new("0", Some(Rule::new("bar", "")), vec![], vec![]));
 
         assert_eq!(
             compile(
@@ -479,7 +478,7 @@ mod tests {
             ir::Configuration::new(
                 [(
                     "bar".into(),
-                    Build::new("0", Some("".into()), "", vec![], vec!["baz".into()]).into()
+                    Build::new("0", Some(Rule::new("", "")), vec![], vec!["baz".into()]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -510,11 +509,11 @@ mod tests {
                 [
                     (
                         "bar".into(),
-                        Build::new("0", Some("".into()), "", vec![], vec![]).into()
+                        Build::new("0", Some(Rule::new("", "")), vec![], vec![]).into()
                     ),
                     (
                         "baz".into(),
-                        Build::new("1", Some("".into()), "", vec![], vec![]).into()
+                        Build::new("1", Some(Rule::new("", "")), vec![], vec![]).into()
                     )
                 ]
                 .into_iter()
@@ -550,7 +549,7 @@ mod tests {
             ir::Configuration::new(
                 [(
                     "bar".into(),
-                    Build::new("0", Some("42".into()), "", vec![], vec![]).into()
+                    Build::new("0", Some(Rule::new("42", "")), vec![], vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -582,7 +581,7 @@ mod tests {
             ir::Configuration::new(
                 [(
                     "foo".into(),
-                    Build::new("0", None, "", vec!["bar".into()], vec![]).into()
+                    Build::new("0", None, vec!["bar".into()], vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -633,7 +632,7 @@ mod tests {
                 ir::Configuration::new(
                     [(
                         "bar".into(),
-                        Build::new("0", Some("42".into()), "", vec![], vec![]).into()
+                        Build::new("0", Some(Rule::new("42", "")), vec![], vec![]).into()
                     )]
                     .into_iter()
                     .collect(),
@@ -684,7 +683,7 @@ mod tests {
                 ir::Configuration::new(
                     [(
                         "bar".into(),
-                        Build::new("0", Some("42".into()), "", vec![], vec![]).into()
+                        Build::new("0", Some(Rule::new("42", "")), vec![], vec![]).into()
                     )]
                     .into_iter()
                     .collect(),
@@ -730,7 +729,7 @@ mod tests {
                 ir::Configuration::new(
                     [(
                         "bar".into(),
-                        Build::new("0", Some("42".into()), "", vec![], vec![]).into()
+                        Build::new("0", Some(Rule::new("42", "")), vec![], vec![]).into()
                     )]
                     .into_iter()
                     .collect(),

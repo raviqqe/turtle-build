@@ -6,6 +6,7 @@ use crate::{
     error::InfrastructureError,
     ir::{Build, Configuration, Rule},
 };
+use async_recursion::async_recursion;
 use futures::future::{join_all, FutureExt, Shared};
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
@@ -21,7 +22,7 @@ use tokio::{
     io::{stderr, AsyncWriteExt},
     process::Command,
     spawn,
-    sync::Semaphore,
+    sync::{RwLock, Semaphore},
 };
 
 type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), InfrastructureError>> + Send>>;
@@ -37,56 +38,48 @@ pub async fn run(
         Semaphore::new(job_limit.unwrap_or_else(num_cpus::get)),
     )
     .into();
-    let mut builds = HashMap::new();
+    let builds = Arc::new(RwLock::new(HashMap::new()));
 
-    select_builds(
-        configuration
-            .default_outputs()
-            .iter()
-            .map(|output| {
-                Ok(run_build(
-                    &context,
-                    configuration,
-                    &mut builds,
-                    configuration
-                        .outputs()
-                        .get(output)
-                        .ok_or_else(|| InfrastructureError::DefaultOutputNotFound(output.into()))?,
-                ))
-            })
-            .collect::<Result<Vec<_>, InfrastructureError>>()?,
-    )
-    .await?;
+    for output in configuration.default_outputs() {
+        let _ = run_build(
+            &context,
+            configuration,
+            &builds,
+            configuration
+                .outputs()
+                .get(output)
+                .ok_or_else(|| InfrastructureError::DefaultOutputNotFound(output.into()))?,
+        )
+        .await?;
+    }
+
+    select_builds(builds.read().await.values().cloned()).await?;
 
     Ok(())
 }
 
-fn run_build(
+#[async_recursion]
+async fn run_build(
     context: &Arc<Context>,
     configuration: &Configuration,
-    builds: &mut HashMap<String, BuildFuture>,
+    builds: &Arc<RwLock<HashMap<String, BuildFuture>>>,
     build: &Arc<Build>,
-) -> BuildFuture {
-    if let Some(future) = builds.get(build.id()) {
-        return future.clone();
+) -> Result<BuildFuture, InfrastructureError> {
+    if let Some(future) = builds.read().await.get(build.id()) {
+        return Ok(future.clone());
     }
 
-    let inputs = Arc::new(
-        build
-            .inputs()
-            .iter()
-            .chain(build.order_only_inputs())
-            .map(|input| {
-                if let Some(build) = configuration.outputs().get(input) {
-                    run_build(context, configuration, builds, build)
-                } else {
-                    let input = input.to_string();
-                    let raw: RawBuildFuture = Box::pin(async move { run_leaf_input(&input).await });
-                    raw.shared()
-                }
-            })
-            .collect::<Vec<_>>(),
-    );
+    let mut inputs = vec![];
+
+    for input in build.inputs().iter().chain(build.order_only_inputs()) {
+        inputs.push(if let Some(build) = configuration.outputs().get(input) {
+            run_build(context, configuration, builds, build).await?
+        } else {
+            let input = input.to_string();
+            let raw: RawBuildFuture = Box::pin(async move { run_leaf_input(&input).await });
+            raw.shared()
+        });
+    }
 
     let future = {
         let environment = (context.clone(), build.clone());
@@ -113,9 +106,12 @@ fn run_build(
         raw.shared()
     };
 
-    builds.insert(build.id().into(), future.clone());
+    builds
+        .write()
+        .await
+        .insert(build.id().into(), future.clone());
 
-    future
+    Ok(future)
 }
 
 async fn hash_build(build: &Build) -> Result<u64, InfrastructureError> {

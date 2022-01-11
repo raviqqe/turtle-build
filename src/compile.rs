@@ -11,7 +11,7 @@ use self::{
 };
 use crate::{
     ast,
-    ir::{Build, Configuration},
+    ir::{Build, Configuration, Rule},
 };
 use once_cell::sync::Lazy;
 use regex::{Captures, Regex};
@@ -85,23 +85,20 @@ fn compile_module(
                         ]),
                 );
 
-                let rule = &module_state
-                    .rules
-                    .get(build.rule())
-                    .ok_or_else(|| CompileError::RuleNotFound(build.rule().into()))?;
-
                 let ir = Arc::new(Build::new(
                     context.generate_build_id(),
                     if build.rule() == PHONY_RULE {
                         None
                     } else {
-                        Some(interpolate_variables(rule.command(), &variables))
-                    },
-                    // TODO
-                    if build.rule() == PHONY_RULE {
-                        "".into()
-                    } else {
-                        interpolate_variables(rule.description(), &variables)
+                        let rule = &module_state
+                            .rules
+                            .get(build.rule())
+                            .ok_or_else(|| CompileError::RuleNotFound(build.rule().into()))?;
+
+                        Some(Rule::new(
+                            interpolate_variables(rule.command(), &variables),
+                            interpolate_variables(rule.description(), &variables),
+                        ))
                     },
                     build
                         .inputs()

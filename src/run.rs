@@ -3,7 +3,7 @@ mod build_database;
 use self::build_database::BuildDatabase;
 use crate::{
     error::InfrastructureError,
-    ir::{Build, Configuration},
+    ir::{Build, Configuration, Rule},
 };
 use futures::future::{join_all, FutureExt, Shared};
 use std::{
@@ -91,8 +91,8 @@ fn run_build(
             let hash = hash_build(&build).await?;
 
             if hash != database.get(build.id())? {
-                if let Some(command) = build.command() {
-                    run_command(command).await?;
+                if let Some(rule) = build.rule() {
+                    run_command(rule.command()).await?;
                 }
             }
 
@@ -112,7 +112,7 @@ fn run_build(
 async fn hash_build(build: &Build) -> Result<u64, InfrastructureError> {
     let mut hasher = DefaultHasher::new();
 
-    build.command().hash(&mut hasher);
+    build.rule().map(Rule::command).hash(&mut hasher);
     join_all(build.inputs().iter().map(get_timestamp))
         .await
         .into_iter()

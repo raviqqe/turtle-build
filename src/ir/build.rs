@@ -1,8 +1,9 @@
+use super::Rule;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Build {
     id: String,
-    command: String,
-    description: String,
+    rule: Option<Rule>,
     inputs: Vec<String>,
     order_only_inputs: Vec<String>,
 }
@@ -10,15 +11,13 @@ pub struct Build {
 impl Build {
     pub fn new(
         id: impl Into<String>,
-        command: impl Into<String>,
-        description: impl Into<String>,
+        rule: Option<Rule>,
         inputs: Vec<String>,
         order_only_inputs: Vec<String>,
     ) -> Self {
         Self {
             id: id.into(),
-            command: command.into(),
-            description: description.into(),
+            rule,
             inputs,
             order_only_inputs,
         }
@@ -28,13 +27,8 @@ impl Build {
         &self.id
     }
 
-    pub fn command(&self) -> &str {
-        &self.command
-    }
-
-    #[allow(dead_code)]
-    pub fn description(&self) -> &str {
-        &self.description
+    pub fn rule(&self) -> Option<&Rule> {
+        self.rule.as_ref()
     }
 
     pub fn inputs(&self) -> &[String] {

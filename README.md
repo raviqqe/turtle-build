@@ -37,7 +37,7 @@ Turtle aims to support full syntax of the Ninja build files. Command line argume
     - [x] Implicit outputs
     - [x] Implicit inputs
     - [x] Order-only inputs
-    - [ ] `phony` rule
+    - [x] `phony` rule
   - [x] `rule` statement
   - [x] `default` statement
   - [x] `include` statement
@@ -55,6 +55,9 @@ Turtle aims to support full syntax of the Ninja build files. Command line argume
   - [ ] Dynamic dependencies
   - [ ] Circular output dependency detection
   - [ ] Circular build file dependency detection
+  - [ ] C/C++ header dependencies
+    - [ ] `depfile` option
+    - [ ] `deps` option
   - [ ] Windows support
 
 For more information, see [issues](https://github.com/raviqqe/turtle/issues).

@@ -29,8 +29,9 @@ type BuildFuture = Shared<RawBuildFuture>;
 pub async fn run(
     configuration: &Configuration,
     build_directory: &Path,
+    job_limit: Option<usize>,
 ) -> Result<(), InfrastructureError> {
-    let context = Context::new(4).into();
+    let context = Context::new(job_limit.unwrap_or_else(|| num_cpus::get())).into();
     let database = BuildDatabase::new(build_directory)?;
     let mut builds = HashMap::new();
 
@@ -75,7 +76,7 @@ fn run_build(
             .chain(build.order_only_inputs())
             .map(|input| {
                 if let Some(build) = configuration.outputs().get(input) {
-                    run_build(&context, database, configuration, builds, build)
+                    run_build(context, database, configuration, builds, build)
                 } else {
                     let input = input.to_string();
                     let raw: RawBuildFuture = Box::pin(async move { run_leaf_input(&input).await });

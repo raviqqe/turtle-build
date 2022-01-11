@@ -22,6 +22,7 @@ use std::{
 };
 
 const PHONY_RULE: &str = "phony";
+const BUILD_DIRECTORY_VARIABLE: &str = "builddir";
 
 static VARIABLE_PATTERN: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\$([[:alpha:]][[:alnum:]]*)").unwrap());
@@ -55,7 +56,14 @@ pub fn compile(
         global_state.default_outputs
     };
 
-    Ok(Configuration::new(global_state.outputs, default_outputs))
+    Ok(Configuration::new(
+        global_state.outputs,
+        default_outputs,
+        module_state
+            .variables
+            .get(BUILD_DIRECTORY_VARIABLE)
+            .cloned(),
+    ))
 }
 
 fn compile_module(

@@ -40,8 +40,9 @@ pub async fn run(
     .into();
     let builds = Arc::new(RwLock::new(HashMap::new()));
 
+    // Create futures for all builds required by default outputs sequentially.
     for output in configuration.default_outputs() {
-        let _ = create_build_future(
+        create_build_future(
             &context,
             configuration,
             &builds,
@@ -53,30 +54,34 @@ pub async fn run(
         .await?;
     }
 
+    // Start running build futures actually.
     // TODO Consider await only builds of default outputs.
     select_builds(builds.read().await.values().cloned()).await?;
 
     Ok(())
 }
 
-// This function creates futures for all builds sequentially.
 #[async_recursion]
 async fn create_build_future(
     context: &Arc<Context>,
     configuration: &Configuration,
     builds: &Arc<RwLock<HashMap<String, BuildFuture>>>,
     build: &Arc<Build>,
-) -> Result<BuildFuture, InfrastructureError> {
-    // TODO Move this into the input side.
-    if let Some(future) = builds.read().await.get(build.id()) {
-        return Ok(future.clone());
-    }
-
+) -> Result<(), InfrastructureError> {
     let mut inputs = vec![];
 
     for input in build.inputs().iter().chain(build.order_only_inputs()) {
         inputs.push(if let Some(build) = configuration.outputs().get(input) {
-            create_build_future(context, configuration, builds, build).await?
+            if builds.read().await.contains_key(build.id()) {
+                create_build_future(context, configuration, builds, build).await?
+            }
+
+            builds
+                .read()
+                .await
+                .get(build.id())
+                .ok_or_else(|| InfrastructureError::RuntimeCircularBuildDependency)?
+                .clone()
         } else {
             let input = input.to_string();
             let raw: RawBuildFuture = Box::pin(async move { run_leaf_input(&input).await });
@@ -109,12 +114,9 @@ async fn create_build_future(
         raw.shared()
     };
 
-    builds
-        .write()
-        .await
-        .insert(build.id().into(), future.clone());
+    builds.write().await.insert(build.id().into(), future);
 
-    Ok(future)
+    Ok(())
 }
 
 async fn hash_build(build: &Build) -> Result<u64, InfrastructureError> {

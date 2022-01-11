@@ -3,7 +3,7 @@ use std::{
     fmt::{self, Display, Formatter},
     path::Path,
 };
-use tokio::{io, task::JoinError};
+use tokio::{io, sync::AcquireError, task::JoinError};
 
 #[derive(Clone, Debug)]
 pub enum InfrastructureError {
@@ -42,6 +42,12 @@ impl Display for InfrastructureError {
             Self::Other(message) => write!(formatter, "{}", message),
             Self::Sled(error) => write!(formatter, "{}", error),
         }
+    }
+}
+
+impl From<AcquireError> for InfrastructureError {
+    fn from(error: AcquireError) -> Self {
+        Self::Other(format!("{}", &error))
     }
 }
 

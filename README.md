@@ -30,38 +30,41 @@ For more information, see `turtle --help`.
 
 Turtle aims to support full syntax of the Ninja build files. Command line arguments are supported only partially excluding ones for debugging purposes.
 
-- Syntax
-  - [x] `build` statement
-    - [x] Explicit outputs
-    - [x] Explicit inputs
-    - [x] Implicit outputs
-    - [x] Implicit inputs
-    - [x] Order-only inputs
-    - [x] `phony` rule
-  - [x] `rule` statement
-  - [x] `default` statement
-  - [x] `include` statement
-  - [x] `subninja` statement
-  - [ ] `pool` statement
-  - [x] Global variables
-  - [x] Build-local variables
-  - [x] `in` and `out` special variable
-- Command line arguments
-  - [x] `-f` custom build file option
-  - [ ] `-j` job limit option
-  - [ ] `-k` keep-going option
-  - [ ] `-C` change-directory option
-- Others
-  - [x] `builddir` special variable
-  - [ ] Dynamic dependencies
-  - [ ] Circular output dependency detection
-  - [ ] Circular build file dependency detection
-  - [ ] C/C++ header dependencies
-    - [ ] `depfile` option
-    - [ ] `deps` option
-  - [ ] Windows support
+### Syntax
 
-For more information, see [issues](https://github.com/raviqqe/turtle/issues).
+- [x] `build` statement
+  - [x] Explicit outputs
+  - [x] Explicit inputs
+  - [x] Implicit outputs
+  - [x] Implicit inputs
+  - [x] Order-only inputs
+  - [x] `phony` rule
+- [x] `rule` statement
+- [x] `default` statement
+- [x] `include` statement
+- [x] `subninja` statement
+- [ ] `pool` statement
+- [x] Global variables
+- [x] Build-local variables
+- [x] `in` and `out` special variable
+
+### Command line arguments
+
+- [x] `-f` custom build file option
+- [x] `-j` job limit option
+- [ ] `-k` keep-going option
+- [ ] `-C` change-directory option
+
+### Others
+
+- [x] `builddir` special variable
+- [ ] Dynamic dependencies
+- [ ] Circular output dependency detection
+- [ ] Circular build file dependency detection
+- [ ] C/C++ header dependencies
+  - [ ] `depfile` option
+  - [ ] `deps` option
+- [ ] Windows support
 
 ## Similar projects
 

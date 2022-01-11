@@ -1,6 +1,7 @@
 mod build_database;
+mod context;
 
-use self::build_database::BuildDatabase;
+use self::{build_database::BuildDatabase, context::Context};
 use crate::{
     error::InfrastructureError,
     ir::{Build, Configuration, Rule},
@@ -20,6 +21,7 @@ use tokio::{
     io::{stderr, AsyncWriteExt},
     process::Command,
     spawn,
+    sync::Semaphore,
 };
 
 type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), InfrastructureError>> + Send>>;
@@ -28,8 +30,13 @@ type BuildFuture = Shared<RawBuildFuture>;
 pub async fn run(
     configuration: &Configuration,
     build_directory: &Path,
+    job_limit: Option<usize>,
 ) -> Result<(), InfrastructureError> {
-    let database = BuildDatabase::new(build_directory)?;
+    let context = Context::new(
+        BuildDatabase::new(build_directory)?,
+        Semaphore::new(job_limit.unwrap_or_else(num_cpus::get)),
+    )
+    .into();
     let mut builds = HashMap::new();
 
     select_builds(
@@ -38,7 +45,7 @@ pub async fn run(
             .iter()
             .map(|output| {
                 Ok(run_build(
-                    &database,
+                    &context,
                     configuration,
                     &mut builds,
                     configuration
@@ -55,7 +62,7 @@ pub async fn run(
 }
 
 fn run_build(
-    database: &BuildDatabase,
+    context: &Arc<Context>,
     configuration: &Configuration,
     builds: &mut HashMap<String, BuildFuture>,
     build: &Arc<Build>,
@@ -71,7 +78,7 @@ fn run_build(
             .chain(build.order_only_inputs())
             .map(|input| {
                 if let Some(build) = configuration.outputs().get(input) {
-                    run_build(database, configuration, builds, build)
+                    run_build(context, configuration, builds, build)
                 } else {
                     let input = input.to_string();
                     let raw: RawBuildFuture = Box::pin(async move { run_leaf_input(&input).await });
@@ -82,21 +89,23 @@ fn run_build(
     );
 
     let future = {
-        let environment = (database.clone(), build.clone());
+        let environment = (context.clone(), build.clone());
         let handle = spawn(async move {
-            let (database, build) = environment;
+            let (context, build) = environment;
 
             select_builds(inputs.iter().cloned().collect::<Vec<_>>()).await?;
 
             let hash = hash_build(&build).await?;
 
-            if hash != database.get(build.id())? {
+            if hash != context.database().get(build.id())? {
                 if let Some(rule) = build.rule() {
+                    let permit = context.job_semaphore().acquire().await?;
                     run_command(rule.command()).await?;
+                    drop(permit);
                 }
             }
 
-            database.set(build.id(), hash)?;
+            context.database().set(build.id(), hash)?;
 
             Ok(())
         });

@@ -455,7 +455,7 @@ mod tests {
             )
             .unwrap(),
             ir::Configuration::new(
-                [("baz".into(), build.clone()), ("bar".into(), build.clone())]
+                [("baz".into(), build.clone()), ("bar".into(), build)]
                     .into_iter()
                     .collect(),
                 ["baz".into(), "bar".into()].into_iter().collect(),

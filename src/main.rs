@@ -5,6 +5,7 @@ mod error;
 mod ir;
 mod parse;
 mod run;
+mod validation;
 
 use arguments::Arguments;
 use ast::{Module, Statement};
@@ -24,6 +25,7 @@ use tokio::{
     fs::{self, File},
     io::AsyncReadExt,
 };
+use validation::validate_configuration;
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
 
@@ -43,6 +45,8 @@ async fn execute() -> Result<(), Box<dyn Error>> {
         canonicalize_path(&arguments.file.as_deref().unwrap_or(DEFAULT_BUILD_FILE)).await?;
     let (modules, dependencies) = read_modules(&root_module_path).await?;
     let configuration = compile(&modules, &dependencies, &root_module_path)?;
+
+    validate_configuration(&configuration)?;
 
     run(
         &configuration,

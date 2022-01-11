@@ -3,6 +3,7 @@
     "alnum",
     "builddir",
     "canonicalize",
+    "cpus",
     "depfile",
     "hasher",
     "nikhilm",

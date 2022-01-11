@@ -46,12 +46,13 @@ Turtle aims to support full syntax of the Ninja build files. Command line argume
   - [x] Global variables
   - [x] Build-local variables
   - [x] `in` and `out` special variable
-  - [ ] `builddir` special variable
 - Command line arguments
   - [x] `-f` custom build file option
   - [ ] `-j` job limit option
   - [ ] `-k` keep-going option
+  - [ ] `-C` change-directory option
 - Others
+  - [x] `builddir` special variable
   - [ ] Dynamic dependencies
   - [ ] Circular output dependency detection
   - [ ] Circular build file dependency detection

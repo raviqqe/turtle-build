@@ -96,7 +96,7 @@ fn run_build(
 
             if hash != database.get(build.id())? {
                 if let Some(rule) = build.rule() {
-                    let permit = context.job_semaphore().acquire();
+                    let permit = context.job_semaphore().acquire().await?;
                     run_command(rule.command()).await?;
                     drop(permit);
                 }

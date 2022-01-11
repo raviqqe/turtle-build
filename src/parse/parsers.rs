@@ -8,6 +8,8 @@ use combine::{
     value, Parser,
 };
 
+const OPERATOR_CHARACTERS: &[char] = &['|', ':'];
+
 pub fn module<'a>() -> impl Parser<Stream<'a>, Output = Module> {
     (optional(line_break()), many(statement()))
         .skip(eof())
@@ -59,6 +61,7 @@ fn build<'a>() -> impl Parser<Stream<'a>, Output = Build> {
         identifier(),
         many(string_literal()),
         optional(sign("|").with(many1::<Vec<_>, _, _>(string_literal()))),
+        optional(sign("||").with(many1::<Vec<_>, _, _>(string_literal()))),
         line_break(),
         many(indent().with(variable_definition())),
     )
@@ -71,6 +74,7 @@ fn build<'a>() -> impl Parser<Stream<'a>, Output = Build> {
                 rule,
                 inputs,
                 implicit_inputs,
+                order_only_inputs,
                 _,
                 variable_definitions,
             )| {
@@ -80,6 +84,7 @@ fn build<'a>() -> impl Parser<Stream<'a>, Output = Build> {
                     rule,
                     inputs,
                     implicit_inputs.into_iter().flatten().collect(),
+                    order_only_inputs.into_iter().flatten().collect(),
                     variable_definitions,
                 )
             },
@@ -109,7 +114,11 @@ fn string_line<'a>() -> impl Parser<Stream<'a>, Output = String> {
 }
 
 fn string_literal<'a>() -> impl Parser<Stream<'a>, Output = String> {
-    token(many1(none_of([' ', '\t', '\r', '\n', ':', '|'])))
+    token(many1(none_of(
+        [' ', '\t', '\r', '\n']
+            .into_iter()
+            .chain(OPERATOR_CHARACTERS.iter().cloned()),
+    )))
 }
 
 fn keyword<'a>(name: &'static str) -> impl Parser<Stream<'a>, Output = ()> {
@@ -127,7 +136,8 @@ fn identifier<'a>() -> impl Parser<Stream<'a>, Output = String> {
 }
 
 fn sign<'a>(sign: &'static str) -> impl Parser<Stream<'a>, Output = ()> {
-    token(string(sign)).with(value(()))
+    attempt(token(string(sign)).skip(not_followed_by(one_of(OPERATOR_CHARACTERS.iter().cloned()))))
+        .with(value(()))
 }
 
 fn token<'a, O, P: Parser<Stream<'a>, Output = O>>(
@@ -159,7 +169,15 @@ mod tests {
         inputs: Vec<String>,
         variable_definitions: Vec<VariableDefinition>,
     ) -> Build {
-        Build::new(outputs, vec![], rule, inputs, vec![], variable_definitions)
+        Build::new(
+            outputs,
+            vec![],
+            rule,
+            inputs,
+            vec![],
+            vec![],
+            variable_definitions,
+        )
     }
 
     #[test]
@@ -288,6 +306,7 @@ mod tests {
                 "rule",
                 vec![],
                 vec![],
+                vec![],
                 vec![]
             )
         );
@@ -297,6 +316,7 @@ mod tests {
                 vec!["x1".into()],
                 vec!["x2".into(), "x3".into()],
                 "rule",
+                vec![],
                 vec![],
                 vec![],
                 vec![]
@@ -310,6 +330,7 @@ mod tests {
                 "rule",
                 vec![],
                 vec!["x2".into()],
+                vec![],
                 vec![]
             )
         );
@@ -319,6 +340,34 @@ mod tests {
                 vec!["x1".into()],
                 vec![],
                 "rule",
+                vec![],
+                vec!["x2".into(), "x3".into()],
+                vec![],
+                vec![]
+            )
+        );
+        assert_eq!(
+            build().parse(stream("build x1: rule || x2\n")).unwrap().0,
+            Build::new(
+                vec!["x1".into()],
+                vec![],
+                "rule",
+                vec![],
+                vec![],
+                vec!["x2".into()],
+                vec![],
+            )
+        );
+        assert_eq!(
+            build()
+                .parse(stream("build x1: rule || x2 x3\n"))
+                .unwrap()
+                .0,
+            Build::new(
+                vec!["x1".into()],
+                vec![],
+                "rule",
+                vec![],
                 vec![],
                 vec!["x2".into(), "x3".into()],
                 vec![]

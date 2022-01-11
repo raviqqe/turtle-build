@@ -7,6 +7,7 @@ pub struct Build {
     rule: String,
     inputs: Vec<String>,
     implicit_inputs: Vec<String>,
+    order_only_inputs: Vec<String>,
     variable_definitions: Vec<VariableDefinition>,
 }
 
@@ -17,6 +18,7 @@ impl Build {
         rule: impl Into<String>,
         inputs: Vec<String>,
         implicit_inputs: Vec<String>,
+        order_only_inputs: Vec<String>,
         variable_definitions: Vec<VariableDefinition>,
     ) -> Self {
         Self {
@@ -25,6 +27,7 @@ impl Build {
             rule: rule.into(),
             inputs,
             implicit_inputs,
+            order_only_inputs,
             variable_definitions,
         }
     }
@@ -47,6 +50,10 @@ impl Build {
 
     pub fn implicit_inputs(&self) -> &[String] {
         &self.implicit_inputs
+    }
+
+    pub fn order_only_inputs(&self) -> &[String] {
+        &self.order_only_inputs
     }
 
     pub fn variable_definitions(&self) -> &[VariableDefinition] {

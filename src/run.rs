@@ -68,6 +68,7 @@ fn run_build(
         build
             .inputs()
             .iter()
+            .chain(build.order_only_inputs())
             .map(|input| {
                 if let Some(build) = configuration.outputs().get(input) {
                     run_build(database, configuration, builds, build)

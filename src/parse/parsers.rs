@@ -440,6 +440,12 @@ mod tests {
     }
 
     #[test]
+    fn parse_keyword() {
+        assert!(keyword("foo").parse(stream("foo")).is_ok());
+        assert!(keyword("foo").parse(stream("fooo")).is_err());
+    }
+
+    #[test]
     fn parse_identifier() {
         assert_eq!(
             identifier().parse(stream("foo")).unwrap().0,

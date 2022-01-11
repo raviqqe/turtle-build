@@ -59,6 +59,7 @@ fn build<'a>() -> impl Parser<Stream<'a>, Output = Build> {
         identifier(),
         many(string_literal()),
         optional(sign("|").with(many1::<Vec<_>, _, _>(string_literal()))),
+        optional(sign("||").with(many1::<Vec<_>, _, _>(string_literal()))),
         line_break(),
         many(indent().with(variable_definition())),
     )
@@ -71,6 +72,7 @@ fn build<'a>() -> impl Parser<Stream<'a>, Output = Build> {
                 rule,
                 inputs,
                 implicit_inputs,
+                order_only_inputs,
                 _,
                 variable_definitions,
             )| {
@@ -80,7 +82,7 @@ fn build<'a>() -> impl Parser<Stream<'a>, Output = Build> {
                     rule,
                     inputs,
                     implicit_inputs.into_iter().flatten().collect(),
-                    vec![],
+                    order_only_inputs.into_iter().flatten().collect(),
                     variable_definitions,
                 )
             },
@@ -334,6 +336,33 @@ mod tests {
                 vec![],
                 vec!["x2".into(), "x3".into()],
                 vec![],
+                vec![]
+            )
+        );
+        assert_eq!(
+            build().parse(stream("build x1: rule || x2\n")).unwrap().0,
+            Build::new(
+                vec!["x1".into()],
+                vec![],
+                "rule",
+                vec![],
+                vec![],
+                vec!["x2".into()],
+                vec![],
+            )
+        );
+        assert_eq!(
+            build()
+                .parse(stream("build x1: rule || x2 x3\n"))
+                .unwrap()
+                .0,
+            Build::new(
+                vec!["x1".into()],
+                vec![],
+                "rule",
+                vec![],
+                vec![],
+                vec!["x2".into(), "x3".into()],
                 vec![]
             )
         );

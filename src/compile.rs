@@ -604,7 +604,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            ir::Configuration::new(
+            Configuration::new(
                 [(
                     "foo".into(),
                     Build::new("0", None, vec!["bar".into()], vec![], None).into()
@@ -632,6 +632,39 @@ mod tests {
             )
             .unwrap(),
             ir::Configuration::new(Default::default(), Default::default(), Some("foo".into()))
+        );
+    }
+
+    #[test]
+    fn compile_dynamic_module_variable() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![ast_explicit_build(
+                        vec!["foo".into()],
+                        "phony",
+                        vec![],
+                        vec![ast::VariableDefinition::new("dyndep", "bar")]
+                    )
+                    .into()])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            Configuration::new(
+                [(
+                    "foo".into(),
+                    Build::new("0", None, vec![], vec![], Some("bar".into())).into()
+                )]
+                .into_iter()
+                .collect(),
+                ["foo".into()].into_iter().collect(),
+                None
+            )
         );
     }
 

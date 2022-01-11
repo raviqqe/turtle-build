@@ -90,3 +90,18 @@ Feature: Rule statement
     And a file named "bar" with ""
     When I successfully run `turtle`
     Then the stderr should contain exactly "hello world"
+
+  Scenario: Run a phony rule
+    Given a file named "build.ninja" with:
+    """
+    rule touch
+      command = touch $out
+
+    build foo: touch
+    build bar: phony foo
+
+    default bar
+
+    """
+    When I successfully run `turtle`
+    Then the file named "foo" contains exactly ""

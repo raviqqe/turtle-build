@@ -80,6 +80,7 @@ fn build<'a>() -> impl Parser<Stream<'a>, Output = Build> {
                     rule,
                     inputs,
                     implicit_inputs.into_iter().flatten().collect(),
+                    vec![],
                     variable_definitions,
                 )
             },
@@ -159,7 +160,15 @@ mod tests {
         inputs: Vec<String>,
         variable_definitions: Vec<VariableDefinition>,
     ) -> Build {
-        Build::new(outputs, vec![], rule, inputs, vec![], variable_definitions)
+        Build::new(
+            outputs,
+            vec![],
+            rule,
+            inputs,
+            vec![],
+            vec![],
+            variable_definitions,
+        )
     }
 
     #[test]
@@ -288,6 +297,7 @@ mod tests {
                 "rule",
                 vec![],
                 vec![],
+                vec![],
                 vec![]
             )
         );
@@ -297,6 +307,7 @@ mod tests {
                 vec!["x1".into()],
                 vec!["x2".into(), "x3".into()],
                 "rule",
+                vec![],
                 vec![],
                 vec![],
                 vec![]
@@ -310,6 +321,7 @@ mod tests {
                 "rule",
                 vec![],
                 vec!["x2".into()],
+                vec![],
                 vec![]
             )
         );
@@ -321,6 +333,7 @@ mod tests {
                 "rule",
                 vec![],
                 vec!["x2".into(), "x3".into()],
+                vec![],
                 vec![]
             )
         );

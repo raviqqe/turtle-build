@@ -183,7 +183,15 @@ mod tests {
         inputs: Vec<String>,
         variable_definitions: Vec<ast::VariableDefinition>,
     ) -> ast::Build {
-        ast::Build::new(outputs, vec![], rule, inputs, vec![], variable_definitions)
+        ast::Build::new(
+            outputs,
+            vec![],
+            rule,
+            inputs,
+            vec![],
+            vec![],
+            variable_definitions,
+        )
     }
 
     #[test]
@@ -329,6 +337,7 @@ mod tests {
                             "foo",
                             vec!["baz".into()],
                             vec!["blah".into()],
+                            vec![],
                             vec![]
                         )
                         .into(),
@@ -394,6 +403,7 @@ mod tests {
                             vec!["bar".into()],
                             vec!["baz".into()],
                             "foo",
+                            vec![],
                             vec![],
                             vec![],
                             vec![]

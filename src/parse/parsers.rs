@@ -1,6 +1,7 @@
 use super::stream::Stream;
 use crate::ast::{
-    Build, DefaultOutput, Include, Module, Rule, Statement, Submodule, VariableDefinition,
+    Build, DefaultOutput, DynamicBuild, DynamicDependency, Include, Module, Rule, Statement,
+    Submodule, VariableDefinition,
 };
 use combine::{
     attempt, choice, eof, many, many1, none_of, not_followed_by, one_of, optional,
@@ -9,11 +10,22 @@ use combine::{
 };
 
 const OPERATOR_CHARACTERS: &[char] = &['|', ':'];
+const DYNAMIC_DEPENDENCY_VERSION_VARIABLE: &str = "ninja_dyndep_version";
 
 pub fn module<'a>() -> impl Parser<Stream<'a>, Output = Module> {
     (optional(line_break()), many(statement()))
         .skip(eof())
         .map(|(_, statements)| Module::new(statements))
+}
+
+pub fn dynamic_dependency<'a>() -> impl Parser<Stream<'a>, Output = DynamicDependency> {
+    (
+        optional(line_break()),
+        dynamic_dependency_version(),
+        many(dynamic_build()),
+    )
+        .skip(eof())
+        .map(|(_, version, builds)| DynamicDependency::new(version, builds))
 }
 
 fn statement<'a>() -> impl Parser<Stream<'a>, Output = Statement> {
@@ -31,6 +43,12 @@ fn variable_definition<'a>() -> impl Parser<Stream<'a>, Output = VariableDefinit
     (attempt(identifier().skip(sign("="))), string_line())
         .skip(line_break())
         .map(|(name, value)| VariableDefinition::new(name, value))
+}
+
+fn dynamic_dependency_version<'a>() -> impl Parser<Stream<'a>, Output = String> {
+    attempt((keyword(DYNAMIC_DEPENDENCY_VERSION_VARIABLE), sign("=")))
+        .with(string_line())
+        .skip(line_break())
 }
 
 fn rule<'a>() -> impl Parser<Stream<'a>, Output = Rule> {
@@ -89,6 +107,20 @@ fn build<'a>() -> impl Parser<Stream<'a>, Output = Build> {
                 )
             },
         )
+}
+
+pub fn dynamic_build<'a>() -> impl Parser<Stream<'a>, Output = DynamicBuild> {
+    (
+        keyword("build"),
+        string_literal(),
+        sign(":"),
+        keyword("dyndep"),
+        optional(sign("|").with(many1::<Vec<_>, _, _>(string_literal()))),
+        line_break(),
+    )
+        .map(|(_, output, _, _, implicit_inputs, _)| {
+            DynamicBuild::new(output, implicit_inputs.into_iter().flatten().collect())
+        })
 }
 
 fn default<'a>() -> impl Parser<Stream<'a>, Output = DefaultOutput> {
@@ -220,6 +252,39 @@ mod tests {
     }
 
     #[test]
+    fn parse_dynamic_dependency() {
+        assert_eq!(
+            dynamic_dependency()
+                .parse(stream("ninja_dyndep_version = 1\n"))
+                .unwrap()
+                .0,
+            DynamicDependency::new("1", vec![])
+        );
+        assert_eq!(
+            dynamic_dependency()
+                .parse(stream("ninja_dyndep_version = 1\nbuild foo: dyndep\n"))
+                .unwrap()
+                .0,
+            DynamicDependency::new("1", vec![DynamicBuild::new("foo", vec![])])
+        );
+        assert_eq!(
+            dynamic_dependency()
+                .parse(stream(
+                    "ninja_dyndep_version = 1\nbuild foo: dyndep\nbuild bar: dyndep\n"
+                ))
+                .unwrap()
+                .0,
+            DynamicDependency::new(
+                "1",
+                vec![
+                    DynamicBuild::new("foo", vec![]),
+                    DynamicBuild::new("bar", vec![])
+                ]
+            )
+        );
+    }
+
+    #[test]
     fn parse_variable_definition() {
         assert_eq!(
             variable_definition().parse(stream("x = 42\n")).unwrap().0,
@@ -231,6 +296,17 @@ mod tests {
                 .unwrap()
                 .0,
             VariableDefinition::new("foo", "1 + 1")
+        );
+    }
+
+    #[test]
+    fn parse_dynamic_dependency_version() {
+        assert_eq!(
+            dynamic_dependency_version()
+                .parse(stream("ninja_dyndep_version = 42\n"))
+                .unwrap()
+                .0,
+            "42".to_string(),
         );
     }
 
@@ -376,6 +452,31 @@ mod tests {
                 vec!["x2".into(), "x3".into()],
                 vec![]
             )
+        );
+    }
+
+    #[test]
+    fn parse_dynamic_build() {
+        assert_eq!(
+            dynamic_build()
+                .parse(stream("build foo: dyndep\n"))
+                .unwrap()
+                .0,
+            DynamicBuild::new("foo", vec![])
+        );
+        assert_eq!(
+            dynamic_build()
+                .parse(stream("build foo: dyndep | bar\n"))
+                .unwrap()
+                .0,
+            DynamicBuild::new("foo", vec!["bar".into()])
+        );
+        assert_eq!(
+            dynamic_build()
+                .parse(stream("build foo: dyndep | bar baz\n"))
+                .unwrap()
+                .0,
+            DynamicBuild::new("foo", vec!["bar".into(), "baz".into()])
         );
     }
 

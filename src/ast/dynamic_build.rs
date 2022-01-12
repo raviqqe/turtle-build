@@ -12,7 +12,7 @@ impl DynamicBuild {
         }
     }
 
-    pub fn outputs(&self) -> &str {
+    pub fn output(&self) -> &str {
         &self.output
     }
 

@@ -11,7 +11,7 @@ use self::{
 };
 use crate::{
     ast,
-    ir::{Build, Configuration, Rule},
+    ir::{Build, Configuration, DynamicBuild, DynamicConfiguration, Rule},
 };
 use once_cell::sync::Lazy;
 use regex::{Captures, Regex};
@@ -160,6 +160,21 @@ fn compile_module(
     }
 
     Ok(())
+}
+
+pub fn compile_dynamic(module: &ast::DynamicModule) -> Result<DynamicConfiguration, CompileError> {
+    Ok(DynamicConfiguration::new(
+        module
+            .builds()
+            .iter()
+            .map(|build| {
+                (
+                    build.output().into(),
+                    DynamicBuild::new(build.implicit_inputs().iter().cloned().collect()),
+                )
+            })
+            .collect(),
+    ))
 }
 
 fn resolve_dependency<'a>(

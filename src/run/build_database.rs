@@ -29,3 +29,30 @@ impl BuildDatabase {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[test]
+    fn open_database() {
+        BuildDatabase::new(tempdir().unwrap().path()).unwrap();
+    }
+
+    #[test]
+    fn set_hash() {
+        let database = BuildDatabase::new(tempdir().unwrap().path()).unwrap();
+
+        database.set("foo", 42).unwrap();
+    }
+
+    #[test]
+    fn get_hash() {
+        let database = BuildDatabase::new(tempdir().unwrap().path()).unwrap();
+
+        database.set("foo", 42).unwrap();
+        assert_eq!(database.get("foo").unwrap(), 42);
+    }
+}

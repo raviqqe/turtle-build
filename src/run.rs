@@ -147,15 +147,15 @@ async fn spawn_build_future(
 
         let hash = hash_build(&build, dynamic_inputs).await?;
 
-        if hash != context.database().get(build.id())? {
-            if let Some(rule) = build.rule() {
-                let permit = context.job_semaphore().acquire().await?;
-                run_command(rule.command()).await?;
-                drop(permit);
-            }
-
-            context.database().set(build.id(), hash)?;
+        if hash == context.database().get(build.id())? {
+            return Ok(());
+        } else if let Some(rule) = build.rule() {
+            let permit = context.job_semaphore().acquire().await?;
+            run_command(rule.command()).await?;
+            drop(permit);
         }
+
+        context.database().set(build.id(), hash)?;
 
         Ok(())
     })

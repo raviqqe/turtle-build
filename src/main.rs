@@ -22,8 +22,8 @@ use std::{
     path::{Path, PathBuf},
     process::exit,
 };
-use tokio::{fs::File, io::AsyncReadExt};
-use utilities::canonicalize_path;
+
+use utilities::{canonicalize_path, read_file};
 use validation::{validate_configuration, validate_modules};
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
@@ -71,7 +71,7 @@ async fn read_modules(
     let mut dependencies = HashMap::new();
 
     while let Some(path) = paths.pop() {
-        let module = read_module(&path).await?;
+        let module = parse(&read_file(&path).await?)?;
 
         let submodule_paths = try_join_all(
             module
@@ -106,17 +106,4 @@ async fn resolve_submodule_path(
         submodule_path.into(),
         canonicalize_path(module_path.parent().unwrap().join(submodule_path)).await?,
     ))
-}
-
-async fn read_module(path: &Path) -> Result<Module, Box<dyn Error>> {
-    let mut source = "".into();
-
-    File::open(path)
-        .await
-        .map_err(|error| InfrastructureError::with_path(error, path))?
-        .read_to_string(&mut source)
-        .await
-        .map_err(|error| InfrastructureError::with_path(error, path))?;
-
-    Ok(parse(&source)?)
 }

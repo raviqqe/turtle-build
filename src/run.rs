@@ -100,10 +100,10 @@ async fn spawn_build_future(
     build: Arc<Build>,
 ) -> Result<(), InfrastructureError> {
     spawn(async move {
-        let mut inputs = vec![];
+        let mut futures = vec![];
 
         for input in build.inputs().iter().chain(build.order_only_inputs()) {
-            inputs.push(
+            futures.push(
                 if let Some(build) = context.configuration().outputs().get(input) {
                     create_build_future(&context, input, build).await?;
 
@@ -116,7 +116,7 @@ async fn spawn_build_future(
             );
         }
 
-        select_builds(inputs).await?;
+        select_builds(futures).await?;
 
         // TODO Consider caching dynamic modules.
         let dynamic_configuration = if let Some(dynamic_module) = build.dynamic_module() {
@@ -133,17 +133,17 @@ async fn spawn_build_future(
             .map(|configuration| configuration.outputs()[&output].inputs())
             .unwrap_or_default();
 
-        let mut dynamic_input_futures = vec![];
+        let mut futures = vec![];
 
         for input in dynamic_inputs {
             let build = &context.configuration().outputs()[input];
 
             create_build_future(&context, input, build).await?;
 
-            dynamic_input_futures.push(context.builds().read().await[build.id()].clone());
+            futures.push(context.builds().read().await[build.id()].clone());
         }
 
-        select_builds(dynamic_input_futures).await?;
+        select_builds(futures).await?;
 
         let hash = hash_build(&build, dynamic_inputs).await?;
 

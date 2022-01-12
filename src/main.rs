@@ -5,6 +5,7 @@ mod error;
 mod ir;
 mod parse;
 mod run;
+mod utilities;
 mod validation;
 
 use arguments::Arguments;
@@ -21,10 +22,8 @@ use std::{
     path::{Path, PathBuf},
     process::exit,
 };
-use tokio::{
-    fs::{self, File},
-    io::AsyncReadExt,
-};
+use tokio::{fs::File, io::AsyncReadExt};
+use utilities::canonicalize_path;
 use validation::{validate_configuration, validate_modules};
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
@@ -120,10 +119,4 @@ async fn read_module(path: &Path) -> Result<Module, Box<dyn Error>> {
         .map_err(|error| InfrastructureError::with_path(error, path))?;
 
     Ok(parse(&source)?)
-}
-
-async fn canonicalize_path(path: impl AsRef<Path>) -> Result<PathBuf, InfrastructureError> {
-    fs::canonicalize(&path)
-        .await
-        .map_err(|error| InfrastructureError::with_path(error, path))
 }

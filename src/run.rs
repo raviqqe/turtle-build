@@ -65,7 +65,7 @@ pub async fn run(
         .collect::<Vec<_>>();
 
     // Start running build futures actually.
-    select_builds(futures).await?;
+    join_builds(futures).await?;
 
     Ok(())
 }
@@ -116,7 +116,7 @@ async fn spawn_build_future(
             );
         }
 
-        select_builds(futures).await?;
+        join_builds(futures).await?;
 
         // TODO Consider caching dynamic modules.
         let dynamic_configuration = if let Some(dynamic_module) = build.dynamic_module() {
@@ -143,7 +143,7 @@ async fn spawn_build_future(
             futures.push(context.builds().read().await[build.id()].clone());
         }
 
-        select_builds(futures).await?;
+        join_builds(futures).await?;
 
         let hash = hash_build(&build, dynamic_inputs).await?;
 
@@ -191,7 +191,7 @@ async fn get_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, Infrastruct
         .map_err(|error| InfrastructureError::with_path(error, path))?)
 }
 
-async fn select_builds(
+async fn join_builds(
     builds: impl IntoIterator<Item = BuildFuture>,
 ) -> Result<(), InfrastructureError> {
     let future: RawBuildFuture = Box::pin(ready(Ok(())));

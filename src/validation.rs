@@ -5,7 +5,7 @@ use crate::{
     compile::ModuleDependencyMap,
     ir::{Build, Configuration},
 };
-use petgraph::{algo::toposort, Graph};
+use petgraph::{algo::is_cyclic_directed, Graph};
 use std::{collections::HashMap, path::Path, sync::Arc};
 
 pub fn validate_configuration(configuration: &Configuration) -> Result<(), ValidationError> {
@@ -34,7 +34,7 @@ fn is_output_dependency_circular(dependencies: &HashMap<String, Arc<Build>>) -> 
         }
     }
 
-    toposort(&graph, None).is_err()
+    is_cyclic_directed(&graph)
 }
 
 pub fn validate_modules(modules: &ModuleDependencyMap) -> Result<(), ValidationError> {
@@ -59,7 +59,7 @@ fn is_module_dependency_circular(modules: &ModuleDependencyMap) -> bool {
         }
     }
 
-    toposort(&graph, None).is_err()
+    is_cyclic_directed(&graph)
 }
 
 #[cfg(test)]

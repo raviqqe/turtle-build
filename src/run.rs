@@ -3,12 +3,16 @@ mod context;
 
 use self::{build_database::BuildDatabase, context::Context};
 use crate::{
+    compile::compile_dynamic,
     error::InfrastructureError,
     ir::{Build, Configuration, Rule},
+    parse::parse_dynamic,
+    utilities::read_file,
 };
-use futures::future::{join_all, FutureExt, Shared};
+use async_recursion::async_recursion;
+use futures::future::{join_all, try_join_all, FutureExt, Shared};
 use std::{
-    collections::{hash_map::DefaultHasher, HashMap},
+    collections::hash_map::DefaultHasher,
     future::{ready, Future},
     hash::{Hash, Hasher},
     path::Path,
@@ -28,105 +32,151 @@ type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), InfrastructureError
 type BuildFuture = Shared<RawBuildFuture>;
 
 pub async fn run(
-    configuration: &Configuration,
+    configuration: Configuration,
     build_directory: &Path,
     job_limit: Option<usize>,
 ) -> Result<(), InfrastructureError> {
-    let context = Context::new(
+    let context = Arc::new(Context::new(
+        configuration,
         BuildDatabase::new(build_directory)?,
         Semaphore::new(job_limit.unwrap_or_else(num_cpus::get)),
-    )
-    .into();
-    let mut builds = HashMap::new();
+    ));
 
-    select_builds(
-        configuration
-            .default_outputs()
-            .iter()
-            .map(|output| {
-                Ok(run_build(
-                    &context,
-                    configuration,
-                    &mut builds,
-                    configuration
-                        .outputs()
-                        .get(output)
-                        .ok_or_else(|| InfrastructureError::DefaultOutputNotFound(output.into()))?,
-                ))
-            })
-            .collect::<Result<Vec<_>, InfrastructureError>>()?,
-    )
-    .await?;
+    for output in context.configuration().default_outputs() {
+        create_build_future(
+            &context,
+            output,
+            context
+                .configuration()
+                .outputs()
+                .get(output)
+                .ok_or_else(|| InfrastructureError::DefaultOutputNotFound(output.into()))?,
+        )
+        .await?;
+    }
+
+    // Do not inline this to avoid borrowing a lock of builds.
+    let futures = context
+        .builds()
+        .read()
+        .await
+        .values()
+        .cloned()
+        .collect::<Vec<_>>();
+
+    // Start running build futures actually.
+    select_builds(futures).await?;
 
     Ok(())
 }
 
-fn run_build(
+#[async_recursion]
+async fn create_build_future(
     context: &Arc<Context>,
-    configuration: &Configuration,
-    builds: &mut HashMap<String, BuildFuture>,
+    output: &str,
     build: &Arc<Build>,
-) -> BuildFuture {
-    if let Some(future) = builds.get(build.id()) {
-        return future.clone();
+) -> Result<(), InfrastructureError> {
+    // Exclusive lock for atomic addition of a build job.
+    let mut builds = context.builds().write().await;
+
+    if builds.contains_key(build.id()) {
+        return Ok(());
     }
 
-    let inputs = Arc::new(
-        build
-            .inputs()
-            .iter()
-            .chain(build.order_only_inputs())
-            .map(|input| {
-                if let Some(build) = configuration.outputs().get(input) {
-                    run_build(context, configuration, builds, build)
-                } else {
-                    let input = input.to_string();
-                    let raw: RawBuildFuture = Box::pin(async move { run_leaf_input(&input).await });
-                    raw.shared()
-                }
-            })
-            .collect::<Vec<_>>(),
-    );
+    let future: RawBuildFuture = Box::pin(spawn_build_future(
+        context.clone(),
+        output.to_string(),
+        build.clone(),
+    ));
 
-    let future = {
-        let environment = (context.clone(), build.clone());
-        let handle = spawn(async move {
-            let (context, build) = environment;
+    builds.insert(build.id().into(), future.shared());
 
-            select_builds(inputs.iter().cloned().collect::<Vec<_>>()).await?;
-
-            let hash = hash_build(&build).await?;
-
-            if hash != context.database().get(build.id())? {
-                if let Some(rule) = build.rule() {
-                    let permit = context.job_semaphore().acquire().await?;
-                    run_command(rule.command()).await?;
-                    drop(permit);
-                }
-            }
-
-            context.database().set(build.id(), hash)?;
-
-            Ok(())
-        });
-        let raw: RawBuildFuture = Box::pin(async move { handle.await? });
-        raw.shared()
-    };
-
-    builds.insert(build.id().into(), future.clone());
-
-    future
+    Ok(())
 }
 
-async fn hash_build(build: &Build) -> Result<u64, InfrastructureError> {
+async fn spawn_build_future(
+    context: Arc<Context>,
+    output: String,
+    build: Arc<Build>,
+) -> Result<(), InfrastructureError> {
+    spawn(async move {
+        let mut futures = vec![];
+
+        for input in build.inputs().iter().chain(build.order_only_inputs()) {
+            futures.push(
+                if let Some(build) = context.configuration().outputs().get(input) {
+                    create_build_future(&context, input, build).await?;
+
+                    context.builds().read().await[build.id()].clone()
+                } else {
+                    // TODO Consider registering this future as a build job of the input.
+                    let raw: RawBuildFuture = Box::pin(check_leaf_input(input.to_string()));
+                    raw.shared()
+                },
+            );
+        }
+
+        select_builds(futures).await?;
+
+        // TODO Consider caching dynamic modules.
+        let dynamic_configuration = if let Some(dynamic_module) = build.dynamic_module() {
+            Some(compile_dynamic(&parse_dynamic(
+                &read_file(&dynamic_module).await?,
+            )?)?)
+        } else {
+            None
+        };
+        // TODO Collect all inputs of build outputs.
+        // TODO Save outputs in IR builds.
+        let dynamic_inputs = dynamic_configuration
+            .as_ref()
+            .map(|configuration| configuration.outputs()[&output].inputs())
+            .unwrap_or_default();
+
+        let mut futures = vec![];
+
+        for input in dynamic_inputs {
+            let build = &context.configuration().outputs()[input];
+
+            create_build_future(&context, input, build).await?;
+
+            futures.push(context.builds().read().await[build.id()].clone());
+        }
+
+        select_builds(futures).await?;
+
+        let hash = hash_build(&build, dynamic_inputs).await?;
+
+        if hash == context.database().get(build.id())? {
+            return Ok(());
+        } else if let Some(rule) = build.rule() {
+            let permit = context.job_semaphore().acquire().await?;
+            run_command(rule.command()).await?;
+            drop(permit);
+        }
+
+        context.database().set(build.id(), hash)?;
+
+        Ok(())
+    })
+    .await?
+}
+
+async fn hash_build(build: &Build, dynamic_inputs: &[String]) -> Result<u64, InfrastructureError> {
     let mut hasher = DefaultHasher::new();
 
     build.rule().map(Rule::command).hash(&mut hasher);
-    join_all(build.inputs().iter().map(get_timestamp))
-        .await
-        .into_iter()
-        .collect::<Result<Vec<SystemTime>, _>>()?
-        .hash(&mut hasher);
+    join_all(
+        build
+            .inputs()
+            .iter()
+            .chain(dynamic_inputs)
+            .map(get_timestamp),
+    )
+    .await
+    .into_iter()
+    .collect::<Result<Vec<SystemTime>, _>>()?
+    .hash(&mut hasher);
 
     Ok(hasher.finish())
 }
@@ -144,19 +194,17 @@ async fn get_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, Infrastruct
 async fn select_builds(
     builds: impl IntoIterator<Item = BuildFuture>,
 ) -> Result<(), InfrastructureError> {
-    let future: Pin<Box<dyn Future<Output = _> + Send>> = Box::pin(ready(Ok(())));
+    let future: RawBuildFuture = Box::pin(ready(Ok(())));
 
-    for result in join_all(builds.into_iter().chain([future.shared()])).await {
-        result?;
-    }
+    try_join_all(builds.into_iter().chain([future.shared()])).await?;
 
     Ok(())
 }
 
-async fn run_leaf_input(output: &str) -> Result<(), InfrastructureError> {
-    metadata(output)
+async fn check_leaf_input(output: String) -> Result<(), InfrastructureError> {
+    metadata(&output)
         .await
-        .map_err(|error| InfrastructureError::with_path(error, output))?;
+        .map_err(|error| InfrastructureError::with_path(error, &output))?;
 
     Ok(())
 }

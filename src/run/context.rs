@@ -1,18 +1,36 @@
-use super::build_database::BuildDatabase;
-use tokio::sync::Semaphore;
+use super::{build_database::BuildDatabase, BuildFuture};
+use crate::ir::Configuration;
+use std::collections::HashMap;
+use tokio::sync::{RwLock, Semaphore};
 
 #[derive(Debug)]
 pub struct Context {
+    configuration: Configuration,
+    builds: RwLock<HashMap<String, BuildFuture>>,
     database: BuildDatabase,
     job_semaphore: Semaphore,
 }
 
 impl Context {
-    pub fn new(database: BuildDatabase, job_semaphore: Semaphore) -> Self {
+    pub fn new(
+        configuration: Configuration,
+        database: BuildDatabase,
+        job_semaphore: Semaphore,
+    ) -> Self {
         Self {
+            configuration,
+            builds: RwLock::new(HashMap::new()),
             database,
             job_semaphore,
         }
+    }
+
+    pub fn configuration(&self) -> &Configuration {
+        &self.configuration
+    }
+
+    pub fn builds(&self) -> &RwLock<HashMap<String, BuildFuture>> {
+        &self.builds
     }
 
     pub fn database(&self) -> &BuildDatabase {

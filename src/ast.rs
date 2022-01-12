@@ -1,5 +1,7 @@
 mod build;
 mod default_output;
+mod dynamic_build;
+mod dynamic_module;
 mod include;
 mod module;
 mod rule;
@@ -9,6 +11,8 @@ mod variable_definition;
 
 pub use build::*;
 pub use default_output::*;
+pub use dynamic_build::*;
+pub use dynamic_module::*;
 pub use include::*;
 pub use module::*;
 pub use rule::*;

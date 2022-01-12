@@ -6,6 +6,7 @@ pub struct Build {
     rule: Option<Rule>,
     inputs: Vec<String>,
     order_only_inputs: Vec<String>,
+    dynamic_module: Option<String>,
 }
 
 impl Build {
@@ -14,12 +15,14 @@ impl Build {
         rule: Option<Rule>,
         inputs: Vec<String>,
         order_only_inputs: Vec<String>,
+        dynamic_module: Option<String>,
     ) -> Self {
         Self {
             id: id.into(),
             rule,
             inputs,
             order_only_inputs,
+            dynamic_module,
         }
     }
 
@@ -37,5 +40,9 @@ impl Build {
 
     pub fn order_only_inputs(&self) -> &[String] {
         &self.order_only_inputs
+    }
+
+    pub fn dynamic_module(&self) -> Option<&str> {
+        self.dynamic_module.as_deref()
     }
 }

@@ -4,7 +4,7 @@ use std::{
     fmt::{self, Display},
 };
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ParseError {
     message: String,
 }

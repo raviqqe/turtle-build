@@ -5,6 +5,7 @@ mod error;
 mod ir;
 mod parse;
 mod run;
+mod utilities;
 mod validation;
 
 use arguments::Arguments;
@@ -21,10 +22,8 @@ use std::{
     path::{Path, PathBuf},
     process::exit,
 };
-use tokio::{
-    fs::{self, File},
-    io::AsyncReadExt,
-};
+
+use utilities::{canonicalize_path, read_file};
 use validation::{validate_configuration, validate_modules};
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
@@ -51,28 +50,25 @@ async fn execute() -> Result<(), Box<dyn Error>> {
 
     validate_configuration(&configuration)?;
 
-    run(
-        &configuration,
-        &configuration
-            .build_directory()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| root_module_path.parent().unwrap().into()),
-        arguments.job_limit,
-    )
-    .await?;
+    let build_directory = configuration
+        .build_directory()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| root_module_path.parent().unwrap().into());
+
+    run(configuration, &build_directory, arguments.job_limit).await?;
 
     Ok(())
 }
 
 async fn read_modules(
     path: &Path,
-) -> Result<(HashMap<PathBuf, Module>, ModuleDependencyMap), Box<dyn Error>> {
+) -> Result<(HashMap<PathBuf, Module>, ModuleDependencyMap), InfrastructureError> {
     let mut paths = vec![canonicalize_path(path).await?];
     let mut modules = HashMap::new();
     let mut dependencies = HashMap::new();
 
     while let Some(path) = paths.pop() {
-        let module = read_module(&path).await?;
+        let module = parse(&read_file(&path).await?)?;
 
         let submodule_paths = try_join_all(
             module
@@ -107,23 +103,4 @@ async fn resolve_submodule_path(
         submodule_path.into(),
         canonicalize_path(module_path.parent().unwrap().join(submodule_path)).await?,
     ))
-}
-
-async fn read_module(path: &Path) -> Result<Module, Box<dyn Error>> {
-    let mut source = "".into();
-
-    File::open(path)
-        .await
-        .map_err(|error| InfrastructureError::with_path(error, path))?
-        .read_to_string(&mut source)
-        .await
-        .map_err(|error| InfrastructureError::with_path(error, path))?;
-
-    Ok(parse(&source)?)
-}
-
-async fn canonicalize_path(path: impl AsRef<Path>) -> Result<PathBuf, InfrastructureError> {
-    fs::canonicalize(&path)
-        .await
-        .map_err(|error| InfrastructureError::with_path(error, path))
 }

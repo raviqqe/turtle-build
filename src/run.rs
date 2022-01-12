@@ -42,7 +42,6 @@ pub async fn run(
         Semaphore::new(job_limit.unwrap_or_else(num_cpus::get)),
     ));
 
-    // Create futures for all builds required by default outputs sequentially.
     for output in context.configuration().default_outputs() {
         create_build_future(
             &context,
@@ -56,7 +55,7 @@ pub async fn run(
         .await?;
     }
 
-    // Do not inline this to avoid borrowing lock of builds.
+    // Do not inline this to avoid borrowing a lock of builds.
     let futures = context
         .builds()
         .read()

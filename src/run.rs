@@ -71,14 +71,15 @@ pub async fn run(
     Ok(())
 }
 
-// TODO Make this function thread-safe.
 #[async_recursion]
 async fn create_build_future(
     context: &Arc<Context>,
     output: &str,
     build: &Arc<Build>,
 ) -> Result<(), InfrastructureError> {
-    if context.builds().read().await.contains_key(build.id()) {
+    let mut builds = context.builds().write().await;
+
+    if builds.contains_key(build.id()) {
         return Ok(());
     }
 
@@ -154,11 +155,7 @@ async fn create_build_future(
         raw.shared()
     };
 
-    context
-        .builds()
-        .write()
-        .await
-        .insert(build.id().into(), future);
+    builds.insert(build.id().into(), future);
 
     Ok(())
 }

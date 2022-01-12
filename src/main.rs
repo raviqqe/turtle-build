@@ -65,7 +65,7 @@ async fn execute() -> Result<(), Box<dyn Error>> {
 
 async fn read_modules(
     path: &Path,
-) -> Result<(HashMap<PathBuf, Module>, ModuleDependencyMap), Box<dyn Error>> {
+) -> Result<(HashMap<PathBuf, Module>, ModuleDependencyMap), InfrastructureError> {
     let mut paths = vec![canonicalize_path(path).await?];
     let mut modules = HashMap::new();
     let mut dependencies = HashMap::new();

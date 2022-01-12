@@ -109,7 +109,7 @@ async fn spawn_build_future(
 
                     context.builds().read().await[build.id()].clone()
                 } else {
-                    // TODO Register this future as a build job of the input.
+                    // TODO Consider registering this future as a build job of the input.
                     let raw: RawBuildFuture = Box::pin(check_leaf_input(input.to_string()));
                     raw.shared()
                 },

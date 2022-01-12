@@ -12,7 +12,7 @@ use crate::{
 use async_recursion::async_recursion;
 use futures::future::{join_all, FutureExt, Shared};
 use std::{
-    collections::{hash_map::DefaultHasher, HashMap},
+    collections::hash_map::DefaultHasher,
     future::{ready, Future},
     hash::{Hash, Hasher},
     path::Path,
@@ -25,33 +25,30 @@ use tokio::{
     io::{stderr, AsyncWriteExt},
     process::Command,
     spawn,
-    sync::{RwLock, Semaphore},
+    sync::Semaphore,
 };
 
 type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), InfrastructureError>> + Send>>;
 type BuildFuture = Shared<RawBuildFuture>;
 
 pub async fn run(
-    configuration: &Configuration,
+    configuration: Configuration,
     build_directory: &Path,
     job_limit: Option<usize>,
 ) -> Result<(), InfrastructureError> {
-    let context = Context::new(
+    let context = Arc::new(Context::new(
+        configuration,
         BuildDatabase::new(build_directory)?,
         Semaphore::new(job_limit.unwrap_or_else(num_cpus::get)),
-    )
-    .into();
-    let configuration = Arc::new(configuration.clone());
-    let builds = Arc::new(RwLock::new(HashMap::new()));
+    ));
 
     // Create futures for all builds required by default outputs sequentially.
-    for output in configuration.default_outputs() {
+    for output in context.configuration().default_outputs() {
         create_build_future(
             &context,
-            &configuration,
-            &builds,
             output,
-            configuration
+            context
+                .configuration()
                 .outputs()
                 .get(output)
                 .ok_or_else(|| InfrastructureError::DefaultOutputNotFound(output.into()))?,
@@ -61,7 +58,7 @@ pub async fn run(
 
     // Start running build futures actually.
     // TODO Consider await only builds of default outputs.
-    select_builds(builds.read().await.values().cloned()).await?;
+    select_builds(context.builds().read().await.values().cloned()).await?;
 
     Ok(())
 }
@@ -69,40 +66,35 @@ pub async fn run(
 #[async_recursion]
 async fn create_build_future(
     context: &Arc<Context>,
-    configuration: &Arc<Configuration>,
-    builds: &Arc<RwLock<HashMap<String, BuildFuture>>>,
     output: &str,
     build: &Arc<Build>,
 ) -> Result<(), InfrastructureError> {
-    if builds.read().await.contains_key(build.id()) {
+    if context.builds().read().await.contains_key(build.id()) {
         return Ok(());
     }
 
     let mut inputs = vec![];
 
     for input in build.inputs().iter().chain(build.order_only_inputs()) {
-        inputs.push(if let Some(build) = configuration.outputs().get(input) {
-            create_build_future(context, configuration, builds, input, build).await?;
+        inputs.push(
+            if let Some(build) = context.configuration().outputs().get(input) {
+                create_build_future(context, input, build).await?;
 
-            builds.read().await[build.id()].clone()
-        } else {
-            let input = input.to_string();
-            let raw: RawBuildFuture = Box::pin(async move { run_leaf_input(&input).await });
-            raw.shared()
-        });
+                context.builds().read().await[build.id()].clone()
+            } else {
+                let input = input.to_string();
+                let raw: RawBuildFuture = Box::pin(async move { run_leaf_input(&input).await });
+                raw.shared()
+            },
+        );
     }
 
     let future = {
-        let environment = (
-            context.clone(),
-            output.to_string(),
-            build.clone(),
-            configuration.clone(),
-            builds.clone(),
-        );
+        let environment = (context.clone(), output.to_string(), build.clone());
+
         let raw: RawBuildFuture = Box::pin(async move {
             spawn(async {
-                let (context, output, build, configuration, builds) = environment;
+                let (context, output, build) = environment;
 
                 select_builds(inputs).await?;
 
@@ -122,11 +114,11 @@ async fn create_build_future(
                 let mut dynamic_input_futures = vec![];
 
                 for input in dynamic_inputs {
-                    let build = &configuration.outputs()[input];
+                    let build = &context.configuration().outputs()[input];
 
-                    create_build_future(&context, &configuration, &builds, input, build).await?;
+                    create_build_future(&context, input, build).await?;
 
-                    dynamic_input_futures.push(builds.read().await[build.id()].clone());
+                    dynamic_input_futures.push(context.builds().read().await[build.id()].clone());
                 }
 
                 select_builds(dynamic_input_futures).await?;
@@ -150,7 +142,11 @@ async fn create_build_future(
         raw.shared()
     };
 
-    builds.write().await.insert(build.id().into(), future);
+    context
+        .builds()
+        .write()
+        .await
+        .insert(build.id().into(), future);
 
     Ok(())
 }

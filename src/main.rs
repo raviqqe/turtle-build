@@ -50,15 +50,12 @@ async fn execute() -> Result<(), Box<dyn Error>> {
 
     validate_configuration(&configuration)?;
 
-    run(
-        &configuration,
-        &configuration
-            .build_directory()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| root_module_path.parent().unwrap().into()),
-        arguments.job_limit,
-    )
-    .await?;
+    let build_directory = configuration
+        .build_directory()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| root_module_path.parent().unwrap().into());
+
+    run(configuration, &build_directory, arguments.job_limit).await?;
 
     Ok(())
 }

@@ -91,7 +91,7 @@ async fn create_build_future(
         let handle = spawn(async move {
             let (context, build) = environment;
 
-            select_builds(inputs.iter().cloned().collect::<Vec<_>>()).await?;
+            select_builds(inputs).await?;
 
             let hash = hash_build(&build).await?;
 

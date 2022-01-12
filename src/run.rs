@@ -41,13 +41,14 @@ pub async fn run(
         Semaphore::new(job_limit.unwrap_or_else(num_cpus::get)),
     )
     .into();
+    let configuration = Arc::new(configuration.clone());
     let builds = Arc::new(RwLock::new(HashMap::new()));
 
     // Create futures for all builds required by default outputs sequentially.
     for output in configuration.default_outputs() {
         create_build_future(
             &context,
-            configuration,
+            &configuration,
             &builds,
             output,
             configuration
@@ -68,7 +69,7 @@ pub async fn run(
 #[async_recursion]
 async fn create_build_future(
     context: &Arc<Context>,
-    configuration: &Configuration,
+    configuration: &Arc<Configuration>,
     builds: &Arc<RwLock<HashMap<String, BuildFuture>>>,
     output: &str,
     build: &Arc<Build>,
@@ -92,43 +93,60 @@ async fn create_build_future(
     }
 
     let future = {
-        let environment = (context.clone(), output.to_string(), build.clone());
-        let handle = spawn(async move {
-            let (context, output, build) = environment;
+        let environment = (
+            context.clone(),
+            output.to_string(),
+            build.clone(),
+            configuration.clone(),
+            builds.clone(),
+        );
+        let raw: RawBuildFuture = Box::pin(async move {
+            spawn(async {
+                let (context, output, build, configuration, builds) = environment;
 
-            select_builds(inputs).await?;
+                select_builds(inputs).await?;
 
-            // TODO Consider caching dynamic modules.
-            let dynamic_configuration = if let Some(dynamic_module) = build.dynamic_module() {
-                Some(compile_dynamic(&parse_dynamic(
-                    &read_file(&dynamic_module).await?,
-                )?)?)
-            } else {
-                None
-            };
-
-            let hash = hash_build(
-                &build,
-                dynamic_configuration
+                // TODO Consider caching dynamic modules.
+                let dynamic_configuration = if let Some(dynamic_module) = build.dynamic_module() {
+                    Some(compile_dynamic(&parse_dynamic(
+                        &read_file(&dynamic_module).await?,
+                    )?)?)
+                } else {
+                    None
+                };
+                let dynamic_inputs = dynamic_configuration
                     .as_ref()
                     .map(|configuration| configuration.outputs()[&output].inputs())
-                    .unwrap_or_default(),
-            )
-            .await?;
+                    .unwrap_or_default();
 
-            if hash != context.database().get(build.id())? {
-                if let Some(rule) = build.rule() {
-                    let permit = context.job_semaphore().acquire().await?;
-                    run_command(rule.command()).await?;
-                    drop(permit);
+                let mut dynamic_input_futures = vec![];
+
+                for input in dynamic_inputs {
+                    let build = &configuration.outputs()[input];
+
+                    create_build_future(&context, &configuration, &builds, input, build).await?;
+
+                    dynamic_input_futures.push(builds.read().await[build.id()].clone());
                 }
 
-                context.database().set(build.id(), hash)?;
-            }
+                select_builds(dynamic_input_futures).await?;
 
-            Ok(())
+                let hash = hash_build(&build, dynamic_inputs).await?;
+
+                if hash != context.database().get(build.id())? {
+                    if let Some(rule) = build.rule() {
+                        let permit = context.job_semaphore().acquire().await?;
+                        run_command(rule.command()).await?;
+                        drop(permit);
+                    }
+
+                    context.database().set(build.id(), hash)?;
+                }
+
+                Ok(())
+            })
+            .await?
         });
-        let raw: RawBuildFuture = Box::pin(async move { handle.await? });
         raw.shared()
     };
 

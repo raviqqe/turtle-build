@@ -12,6 +12,8 @@
     "reimplementation",
     "rsplit",
     "subninja",
+    "tempdir",
+    "tempfile",
     "toposort"
   ]
 }

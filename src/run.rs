@@ -71,6 +71,7 @@ pub async fn run(
     Ok(())
 }
 
+// TODO Make this function thread-safe.
 #[async_recursion]
 async fn create_build_future(
     context: &Arc<Context>,
@@ -116,6 +117,8 @@ async fn create_build_future(
                 };
                 let dynamic_inputs = dynamic_configuration
                     .as_ref()
+                    // TODO Collect all inputs of build outputs.
+                    // TODO Save outputs in IR builds.
                     .map(|configuration| configuration.outputs()[&output].inputs())
                     .unwrap_or_default();
 

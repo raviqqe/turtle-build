@@ -56,9 +56,17 @@ pub async fn run(
         .await?;
     }
 
+    let futures = context
+        .builds()
+        .read()
+        .await
+        .values()
+        .cloned()
+        .collect::<Vec<_>>();
+
     // Start running build futures actually.
     // TODO Consider await only builds of default outputs.
-    select_builds(context.builds().read().await.values().cloned()).await?;
+    select_builds(futures).await?;
 
     Ok(())
 }

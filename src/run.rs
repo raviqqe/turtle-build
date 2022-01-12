@@ -10,7 +10,7 @@ use crate::{
     utilities::read_file,
 };
 use async_recursion::async_recursion;
-use futures::future::{join_all, FutureExt, Shared};
+use futures::future::{join_all, try_join_all, FutureExt, Shared};
 use std::{
     collections::hash_map::DefaultHasher,
     future::{ready, Future},
@@ -194,11 +194,9 @@ async fn get_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, Infrastruct
 async fn select_builds(
     builds: impl IntoIterator<Item = BuildFuture>,
 ) -> Result<(), InfrastructureError> {
-    let future: Pin<Box<dyn Future<Output = _> + Send>> = Box::pin(ready(Ok(())));
+    let future: RawBuildFuture = Box::pin(ready(Ok(())));
 
-    for result in join_all(builds.into_iter().chain([future.shared()])).await {
-        result?;
-    }
+    try_join_all(builds.into_iter().chain([future.shared()])).await?;
 
     Ok(())
 }

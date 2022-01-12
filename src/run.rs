@@ -83,81 +83,83 @@ async fn create_build_future(
         return Ok(());
     }
 
-    let future = {
-        let environment = (context.clone(), output.to_string(), build.clone());
+    let future: RawBuildFuture = Box::pin(spawn_build_future(
+        context.clone(),
+        output.to_string(),
+        build.clone(),
+    ));
 
-        let raw: RawBuildFuture = Box::pin(async move {
-            spawn(async {
-                let (context, output, build) = environment;
-
-                let mut inputs = vec![];
-
-                for input in build.inputs().iter().chain(build.order_only_inputs()) {
-                    inputs.push(
-                        if let Some(build) = context.configuration().outputs().get(input) {
-                            create_build_future(&context, input, build).await?;
-
-                            context.builds().read().await[build.id()].clone()
-                        } else {
-                            let input = input.to_string();
-                            let raw: RawBuildFuture =
-                                Box::pin(async move { run_leaf_input(&input).await });
-                            raw.shared()
-                        },
-                    );
-                }
-
-                select_builds(inputs).await?;
-
-                // TODO Consider caching dynamic modules.
-                let dynamic_configuration = if let Some(dynamic_module) = build.dynamic_module() {
-                    Some(compile_dynamic(&parse_dynamic(
-                        &read_file(&dynamic_module).await?,
-                    )?)?)
-                } else {
-                    None
-                };
-                let dynamic_inputs = dynamic_configuration
-                    .as_ref()
-                    // TODO Collect all inputs of build outputs.
-                    // TODO Save outputs in IR builds.
-                    .map(|configuration| configuration.outputs()[&output].inputs())
-                    .unwrap_or_default();
-
-                let mut dynamic_input_futures = vec![];
-
-                for input in dynamic_inputs {
-                    let build = &context.configuration().outputs()[input];
-
-                    create_build_future(&context, input, build).await?;
-
-                    dynamic_input_futures.push(context.builds().read().await[build.id()].clone());
-                }
-
-                select_builds(dynamic_input_futures).await?;
-
-                let hash = hash_build(&build, dynamic_inputs).await?;
-
-                if hash != context.database().get(build.id())? {
-                    if let Some(rule) = build.rule() {
-                        let permit = context.job_semaphore().acquire().await?;
-                        run_command(rule.command()).await?;
-                        drop(permit);
-                    }
-
-                    context.database().set(build.id(), hash)?;
-                }
-
-                Ok(())
-            })
-            .await?
-        });
-        raw.shared()
-    };
-
-    builds.insert(build.id().into(), future);
+    builds.insert(build.id().into(), future.shared());
 
     Ok(())
+}
+
+async fn spawn_build_future(
+    context: Arc<Context>,
+    output: String,
+    build: Arc<Build>,
+) -> Result<(), InfrastructureError> {
+    spawn(async move {
+        let mut inputs = vec![];
+
+        for input in build.inputs().iter().chain(build.order_only_inputs()) {
+            inputs.push(
+                if let Some(build) = context.configuration().outputs().get(input) {
+                    create_build_future(&context, input, build).await?;
+
+                    context.builds().read().await[build.id()].clone()
+                } else {
+                    let input = input.to_string();
+                    let raw: RawBuildFuture = Box::pin(async move { run_leaf_input(&input).await });
+                    raw.shared()
+                },
+            );
+        }
+
+        select_builds(inputs).await?;
+
+        // TODO Consider caching dynamic modules.
+        let dynamic_configuration = if let Some(dynamic_module) = build.dynamic_module() {
+            Some(compile_dynamic(&parse_dynamic(
+                &read_file(&dynamic_module).await?,
+            )?)?)
+        } else {
+            None
+        };
+        let dynamic_inputs = dynamic_configuration
+    .as_ref()
+    // TODO Collect all inputs of build outputs.
+    // TODO Save outputs in IR builds.
+    .map(|configuration| configuration.outputs()[&output].inputs())
+    .unwrap_or_default();
+
+        let mut dynamic_input_futures = vec![];
+
+        for input in dynamic_inputs {
+            let build = &context.configuration().outputs()[input];
+
+            create_build_future(&context, input, build).await?;
+
+            dynamic_input_futures.push(context.builds().read().await[build.id()].clone());
+        }
+
+        select_builds(dynamic_input_futures).await?;
+
+        let hash = hash_build(&build, dynamic_inputs).await?;
+
+        if hash != context.database().get(build.id())? {
+            if let Some(rule) = build.rule() {
+                let permit = context.job_semaphore().acquire().await?;
+                run_command(rule.command()).await?;
+                drop(permit);
+            }
+
+            context.database().set(build.id(), hash)?;
+        }
+
+        Ok(())
+    })
+    .await?
 }
 
 async fn hash_build(build: &Build, dynamic_inputs: &[String]) -> Result<u64, InfrastructureError> {

@@ -1,3 +1,4 @@
+use crate::parse::ParseError;
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
@@ -10,6 +11,7 @@ pub enum InfrastructureError {
     CommandExit(String, Option<i32>),
     DefaultOutputNotFound(String),
     Other(String),
+    Parse(ParseError),
     Sled(sled::Error),
 }
 
@@ -40,6 +42,7 @@ impl Display for InfrastructureError {
                 write!(formatter, "default output \"{}\" not found", output)
             }
             Self::Other(message) => write!(formatter, "{}", message),
+            Self::Parse(error) => write!(formatter, "{}", error),
             Self::Sled(error) => write!(formatter, "{}", error),
         }
     }
@@ -59,6 +62,12 @@ impl From<io::Error> for InfrastructureError {
 
 impl From<JoinError> for InfrastructureError {
     fn from(error: JoinError) -> Self {
+        Self::Other(format!("{}", &error))
+    }
+}
+
+impl From<ParseError> for InfrastructureError {
+    fn from(error: ParseError) -> Self {
         Self::Other(format!("{}", &error))
     }
 }

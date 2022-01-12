@@ -2,8 +2,8 @@ mod error;
 mod parsers;
 mod stream;
 
+pub use self::error::ParseError;
 use self::{
-    error::ParseError,
     parsers::{dynamic_module, module},
     stream::stream,
 };

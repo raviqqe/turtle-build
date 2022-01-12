@@ -5,8 +5,9 @@ use tokio::{
     io::AsyncReadExt,
 };
 
-pub async fn read_file(path: &Path) -> Result<String, InfrastructureError> {
+pub async fn read_file(path: impl AsRef<Path>) -> Result<String, InfrastructureError> {
     let mut source = "".into();
+    let path = path.as_ref();
 
     File::open(path)
         .await

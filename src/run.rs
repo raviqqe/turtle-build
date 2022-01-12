@@ -101,9 +101,9 @@ async fn create_build_future(
                     run_command(rule.command()).await?;
                     drop(permit);
                 }
-            }
 
-            context.database().set(build.id(), hash)?;
+                context.database().set(build.id(), hash)?;
+            }
 
             Ok(())
         });

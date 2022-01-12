@@ -126,12 +126,12 @@ async fn spawn_build_future(
         } else {
             None
         };
+        // TODO Collect all inputs of build outputs.
+        // TODO Save outputs in IR builds.
         let dynamic_inputs = dynamic_configuration
-    .as_ref()
-    // TODO Collect all inputs of build outputs.
-    // TODO Save outputs in IR builds.
-    .map(|configuration| configuration.outputs()[&output].inputs())
-    .unwrap_or_default();
+            .as_ref()
+            .map(|configuration| configuration.outputs()[&output].inputs())
+            .unwrap_or_default();
 
         let mut dynamic_input_futures = vec![];
 

@@ -3,8 +3,11 @@ mod context;
 
 use self::{build_database::BuildDatabase, context::Context};
 use crate::{
+    compile::compile_dynamic,
     error::InfrastructureError,
     ir::{Build, Configuration, Rule},
+    parse::parse_dynamic,
+    utilities::read_file,
 };
 use async_recursion::async_recursion;
 use futures::future::{join_all, FutureExt, Shared};
@@ -46,6 +49,7 @@ pub async fn run(
             &context,
             configuration,
             &builds,
+            output,
             configuration
                 .outputs()
                 .get(output)
@@ -66,6 +70,7 @@ async fn create_build_future(
     context: &Arc<Context>,
     configuration: &Configuration,
     builds: &Arc<RwLock<HashMap<String, BuildFuture>>>,
+    output: &str,
     build: &Arc<Build>,
 ) -> Result<(), InfrastructureError> {
     if builds.read().await.contains_key(build.id()) {
@@ -76,7 +81,7 @@ async fn create_build_future(
 
     for input in build.inputs().iter().chain(build.order_only_inputs()) {
         inputs.push(if let Some(build) = configuration.outputs().get(input) {
-            create_build_future(context, configuration, builds, build).await?;
+            create_build_future(context, configuration, builds, input, build).await?;
 
             builds.read().await[build.id()].clone()
         } else {
@@ -87,13 +92,29 @@ async fn create_build_future(
     }
 
     let future = {
-        let environment = (context.clone(), build.clone());
+        let environment = (context.clone(), output.to_string(), build.clone());
         let handle = spawn(async move {
-            let (context, build) = environment;
+            let (context, output, build) = environment;
 
             select_builds(inputs).await?;
 
-            let hash = hash_build(&build).await?;
+            // TODO Consider caching dynamic modules.
+            let dynamic_configuration = if let Some(dynamic_module) = build.dynamic_module() {
+                Some(compile_dynamic(&parse_dynamic(
+                    &read_file(&dynamic_module).await?,
+                )?)?)
+            } else {
+                None
+            };
+
+            let hash = hash_build(
+                &build,
+                dynamic_configuration
+                    .as_ref()
+                    .map(|configuration| configuration.outputs()[&output].inputs())
+                    .unwrap_or_default(),
+            )
+            .await?;
 
             if hash != context.database().get(build.id())? {
                 if let Some(rule) = build.rule() {
@@ -116,15 +137,21 @@ async fn create_build_future(
     Ok(())
 }
 
-async fn hash_build(build: &Build) -> Result<u64, InfrastructureError> {
+async fn hash_build(build: &Build, dynamic_inputs: &[String]) -> Result<u64, InfrastructureError> {
     let mut hasher = DefaultHasher::new();
 
     build.rule().map(Rule::command).hash(&mut hasher);
-    join_all(build.inputs().iter().map(get_timestamp))
-        .await
-        .into_iter()
-        .collect::<Result<Vec<SystemTime>, _>>()?
-        .hash(&mut hasher);
+    join_all(
+        build
+            .inputs()
+            .iter()
+            .chain(dynamic_inputs)
+            .map(get_timestamp),
+    )
+    .await
+    .into_iter()
+    .collect::<Result<Vec<SystemTime>, _>>()?
+    .hash(&mut hasher);
 
     Ok(hasher.finish())
 }

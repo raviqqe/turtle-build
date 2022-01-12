@@ -25,7 +25,7 @@ pub fn dynamic_module<'a>() -> impl Parser<Stream<'a>, Output = DynamicModule> {
         many(dynamic_build()),
     )
         .skip(eof())
-        .map(|(_, version, builds)| DynamicModule::new(version, builds))
+        .map(|(_, _, builds)| DynamicModule::new(builds))
 }
 
 fn statement<'a>() -> impl Parser<Stream<'a>, Output = Statement> {
@@ -258,14 +258,14 @@ mod tests {
                 .parse(stream("ninja_dyndep_version = 1\n"))
                 .unwrap()
                 .0,
-            DynamicModule::new("1", vec![])
+            DynamicModule::new(vec![])
         );
         assert_eq!(
             dynamic_module()
                 .parse(stream("ninja_dyndep_version = 1\nbuild foo: dyndep\n"))
                 .unwrap()
                 .0,
-            DynamicModule::new("1", vec![DynamicBuild::new("foo", vec![])])
+            DynamicModule::new(vec![DynamicBuild::new("foo", vec![])])
         );
         assert_eq!(
             dynamic_module()
@@ -274,13 +274,10 @@ mod tests {
                 ))
                 .unwrap()
                 .0,
-            DynamicModule::new(
-                "1",
-                vec![
-                    DynamicBuild::new("foo", vec![]),
-                    DynamicBuild::new("bar", vec![])
-                ]
-            )
+            DynamicModule::new(vec![
+                DynamicBuild::new("foo", vec![]),
+                DynamicBuild::new("bar", vec![])
+            ])
         );
     }
 

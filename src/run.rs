@@ -82,28 +82,29 @@ async fn create_build_future(
         return Ok(());
     }
 
-    let mut inputs = vec![];
-
-    for input in build.inputs().iter().chain(build.order_only_inputs()) {
-        inputs.push(
-            if let Some(build) = context.configuration().outputs().get(input) {
-                create_build_future(context, input, build).await?;
-
-                context.builds().read().await[build.id()].clone()
-            } else {
-                let input = input.to_string();
-                let raw: RawBuildFuture = Box::pin(async move { run_leaf_input(&input).await });
-                raw.shared()
-            },
-        );
-    }
-
     let future = {
         let environment = (context.clone(), output.to_string(), build.clone());
 
         let raw: RawBuildFuture = Box::pin(async move {
             spawn(async {
                 let (context, output, build) = environment;
+
+                let mut inputs = vec![];
+
+                for input in build.inputs().iter().chain(build.order_only_inputs()) {
+                    inputs.push(
+                        if let Some(build) = context.configuration().outputs().get(input) {
+                            create_build_future(&context, input, build).await?;
+
+                            context.builds().read().await[build.id()].clone()
+                        } else {
+                            let input = input.to_string();
+                            let raw: RawBuildFuture =
+                                Box::pin(async move { run_leaf_input(&input).await });
+                            raw.shared()
+                        },
+                    );
+                }
 
                 select_builds(inputs).await?;
 

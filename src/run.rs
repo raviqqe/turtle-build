@@ -56,6 +56,7 @@ pub async fn run(
         .await?;
     }
 
+    // Do not inline this to avoid borrowing lock of builds.
     let futures = context
         .builds()
         .read()
@@ -65,7 +66,6 @@ pub async fn run(
         .collect::<Vec<_>>();
 
     // Start running build futures actually.
-    // TODO Consider await only builds of default outputs.
     select_builds(futures).await?;
 
     Ok(())
@@ -77,6 +77,7 @@ async fn create_build_future(
     output: &str,
     build: &Arc<Build>,
 ) -> Result<(), InfrastructureError> {
+    // Exclusive lock for atomic addition of a build job.
     let mut builds = context.builds().write().await;
 
     if builds.contains_key(build.id()) {

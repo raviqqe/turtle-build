@@ -109,8 +109,8 @@ async fn spawn_build_future(
 
                     context.builds().read().await[build.id()].clone()
                 } else {
-                    let input = input.to_string();
-                    let raw: RawBuildFuture = Box::pin(async move { run_leaf_input(&input).await });
+                    // TODO Register this future as a build job of the input.
+                    let raw: RawBuildFuture = Box::pin(run_leaf_input(input.to_string()));
                     raw.shared()
                 },
             );
@@ -203,10 +203,10 @@ async fn select_builds(
     Ok(())
 }
 
-async fn run_leaf_input(output: &str) -> Result<(), InfrastructureError> {
-    metadata(output)
+async fn run_leaf_input(output: String) -> Result<(), InfrastructureError> {
+    metadata(&output)
         .await
-        .map_err(|error| InfrastructureError::with_path(error, output))?;
+        .map_err(|error| InfrastructureError::with_path(error, &output))?;
 
     Ok(())
 }

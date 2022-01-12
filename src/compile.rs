@@ -4,11 +4,10 @@ mod error;
 mod global_state;
 mod module_state;
 
-pub use self::context::ModuleDependencyMap;
-pub use self::error::CompileError;
 use self::{
     chain_map::ChainMap, context::Context, global_state::GlobalState, module_state::ModuleState,
 };
+pub use self::{context::ModuleDependencyMap, error::CompileError};
 use crate::{
     ast,
     ir::{Build, Configuration, DynamicBuild, DynamicConfiguration, Rule},
@@ -170,7 +169,7 @@ pub fn compile_dynamic(module: &ast::DynamicModule) -> Result<DynamicConfigurati
             .map(|build| {
                 (
                     build.output().into(),
-                    DynamicBuild::new(build.implicit_inputs().iter().cloned().collect()),
+                    DynamicBuild::new(build.implicit_inputs().to_vec()),
                 )
             })
             .collect(),

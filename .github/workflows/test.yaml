@@ -37,5 +37,5 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: ruby/setup-ruby@v1
-      - run: cp $(which ninja) target/release/turtle
+      - run: cp tools/turtle.sh target/release/turtle
       - run: tools/integration_test.sh

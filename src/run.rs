@@ -147,14 +147,9 @@ async fn spawn_build_future(
         let hash = hash_build(&build, dynamic_inputs).await?;
 
         if hash == context.database().get(build.id())?
-            && try_join_all(
-                build
-                    .outputs()
-                    .iter()
-                    .map(|output| check_file_existence(&output)),
-            )
-            .await
-            .is_ok()
+            && try_join_all(build.outputs().iter().map(check_file_existence))
+                .await
+                .is_ok()
         {
             return Ok(());
         } else if let Some(rule) = build.rule() {
@@ -209,10 +204,12 @@ async fn join_builds(
     Ok(())
 }
 
-async fn check_file_existence(path: &str) -> Result<(), InfrastructureError> {
-    metadata(&path)
+async fn check_file_existence(path: impl AsRef<Path>) -> Result<(), InfrastructureError> {
+    let path = path.as_ref();
+
+    metadata(path)
         .await
-        .map_err(|error| InfrastructureError::with_path(error, &path))?;
+        .map_err(|error| InfrastructureError::with_path(error, path))?;
 
     Ok(())
 }

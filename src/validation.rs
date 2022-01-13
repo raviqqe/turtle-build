@@ -221,8 +221,7 @@ mod tests {
                         ),
                         (
                             "bar".into(),
-                            ir_explicit_build("", Rule::new("", "").into(), vec!["foo".into()])
-                                .into()
+                            ir_explicit_build("", Rule::new("", ""), vec!["foo".into()]).into()
                         )
                     ]
                     .into_iter()

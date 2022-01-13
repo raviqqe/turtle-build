@@ -225,12 +225,6 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
 
     let mut console = context.console().lock().await;
 
-    console
-        .stderr()
-        .write_all(rule.command().as_bytes())
-        .await?;
-    console.stderr().write_all("\n".as_bytes()).await?;
-
     if let Some(description) = rule.description() {
         console.stderr().write_all(description.as_bytes()).await?;
         console.stderr().write_all("\n".as_bytes()).await?;

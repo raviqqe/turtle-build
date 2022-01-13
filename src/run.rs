@@ -1,4 +1,5 @@
 mod build_database;
+mod console;
 mod context;
 
 use self::{build_database::BuildDatabase, context::Context};
@@ -20,13 +21,7 @@ use std::{
     sync::Arc,
     time::SystemTime,
 };
-use tokio::{
-    fs::metadata,
-    io::{stderr, AsyncWriteExt},
-    process::Command,
-    spawn,
-    sync::Semaphore,
-};
+use tokio::{fs::metadata, io::AsyncWriteExt, process::Command, spawn, sync::Semaphore};
 
 type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), InfrastructureError>> + Send>>;
 type BuildFuture = Shared<RawBuildFuture>;
@@ -159,9 +154,7 @@ async fn spawn_build_future(
         {
             return Ok(());
         } else if let Some(rule) = build.rule() {
-            let permit = context.job_semaphore().acquire().await?;
-            run_command(rule.command()).await?;
-            drop(permit);
+            run_command(&context, rule.command()).await?;
         }
 
         context.database().set(build.id(), hash)?;
@@ -220,24 +213,27 @@ async fn check_file_existence(path: impl AsRef<Path>) -> Result<(), Infrastructu
     Ok(())
 }
 
-async fn run_command(command: &str) -> Result<(), InfrastructureError> {
+async fn run_command(context: &Context, command: &str) -> Result<(), InfrastructureError> {
+    let permit = context.job_semaphore().acquire().await?;
     let output = Command::new("sh")
         .arg("-e")
         .arg("-c")
         .arg(command)
         .output()
         .await?;
+    drop(permit);
 
-    stderr().write_all(&output.stdout).await?;
+    let mut console = context.console().lock().await;
 
-    if output.status.success() {
-        Ok(())
-    } else {
-        stderr().write_all(&output.stderr).await?;
+    console.stdout().write_all(&output.stdout).await?;
+    console.stderr().write_all(&output.stderr).await?;
 
-        Err(InfrastructureError::CommandExit(
+    if !output.status.success() {
+        return Err(InfrastructureError::CommandExit(
             command.into(),
             output.status.code(),
-        ))
+        ));
     }
+
+    Ok(())
 }

@@ -12,7 +12,7 @@ Feature: Default statement
 
     """
     When I successfully run `turtle`
-    Then the stderr should contain exactly "hello"
+    Then the stdout should contain exactly "hello"
 
   Scenario: Build a default output in a child build file
     Given a file named "build.ninja" with:
@@ -32,4 +32,4 @@ Feature: Default statement
 
     """
     When I successfully run `turtle`
-    Then the stderr should contain exactly "hello"
+    Then the stdout should contain exactly "hello"

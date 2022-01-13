@@ -18,7 +18,7 @@ Feature: Others
     And a file named "bar" with ""
     When I successfully run `turtle`
     And I successfully run `turtle`
-    Then the stderr should contain exactly "hello"
+    Then the stdout should contain exactly "hello"
 
   Scenario: Rebuild a stale output
     Given a file named "build.ninja" with:
@@ -33,7 +33,7 @@ Feature: Others
     When I successfully run `turtle`
     And I successfully run `touch bar`
     And I successfully run `turtle`
-    Then the stderr should contain exactly:
+    Then the stdout should contain exactly:
     """
     hello
     hello
@@ -53,7 +53,7 @@ Feature: Others
     When I successfully run `turtle`
     And I successfully run `touch baz`
     And I successfully run `turtle`
-    Then the stderr should contain exactly:
+    Then the stdout should contain exactly:
     """
     hello
     hello
@@ -71,7 +71,7 @@ Feature: Others
 
     """
     When I successfully run `turtle -f foo.ninja`
-    Then the stderr should contain exactly "hello"
+    Then the stdout should contain exactly "hello"
 
   Scenario: Rerun a failed rule
     Given a file named "build.ninja" with:

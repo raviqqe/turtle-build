@@ -14,7 +14,7 @@ Feature: Dynamic dependency
     """
     And a file named "bar" with ""
     When I successfully run `turtle`
-    Then the stderr should contain exactly "ok"
+    Then the stdout should contain exactly "ok"
 
   Scenario: Use a dyndep file with an addtional input
     Given a file named "build.ninja" with:
@@ -34,4 +34,4 @@ Feature: Dynamic dependency
     """
     And a file named "baz" with ""
     When I successfully run `turtle`
-    Then the stderr should contain exactly "ok"
+    Then the stdout should contain exactly "ok"

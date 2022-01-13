@@ -92,7 +92,7 @@ mod tests {
                 validate_configuration(&Configuration::new(
                     [(
                         "foo".into(),
-                        ir_explicit_build("", Rule::new("", ""), vec![]).into()
+                        ir_explicit_build("", Rule::new("", None), vec![]).into()
                     )]
                     .into_iter()
                     .collect(),
@@ -109,7 +109,7 @@ mod tests {
                 validate_configuration(&Configuration::new(
                     [(
                         "foo".into(),
-                        ir_explicit_build("", Rule::new("", ""), vec!["bar".into()]).into()
+                        ir_explicit_build("", Rule::new("", None), vec!["bar".into()]).into()
                     )]
                     .into_iter()
                     .collect(),
@@ -130,7 +130,7 @@ mod tests {
                             "",
                             vec![],
                             vec![],
-                            Rule::new("", "").into(),
+                            Rule::new("", None).into(),
                             vec![],
                             vec!["bar".into()],
                             None
@@ -152,7 +152,7 @@ mod tests {
                 validate_configuration(&Configuration::new(
                     [(
                         "foo".into(),
-                        ir_explicit_build("", Rule::new("", ""), vec!["foo".into()]).into()
+                        ir_explicit_build("", Rule::new("", None), vec!["foo".into()]).into()
                     )]
                     .into_iter()
                     .collect(),
@@ -173,7 +173,7 @@ mod tests {
                             "",
                             vec![],
                             vec![],
-                            Rule::new("", "").into(),
+                            Rule::new("", None).into(),
                             vec![],
                             vec!["foo".into()],
                             None
@@ -196,11 +196,11 @@ mod tests {
                     [
                         (
                             "foo".into(),
-                            ir_explicit_build("", Rule::new("", ""), vec!["bar".into()]).into()
+                            ir_explicit_build("", Rule::new("", None), vec!["bar".into()]).into()
                         ),
                         (
                             "bar".into(),
-                            ir_explicit_build("", Rule::new("", ""), vec![]).into()
+                            ir_explicit_build("", Rule::new("", None), vec![]).into()
                         )
                     ]
                     .into_iter()
@@ -219,11 +219,11 @@ mod tests {
                     [
                         (
                             "foo".into(),
-                            ir_explicit_build("", Rule::new("", ""), vec!["bar".into()]).into()
+                            ir_explicit_build("", Rule::new("", None), vec!["bar".into()]).into()
                         ),
                         (
                             "bar".into(),
-                            ir_explicit_build("", Rule::new("", ""), vec!["foo".into()]).into()
+                            ir_explicit_build("", Rule::new("", None), vec!["foo".into()]).into()
                         )
                     ]
                     .into_iter()

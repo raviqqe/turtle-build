@@ -107,7 +107,8 @@ fn compile_module(
 
                         Some(Rule::new(
                             interpolate_variables(rule.command(), &variables),
-                            interpolate_variables(rule.description(), &variables),
+                            rule.description()
+                                .map(|description| interpolate_variables(description, &variables)),
                         ))
                     },
                     build
@@ -262,7 +263,7 @@ mod tests {
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
                         ast::VariableDefinition::new("x", "42").into(),
-                        ast::Rule::new("foo", "$x", "").into(),
+                        ast::Rule::new("foo", "$x", None).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -275,7 +276,8 @@ mod tests {
             Configuration::new(
                 [(
                     "bar".into(),
-                    ir_explicit_build("0", vec!["bar".into()], Rule::new("42", ""), vec![]).into()
+                    ir_explicit_build("0", vec!["bar".into()], Rule::new("42", None), vec![])
+                        .into()
                 )]
                 .into_iter()
                 .collect(),
@@ -294,7 +296,7 @@ mod tests {
                     ast::Module::new(vec![
                         ast::VariableDefinition::new("x", "1").into(),
                         ast::VariableDefinition::new("y", "2").into(),
-                        ast::Rule::new("foo", "$x $y", "").into(),
+                        ast::Rule::new("foo", "$x $y", None).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -307,7 +309,8 @@ mod tests {
             Configuration::new(
                 [(
                     "bar".into(),
-                    ir_explicit_build("0", vec!["bar".into()], Rule::new("1 2", ""), vec![]).into()
+                    ir_explicit_build("0", vec!["bar".into()], Rule::new("1 2", None), vec![])
+                        .into()
                 )]
                 .into_iter()
                 .collect(),
@@ -324,7 +327,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$$", "").into(),
+                        ast::Rule::new("foo", "$$", None).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into()
                     ])
                 )]
@@ -337,7 +340,7 @@ mod tests {
             Configuration::new(
                 [(
                     "bar".into(),
-                    ir_explicit_build("0", vec!["bar".into()], Rule::new("$", ""), vec![]).into()
+                    ir_explicit_build("0", vec!["bar".into()], Rule::new("$", None), vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -354,7 +357,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$in", "").into(),
+                        ast::Rule::new("foo", "$in", None).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec!["baz".into()], vec![])
                             .into(),
                     ])
@@ -371,7 +374,7 @@ mod tests {
                     ir_explicit_build(
                         "0",
                         vec!["bar".into()],
-                        Rule::new("baz", ""),
+                        Rule::new("baz", None),
                         vec!["baz".into()]
                     )
                     .into()
@@ -391,7 +394,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$in", "").into(),
+                        ast::Rule::new("foo", "$in", None).into(),
                         ast::Build::new(
                             vec!["bar".into()],
                             vec![],
@@ -416,7 +419,7 @@ mod tests {
                     ir_explicit_build(
                         "0",
                         vec!["bar".into()],
-                        Rule::new("baz", ""),
+                        Rule::new("baz", None),
                         vec!["baz".into(), "blah".into()]
                     )
                     .into()
@@ -436,7 +439,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$out", "").into(),
+                        ast::Rule::new("foo", "$out", None).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -449,7 +452,8 @@ mod tests {
             Configuration::new(
                 [(
                     "bar".into(),
-                    ir_explicit_build("0", vec!["bar".into()], Rule::new("bar", ""), vec![]).into()
+                    ir_explicit_build("0", vec!["bar".into()], Rule::new("bar", None), vec![])
+                        .into()
                 )]
                 .into_iter()
                 .collect(),
@@ -465,7 +469,7 @@ mod tests {
             "0",
             vec!["bar".into()],
             vec!["baz".into()],
-            Rule::new("bar", "").into(),
+            Rule::new("bar", None).into(),
             vec![],
             vec![],
             None,
@@ -476,7 +480,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$out", "").into(),
+                        ast::Rule::new("foo", "$out", None).into(),
                         ast::Build::new(
                             vec!["bar".into()],
                             vec!["baz".into()],
@@ -512,7 +516,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$in", "").into(),
+                        ast::Rule::new("foo", "$in", None).into(),
                         ast::Build::new(
                             vec!["bar".into()],
                             vec![],
@@ -538,7 +542,7 @@ mod tests {
                         "0",
                         vec!["bar".into()],
                         vec![],
-                        Some(Rule::new("", "")),
+                        Some(Rule::new("", None)),
                         vec![],
                         vec!["baz".into()],
                         None
@@ -560,7 +564,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "", "").into(),
+                        ast::Rule::new("foo", "", None).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                         ast_explicit_build(vec!["baz".into()], "foo", vec![], vec![]).into()
                     ])
@@ -575,12 +579,12 @@ mod tests {
                 [
                     (
                         "bar".into(),
-                        ir_explicit_build("0", vec!["bar".into()], Rule::new("", ""), vec![])
+                        ir_explicit_build("0", vec!["bar".into()], Rule::new("", None), vec![])
                             .into()
                     ),
                     (
                         "baz".into(),
-                        ir_explicit_build("1", vec!["baz".into()], Rule::new("", ""), vec![])
+                        ir_explicit_build("1", vec!["baz".into()], Rule::new("", None), vec![])
                             .into()
                     )
                 ]
@@ -599,7 +603,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$x", "").into(),
+                        ast::Rule::new("foo", "$x", None).into(),
                         ast_explicit_build(
                             vec!["bar".into()],
                             "foo",
@@ -618,7 +622,8 @@ mod tests {
             Configuration::new(
                 [(
                     "bar".into(),
-                    ir_explicit_build("0", vec!["bar".into()], Rule::new("42", ""), vec![]).into()
+                    ir_explicit_build("0", vec!["bar".into()], Rule::new("42", None), vec![])
+                        .into()
                 )]
                 .into_iter()
                 .collect(),
@@ -751,7 +756,7 @@ mod tests {
                         (
                             SUBMODULE_PATH.into(),
                             ast::Module::new(vec![
-                                ast::Rule::new("foo", "$x", "").into(),
+                                ast::Rule::new("foo", "$x", None).into(),
                                 ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![])
                                     .into()
                             ])
@@ -773,7 +778,7 @@ mod tests {
                 Configuration::new(
                     [(
                         "bar".into(),
-                        ir_explicit_build("0", vec!["bar".into()], Rule::new("42", ""), vec![])
+                        ir_explicit_build("0", vec!["bar".into()], Rule::new("42", None), vec![])
                             .into()
                     )]
                     .into_iter()
@@ -795,7 +800,7 @@ mod tests {
                             ROOT_MODULE_PATH.clone(),
                             ast::Module::new(vec![
                                 ast::VariableDefinition::new("x", "42").into(),
-                                ast::Rule::new("foo", "$x", "").into(),
+                                ast::Rule::new("foo", "$x", None).into(),
                                 ast::Submodule::new(SUBMODULE_PATH).into(),
                             ])
                         ),
@@ -826,7 +831,7 @@ mod tests {
                 Configuration::new(
                     [(
                         "bar".into(),
-                        ir_explicit_build("0", vec!["bar".into()], Rule::new("42", ""), vec![])
+                        ir_explicit_build("0", vec!["bar".into()], Rule::new("42", None), vec![])
                             .into()
                     )]
                     .into_iter()
@@ -848,7 +853,7 @@ mod tests {
                             ROOT_MODULE_PATH.clone(),
                             ast::Module::new(vec![
                                 ast::VariableDefinition::new("x", "42").into(),
-                                ast::Rule::new("foo", "$x", "").into(),
+                                ast::Rule::new("foo", "$x", None).into(),
                                 ast::Submodule::new(SUBMODULE_PATH).into(),
                                 ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![])
                                     .into(),
@@ -875,7 +880,7 @@ mod tests {
                 Configuration::new(
                     [(
                         "bar".into(),
-                        ir_explicit_build("0", vec!["bar".into()], Rule::new("42", ""), vec![])
+                        ir_explicit_build("0", vec!["bar".into()], Rule::new("42", None), vec![])
                             .into()
                     )]
                     .into_iter()

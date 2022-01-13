@@ -65,9 +65,7 @@ fn rule<'a>() -> impl Parser<Stream<'a>, Output = Rule> {
                 .skip(line_break()),
         ),
     )
-        .map(|(_, name, _, command, description)| {
-            Rule::new(name, command, description.unwrap_or_default())
-        })
+        .map(|(_, name, _, command, description)| Rule::new(name, command, description))
 }
 
 fn build<'a>() -> impl Parser<Stream<'a>, Output = Build> {
@@ -231,7 +229,7 @@ mod tests {
                 .parse(stream("rule foo\n command = bar\n"))
                 .unwrap()
                 .0,
-            Module::new(vec![Rule::new("foo", "bar", "").into()])
+            Module::new(vec![Rule::new("foo", "bar", None).into()])
         );
         assert_eq!(
             module()
@@ -241,8 +239,8 @@ mod tests {
                 .unwrap()
                 .0,
             Module::new(vec![
-                Rule::new("foo", "bar", "").into(),
-                Rule::new("baz", "blah", "").into(),
+                Rule::new("foo", "bar", None).into(),
+                Rule::new("baz", "blah", None).into(),
             ],)
         );
         assert_eq!(
@@ -314,14 +312,14 @@ mod tests {
                 .parse(stream("rule foo\n command = bar\n"))
                 .unwrap()
                 .0,
-            Rule::new("foo", "bar", "")
+            Rule::new("foo", "bar", None)
         );
         assert_eq!(
             rule()
                 .parse(stream("rule foo\n command = bar\n description = baz\n"))
                 .unwrap()
                 .0,
-            Rule::new("foo", "bar", "baz")
+            Rule::new("foo", "bar", Some("baz".into()))
         );
     }
 

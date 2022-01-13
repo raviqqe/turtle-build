@@ -154,7 +154,7 @@ async fn spawn_build_future(
         {
             return Ok(());
         } else if let Some(rule) = build.rule() {
-            run_command(&context, rule.command()).await?;
+            run_rule(&context, rule).await?;
         }
 
         context.database().set(build.id(), hash)?;
@@ -213,24 +213,29 @@ async fn check_file_existence(path: impl AsRef<Path>) -> Result<(), Infrastructu
     Ok(())
 }
 
-async fn run_command(context: &Context, command: &str) -> Result<(), InfrastructureError> {
+async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureError> {
     let permit = context.job_semaphore().acquire().await?;
     let output = Command::new("sh")
         .arg("-e")
         .arg("-c")
-        .arg(command)
+        .arg(rule.command())
         .output()
         .await?;
     drop(permit);
 
     let mut console = context.console().lock().await;
 
+    if let Some(description) = rule.description() {
+        console.stderr().write_all(description.as_bytes()).await?;
+        console.stderr().write_all("\n".as_bytes()).await?;
+    }
+
     console.stdout().write_all(&output.stdout).await?;
     console.stderr().write_all(&output.stderr).await?;
 
     if !output.status.success() {
         return Err(InfrastructureError::CommandExit(
-            command.into(),
+            rule.command().into(),
             output.status.code(),
         ));
     }

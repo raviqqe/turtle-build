@@ -1,14 +1,14 @@
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rule {
     command: String,
-    description: String,
+    description: Option<String>,
 }
 
 impl Rule {
-    pub fn new(command: impl Into<String>, description: impl Into<String>) -> Self {
+    pub fn new(command: impl Into<String>, description: Option<String>) -> Self {
         Self {
             command: command.into(),
-            description: description.into(),
+            description,
         }
     }
 
@@ -16,8 +16,7 @@ impl Rule {
         &self.command
     }
 
-    #[allow(dead_code)]
-    pub fn description(&self) -> &str {
-        &self.description
+    pub fn description(&self) -> Option<&str> {
+        self.description.as_deref()
     }
 }

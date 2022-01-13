@@ -65,9 +65,7 @@ fn rule<'a>() -> impl Parser<Stream<'a>, Output = Rule> {
                 .skip(line_break()),
         ),
     )
-        .map(|(_, name, _, command, description)| {
-            Rule::new(name, command, description.unwrap_or_default())
-        })
+        .map(|(_, name, _, command, description)| Rule::new(name, command, description))
 }
 
 fn build<'a>() -> impl Parser<Stream<'a>, Output = Build> {

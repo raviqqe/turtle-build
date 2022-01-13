@@ -107,7 +107,8 @@ fn compile_module(
 
                         Some(Rule::new(
                             interpolate_variables(rule.command(), &variables),
-                            interpolate_variables(rule.description(), &variables),
+                            rule.description()
+                                .map(|description| interpolate_variables(description, &variables)),
                         ))
                     },
                     build

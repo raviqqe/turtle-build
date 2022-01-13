@@ -56,7 +56,7 @@ Feature: Build statement
     Given a file named "build.ninja" with:
     """
     rule cp
-      command = echo hello && cp $in $out
+      command = cp $in $out
 
     build foo: cp bar
 
@@ -65,8 +65,19 @@ Feature: Build statement
     When I successfully run `turtle`
     And I successfully run `rm foo`
     And I successfully run `turtle`
-    Then the stderr should contain exactly:
+    Then the file named "foo" should exist
+
+  Scenario: Rebuild a deleted implicit output
+    Given a file named "build.ninja" with:
     """
-    hello
-    hello
+    rule cp
+      command = cp $in $out && cp $in baz
+
+    build foo | baz: cp bar
+
     """
+    And a file named "bar" with ""
+    When I successfully run `turtle`
+    And I successfully run `rm baz`
+    And I successfully run `turtle`
+    Then the file named "baz" should exist

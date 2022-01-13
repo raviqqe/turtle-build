@@ -199,9 +199,13 @@ async fn join_builds(
 }
 
 async fn check_leaf_input(output: String) -> Result<(), InfrastructureError> {
-    metadata(&output)
+    check_file_existence(&output).await
+}
+
+async fn check_file_existence(path: &str) -> Result<(), InfrastructureError> {
+    metadata(&path)
         .await
-        .map_err(|error| InfrastructureError::with_path(error, &output))?;
+        .map_err(|error| InfrastructureError::with_path(error, &path))?;
 
     Ok(())
 }

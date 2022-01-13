@@ -55,7 +55,7 @@ Turtle aims to support full syntax of the Ninja build files. Command line argume
 - [x] `-f` custom build file option
 - [x] `-j` job limit option
 - [ ] `-k` keep-going option
-- [ ] `-C` change-directory option
+- [x] `-C` change-directory option
 
 ### Others
 

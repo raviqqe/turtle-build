@@ -8,7 +8,7 @@ Clone of [the Ninja build system](https://github.com/ninja-build/ninja) written 
 
 ## Goals
 
-- Naive but safe (no `unsafe`) reimplementation of the Ninja build system in Rust
+- Safe (no `unsafe`) and fast implementation of the Ninja build system in Rust
 - Improved frontend support (WIP)
   - Full output from build rules and no output from Turtle by default
   - More customizable build/rule/progress/error output

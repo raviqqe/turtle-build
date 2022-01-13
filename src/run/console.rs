@@ -1,4 +1,4 @@
-use tokio::io::{Stderr, Stdout};
+use tokio::io::{stderr, stdout, Stderr, Stdout};
 
 pub struct Console {
     stdout: Stdout,
@@ -13,11 +13,11 @@ impl Console {
         }
     }
 
-    pub fn stdout() -> &mut Stdout {
+    pub fn stdout(&mut self) -> &mut Stdout {
         &mut self.stdout
     }
 
-    pub fn stderr() -> &mut Stderr {
+    pub fn stderr(&mut self) -> &mut Stderr {
         &mut self.stderr
     }
 }

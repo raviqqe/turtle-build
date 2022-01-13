@@ -1,0 +1,16 @@
+name: release
+on:
+  push:
+    tags:
+      - v*.*.*
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - run: git log --pretty='- %s by %aN' $(git describe --tags --abbrev=0 HEAD^)..HEAD > changes.md
+      - uses: softprops/action-gh-release@v1
+        with:
+          body_path: changes.md

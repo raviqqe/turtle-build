@@ -18,6 +18,7 @@ use parse::parse;
 use run::run;
 use std::{
     collections::HashMap,
+    env::set_current_dir,
     error::Error,
     path::{Path, PathBuf},
     process::exit,
@@ -40,9 +41,13 @@ async fn main() {
 
 async fn execute() -> Result<(), Box<dyn Error>> {
     let arguments = Arguments::parse();
-
     let root_module_path =
         canonicalize_path(&arguments.file.as_deref().unwrap_or(DEFAULT_BUILD_FILE)).await?;
+
+    if let Some(directory) = &arguments.directory {
+        set_current_dir(directory)?;
+    }
+
     let (modules, dependencies) = read_modules(&root_module_path).await?;
 
     validate_modules(&dependencies)?;

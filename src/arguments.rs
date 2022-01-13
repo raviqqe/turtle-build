@@ -5,6 +5,8 @@ use clap::Parser;
 pub struct Arguments {
     #[clap(short, help = "Set a root build file")]
     pub file: Option<String>,
+    #[clap(short = 'C', help = "Set a working directory")]
+    pub directory: Option<String>,
     #[clap(short, help = "Set a job limit")]
     pub job_limit: Option<usize>,
 }

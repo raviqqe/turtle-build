@@ -88,15 +88,17 @@ Feature: Others
     And the exit status should not be 0
 
   Scenario: Change a directory first
-    Given a file named "build.ninja" with:
-    """
-    rule echo
-      command = echo
-
-    build foo: echo
-
-    """
-    And a directory named "foo"
+    Given a directory named "foo"
     And I cd to "foo"
+    And a file named "build.ninja" with:
+    """
+    rule cp
+      command = cp
+
+    build foo: cp bar
+
+    """
+    And a file named "bar" with ""
+    And I cd to ".."
     When I successfully run `turtle -C ..`
-    Then the exit status should be 0
+    Then a file named "foo/foo" should exist

@@ -8,7 +8,7 @@ Clone of [the Ninja build system](https://github.com/ninja-build/ninja) written 
 
 ## Goals
 
-- Naive but safe (no `unsafe`) reimplementation of the Ninja build system in Rust
+- Safe (no `unsafe`) and fast implementation of the Ninja build system in Rust
 - Improved frontend support (WIP)
   - Full output from build rules and no output from Turtle by default
   - More customizable build/rule/progress/error output
@@ -71,6 +71,26 @@ Turtle aims to support full syntax of the Ninja build files. It also supports ba
   - [ ] `depfile` option
   - [ ] `deps` option
 - [ ] Windows support
+
+## Technical notes
+
+Something different from the traditional build systems and notable in Turtle is that it solves parallel builds similar to parallel graph reduction naturally, where you modify graph structures in parallel and reduce it into a solution, thanks to an ecosystem of futures and stackless coroutines in Rust.
+
+Here is how parallel builds work in Turtle:
+
+1. Turtle spawns futures for all builds of default targets.
+2. Depending on builds' configuration, they spawn more futures or resolve their futures.
+   - If they require some input targets to be built first, they spawn those builds for input targets all in parallel.
+3. Those futures are scheduled and run in parallel by an asynchronous runtime in Rust.
+4. Builds complete when all the futures are resolved.
+
+Currently, Turtle uses a topological sort algorithm only to detect dependency cycles but not for execution of build graphs.
+
+Turtle is powered by the following neat projects and others!
+
+- [tokio: Asynchronous runtime for Rust](https://github.com/tokio-rs/tokio)
+- [sled: Embedded database in Rust](https://github.com/spacejam/sled)
+- [petgraph: Graph algorithms in Rust](https://github.com/petgraph/petgraph)
 
 ## Similar projects
 

@@ -1,8 +1,9 @@
-use crate::{compile::CompileError, parse::ParseError};
+use crate::{compile::CompileError, ir::Build, parse::ParseError};
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
     path::Path,
+    sync::Arc,
 };
 use tokio::{io, sync::AcquireError, task::JoinError};
 
@@ -11,6 +12,7 @@ pub enum InfrastructureError {
     CommandExit(String, Option<i32>),
     Compile(CompileError),
     DefaultOutputNotFound(String),
+    DynamicDependencyNotFound(Arc<Build>),
     Other(String),
     Parse(ParseError),
     Sled(sled::Error),
@@ -42,6 +44,14 @@ impl Display for InfrastructureError {
             Self::Compile(error) => write!(formatter, "{}", error),
             Self::DefaultOutputNotFound(output) => {
                 write!(formatter, "default output \"{}\" not found", output)
+            }
+            Self::DynamicDependencyNotFound(build) => {
+                write!(
+                    formatter,
+                    "outputs {} not found in dynamic dependency file {}",
+                    build.outputs().join(", "),
+                    build.dynamic_module().unwrap()
+                )
             }
             Self::Other(message) => write!(formatter, "{}", message),
             Self::Parse(error) => write!(formatter, "{}", error),

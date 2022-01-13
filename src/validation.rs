@@ -71,7 +71,7 @@ mod tests {
         use super::*;
 
         fn ir_explicit_build(id: impl Into<String>, rule: Rule, inputs: Vec<String>) -> Build {
-            Build::new(id, rule.into(), inputs, vec![], None)
+            Build::new(id, vec![], rule.into(), inputs, vec![], None)
         }
 
         #[test]
@@ -128,6 +128,7 @@ mod tests {
                         "foo".into(),
                         Build::new(
                             "",
+                            vec![],
                             Rule::new("", "").into(),
                             vec![],
                             vec!["bar".into()],
@@ -169,6 +170,7 @@ mod tests {
                         "foo".into(),
                         Build::new(
                             "",
+                            vec![],
                             Rule::new("", "").into(),
                             vec![],
                             vec!["foo".into()],
@@ -219,14 +221,8 @@ mod tests {
                         ),
                         (
                             "bar".into(),
-                            Build::new(
-                                "",
-                                Rule::new("", "").into(),
-                                vec!["foo".into()],
-                                vec![],
-                                None
-                            )
-                            .into()
+                            ir_explicit_build("", Rule::new("", "").into(), vec!["foo".into()])
+                                .into()
                         )
                     ]
                     .into_iter()

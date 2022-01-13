@@ -45,7 +45,6 @@ pub async fn run(
     for output in context.configuration().default_outputs() {
         create_build_future(
             &context,
-            output,
             context
                 .configuration()
                 .outputs()
@@ -73,7 +72,6 @@ pub async fn run(
 #[async_recursion]
 async fn create_build_future(
     context: &Arc<Context>,
-    output: &str,
     build: &Arc<Build>,
 ) -> Result<(), InfrastructureError> {
     // Exclusive lock for atomic addition of a build job.
@@ -83,11 +81,7 @@ async fn create_build_future(
         return Ok(());
     }
 
-    let future: RawBuildFuture = Box::pin(spawn_build_future(
-        context.clone(),
-        output.to_string(),
-        build.clone(),
-    ));
+    let future: RawBuildFuture = Box::pin(spawn_build_future(context.clone(), build.clone()));
 
     builds.insert(build.id().into(), future.shared());
 
@@ -96,7 +90,6 @@ async fn create_build_future(
 
 async fn spawn_build_future(
     context: Arc<Context>,
-    output: String,
     build: Arc<Build>,
 ) -> Result<(), InfrastructureError> {
     spawn(async move {
@@ -105,7 +98,7 @@ async fn spawn_build_future(
         for input in build.inputs().iter().chain(build.order_only_inputs()) {
             futures.push(
                 if let Some(build) = context.configuration().outputs().get(input) {
-                    create_build_future(&context, input, build).await?;
+                    create_build_future(&context, build).await?;
 
                     context.builds().read().await[build.id()].clone()
                 } else {
@@ -126,19 +119,23 @@ async fn spawn_build_future(
         } else {
             None
         };
-        // TODO Collect all inputs of build outputs.
-        // TODO Save outputs in IR builds.
-        let dynamic_inputs = dynamic_configuration
-            .as_ref()
-            .map(|configuration| configuration.outputs()[&output].inputs())
-            .unwrap_or_default();
+        let dynamic_inputs = if let Some(configuration) = &dynamic_configuration {
+            build
+                .outputs()
+                .iter()
+                .find_map(|output| configuration.outputs().get(output.as_str()))
+                .map(|build| build.inputs())
+                .ok_or_else(|| InfrastructureError::DynamicDependencyNotFound(build.clone()))?
+        } else {
+            &[]
+        };
 
         let mut futures = vec![];
 
         for input in dynamic_inputs {
             let build = &context.configuration().outputs()[input];
 
-            create_build_future(&context, input, build).await?;
+            create_build_future(&context, build).await?;
 
             futures.push(context.builds().read().await[build.id()].clone());
         }

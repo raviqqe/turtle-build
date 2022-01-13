@@ -86,3 +86,17 @@ Feature: Others
     And the exit status should not be 0
     Then I run `turtle`
     And the exit status should not be 0
+
+  Scenario: Change a directory first
+    Given a file named "build.ninja" with:
+    """
+    rule echo
+      command = echo
+
+    build foo: echo
+
+    """
+    And a directory named "foo"
+    And I cd to "foo"
+    When I successfully run `turtle -C ..`
+    Then the exit status should be 0

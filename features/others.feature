@@ -10,15 +10,14 @@ Feature: Others
     Given a file named "build.ninja" with:
     """
     rule cp
-      command = echo hello && cp $in $out
+      command = [ ! -r $out ] && cp $in $out
 
     build foo: cp bar
 
     """
     And a file named "bar" with ""
     When I successfully run `turtle`
-    And I successfully run `turtle`
-    Then the stdout should contain exactly "hello"
+    Then I successfully run `turtle`
 
   Scenario: Rebuild a stale output
     Given a file named "build.ninja" with:

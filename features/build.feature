@@ -41,7 +41,7 @@ Feature: Build statement
     Given a file named "build.ninja" with:
     """
     rule cp
-      command = echo hello && cp bar $out
+      command = [ ! -r $out ] && cp bar $out
 
     build foo: cp || bar
 
@@ -49,8 +49,7 @@ Feature: Build statement
     And a file named "bar" with ""
     When I successfully run `turtle`
     And I successfully run `touch bar`
-    And I successfully run `turtle`
-    Then the stdout should contain exactly "hello"
+    Then I successfully run `turtle`
 
   Scenario: Rebuild a deleted output
     Given a file named "build.ninja" with:

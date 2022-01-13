@@ -103,7 +103,9 @@ async fn spawn_build_future(
                     context.builds().read().await[build.id()].clone()
                 } else {
                     // TODO Consider registering this future as a build job of the input.
-                    let raw: RawBuildFuture = Box::pin(check_leaf_input(input.to_string()));
+                    let input = input.to_string();
+                    let raw: RawBuildFuture =
+                        Box::pin(async move { check_file_existence(&input).await });
                     raw.shared()
                 },
             );
@@ -144,7 +146,17 @@ async fn spawn_build_future(
 
         let hash = hash_build(&build, dynamic_inputs).await?;
 
-        if hash == context.database().get(build.id())? {
+        if hash == context.database().get(build.id())?
+            && try_join_all(
+                build
+                    .outputs()
+                    .iter()
+                    .chain(build.implicit_outputs())
+                    .map(check_file_existence),
+            )
+            .await
+            .is_ok()
+        {
             return Ok(());
         } else if let Some(rule) = build.rule() {
             let permit = context.job_semaphore().acquire().await?;
@@ -198,10 +210,12 @@ async fn join_builds(
     Ok(())
 }
 
-async fn check_leaf_input(output: String) -> Result<(), InfrastructureError> {
-    metadata(&output)
+async fn check_file_existence(path: impl AsRef<Path>) -> Result<(), InfrastructureError> {
+    let path = path.as_ref();
+
+    metadata(path)
         .await
-        .map_err(|error| InfrastructureError::with_path(error, &output))?;
+        .map_err(|error| InfrastructureError::with_path(error, path))?;
 
     Ok(())
 }

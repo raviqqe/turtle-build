@@ -146,7 +146,16 @@ async fn spawn_build_future(
 
         let hash = hash_build(&build, dynamic_inputs).await?;
 
-        if hash == context.database().get(build.id())? {
+        if hash == context.database().get(build.id())?
+            && try_join_all(
+                build
+                    .outputs()
+                    .iter()
+                    .map(|output| check_file_existence(&output)),
+            )
+            .await
+            .is_ok()
+        {
             return Ok(());
         } else if let Some(rule) = build.rule() {
             let permit = context.job_semaphore().acquire().await?;

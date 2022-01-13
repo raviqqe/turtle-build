@@ -1,4 +1,5 @@
 mod build_database;
+mod console;
 mod context;
 
 use self::{build_database::BuildDatabase, context::Context};

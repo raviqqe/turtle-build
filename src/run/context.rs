@@ -1,7 +1,7 @@
-use super::{build_database::BuildDatabase, BuildFuture};
+use super::{build_database::BuildDatabase, console::Console, BuildFuture};
 use crate::ir::Configuration;
 use std::collections::HashMap;
-use tokio::sync::{RwLock, Semaphore};
+use tokio::sync::{Mutex, RwLock, Semaphore};
 
 #[derive(Debug)]
 pub struct Context {
@@ -10,6 +10,7 @@ pub struct Context {
     builds: RwLock<HashMap<String, BuildFuture>>,
     database: BuildDatabase,
     job_semaphore: Semaphore,
+    console: Mutex<Console>,
 }
 
 impl Context {
@@ -23,6 +24,7 @@ impl Context {
             builds: RwLock::new(HashMap::new()),
             database,
             job_semaphore,
+            console: Console::new(),
         }
     }
 
@@ -40,5 +42,9 @@ impl Context {
 
     pub fn job_semaphore(&self) -> &Semaphore {
         &self.job_semaphore
+    }
+
+    pub fn console(&self) -> &Mutex<Console> {
+        &self.console
     }
 }

@@ -6,6 +6,7 @@ use tokio::sync::{RwLock, Semaphore};
 #[derive(Debug)]
 pub struct Context {
     configuration: Configuration,
+    // TODO Use a concurrent hash map. We only need atomic insertion but not a great lock.
     builds: RwLock<HashMap<String, BuildFuture>>,
     database: BuildDatabase,
     job_semaphore: Semaphore,

@@ -9,7 +9,7 @@ Feature: Rule statement
 
     """
     When I successfully run `turtle`
-    Then the stderr should contain exactly "hello"
+    Then the stdout should contain exactly "hello"
 
   Scenario: Run a rule with an input
     Given a file named "build.ninja" with:
@@ -47,7 +47,7 @@ Feature: Rule statement
     """
     And a file named "bar" with ""
     When I successfully run `turtle`
-    Then the stderr should contain exactly "bar"
+    Then the stdout should contain exactly "bar"
 
   Scenario: Run a rule with an output variable
     Given a file named "build.ninja" with:
@@ -60,7 +60,7 @@ Feature: Rule statement
     """
     And a file named "bar" with ""
     When I successfully run `turtle`
-    Then the stderr should contain exactly "foo"
+    Then the stdout should contain exactly "foo"
 
   Scenario: Run a rule with a custom variable
     Given a file named "build.ninja" with:
@@ -74,7 +74,7 @@ Feature: Rule statement
     """
     And a file named "bar" with ""
     When I successfully run `turtle`
-    Then the stderr should contain exactly "hello"
+    Then the stdout should contain exactly "hello"
 
   Scenario: Run a rule with two custom variables
     Given a file named "build.ninja" with:
@@ -89,7 +89,7 @@ Feature: Rule statement
     """
     And a file named "bar" with ""
     When I successfully run `turtle`
-    Then the stderr should contain exactly "hello world"
+    Then the stdout should contain exactly "hello world"
 
   Scenario: Run a phony rule
     Given a file named "build.ninja" with:

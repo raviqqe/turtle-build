@@ -12,7 +12,7 @@ Feature: Build statement
     When I successfully run `turtle`
     And I successfully run `touch bar`
     And I successfully run `turtle`
-    Then the stderr should contain exactly:
+    Then the stdout should contain exactly:
     """
     hello
     hello
@@ -31,7 +31,7 @@ Feature: Build statement
     When I successfully run `turtle`
     And I successfully run `touch bar`
     And I successfully run `turtle`
-    Then the stderr should contain exactly:
+    Then the stdout should contain exactly:
     """
     hello
     hello
@@ -50,7 +50,7 @@ Feature: Build statement
     When I successfully run `turtle`
     And I successfully run `touch bar`
     And I successfully run `turtle`
-    Then the stderr should contain exactly "hello"
+    Then the stdout should contain exactly "hello"
 
   Scenario: Rebuild a deleted output
     Given a file named "build.ninja" with:

@@ -3,6 +3,7 @@ use super::Rule;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Build {
     id: String,
+    outputs: Vec<String>,
     rule: Option<Rule>,
     inputs: Vec<String>,
     order_only_inputs: Vec<String>,
@@ -12,6 +13,7 @@ pub struct Build {
 impl Build {
     pub fn new(
         id: impl Into<String>,
+        outputs: Vec<String>,
         rule: Option<Rule>,
         inputs: Vec<String>,
         order_only_inputs: Vec<String>,
@@ -19,6 +21,7 @@ impl Build {
     ) -> Self {
         Self {
             id: id.into(),
+            outputs,
             rule,
             inputs,
             order_only_inputs,
@@ -28,6 +31,10 @@ impl Build {
 
     pub fn id(&self) -> &str {
         &self.id
+    }
+
+    pub fn outputs(&self) -> &[String] {
+        &self.outputs
     }
 
     pub fn rule(&self) -> Option<&Rule> {

@@ -276,7 +276,8 @@ mod tests {
             Configuration::new(
                 [(
                     "bar".into(),
-                    ir_explicit_build("0", vec!["bar".into()], Rule::new("42", None), vec![]).into()
+                    ir_explicit_build("0", vec!["bar".into()], Rule::new("42", None), vec![])
+                        .into()
                 )]
                 .into_iter()
                 .collect(),
@@ -308,7 +309,8 @@ mod tests {
             Configuration::new(
                 [(
                     "bar".into(),
-                    ir_explicit_build("0", vec!["bar".into()], Rule::new("1 2", None), vec![]).into()
+                    ir_explicit_build("0", vec!["bar".into()], Rule::new("1 2", None), vec![])
+                        .into()
                 )]
                 .into_iter()
                 .collect(),
@@ -450,7 +452,8 @@ mod tests {
             Configuration::new(
                 [(
                     "bar".into(),
-                    ir_explicit_build("0", vec!["bar".into()], Rule::new("bar", None), vec![]).into()
+                    ir_explicit_build("0", vec!["bar".into()], Rule::new("bar", None), vec![])
+                        .into()
                 )]
                 .into_iter()
                 .collect(),
@@ -619,7 +622,8 @@ mod tests {
             Configuration::new(
                 [(
                     "bar".into(),
-                    ir_explicit_build("0", vec!["bar".into()], Rule::new("42", None), vec![]).into()
+                    ir_explicit_build("0", vec!["bar".into()], Rule::new("42", None), vec![])
+                        .into()
                 )]
                 .into_iter()
                 .collect(),

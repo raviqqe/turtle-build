@@ -126,12 +126,16 @@ async fn spawn_build_future(
         } else {
             None
         };
-        // TODO Collect all inputs of build outputs.
-        // TODO Save outputs in IR builds.
-        let dynamic_inputs = dynamic_configuration
-            .as_ref()
-            .map(|configuration| configuration.outputs()[&output].inputs())
-            .unwrap_or_default();
+        let dynamic_inputs = if let Some(configuration) = &dynamic_configuration {
+            build
+                .outputs()
+                .iter()
+                .find_map(|output| configuration.outputs().get(output.as_str()))
+                .map(|build| build.inputs())
+                .ok_or_else(|| InfrastructureError::DynamicDependencyNotFound(build.clone()))?
+        } else {
+            &[]
+        };
 
         let mut futures = vec![];
 

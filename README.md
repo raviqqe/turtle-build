@@ -30,7 +30,7 @@ For more information, see `turtle --help`.
 
 ## Compatibility
 
-Turtle aims to support full syntax of the Ninja build files. It also supportts basic command line arguments but is not going to implement all the original options.
+Turtle aims to support full syntax of the Ninja build files. It also supports basic command line arguments but is not going to implement all the original options.
 
 ### Syntax
 

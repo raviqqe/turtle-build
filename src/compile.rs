@@ -96,6 +96,7 @@ fn compile_module(
                 let ir = Arc::new(Build::new(
                     context.generate_build_id(),
                     build.outputs().to_vec(),
+                    build.implicit_outputs().to_vec(),
                     if build.rule() == PHONY_RULE {
                         None
                     } else {
@@ -235,7 +236,7 @@ mod tests {
         rule: Rule,
         inputs: Vec<String>,
     ) -> Build {
-        Build::new(id, outputs, rule.into(), inputs, vec![], None)
+        Build::new(id, outputs, vec![], rule.into(), inputs, vec![], None)
     }
 
     #[test]
@@ -460,11 +461,14 @@ mod tests {
 
     #[test]
     fn interpolate_out_variable_with_implicit_output() {
-        let build = Arc::new(ir_explicit_build(
+        let build = Arc::new(Build::new(
             "0",
             vec!["bar".into()],
-            Rule::new("bar", ""),
+            vec!["baz".into()],
+            Rule::new("bar", "").into(),
             vec![],
+            vec![],
+            None,
         ));
 
         assert_eq!(
@@ -533,6 +537,7 @@ mod tests {
                     Build::new(
                         "0",
                         vec!["bar".into()],
+                        vec![],
                         Some(Rule::new("", "")),
                         vec![],
                         vec!["baz".into()],
@@ -649,6 +654,7 @@ mod tests {
                     Build::new(
                         "0",
                         vec!["foo".into()],
+                        vec![],
                         None,
                         vec!["bar".into()],
                         vec![],
@@ -708,6 +714,7 @@ mod tests {
                     Build::new(
                         "0",
                         vec!["foo".into()],
+                        vec![],
                         None,
                         vec![],
                         vec![],

@@ -4,6 +4,7 @@ use super::Rule;
 pub struct Build {
     id: String,
     outputs: Vec<String>,
+    implicit_outputs: Vec<String>,
     rule: Option<Rule>,
     inputs: Vec<String>,
     order_only_inputs: Vec<String>,
@@ -14,6 +15,7 @@ impl Build {
     pub fn new(
         id: impl Into<String>,
         outputs: Vec<String>,
+        implicit_outputs: Vec<String>,
         rule: Option<Rule>,
         inputs: Vec<String>,
         order_only_inputs: Vec<String>,
@@ -22,6 +24,7 @@ impl Build {
         Self {
             id: id.into(),
             outputs,
+            implicit_outputs,
             rule,
             inputs,
             order_only_inputs,
@@ -35,6 +38,10 @@ impl Build {
 
     pub fn outputs(&self) -> &[String] {
         &self.outputs
+    }
+
+    pub fn implicit_outputs(&self) -> &[String] {
+        &self.implicit_outputs
     }
 
     pub fn rule(&self) -> Option<&Rule> {

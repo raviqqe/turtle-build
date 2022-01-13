@@ -32,3 +32,11 @@ jobs:
           path: target/release
       - run: chmod +x target/release/turtle
       - run: tools/integration_test.sh
+  integration_test_test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: ruby/setup-ruby@v1
+      - run: cp $(which ninja) target/release/turtle
+      - run: tools/integration_test.sh

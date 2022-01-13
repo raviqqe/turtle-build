@@ -24,7 +24,7 @@ impl Context {
             builds: RwLock::new(HashMap::new()),
             database,
             job_semaphore,
-            console: Console::new(),
+            console: Console::new().into(),
         }
     }
 

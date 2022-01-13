@@ -21,13 +21,7 @@ use std::{
     sync::Arc,
     time::SystemTime,
 };
-use tokio::{
-    fs::metadata,
-    io::{stderr, AsyncWriteExt},
-    process::Command,
-    spawn,
-    sync::Semaphore,
-};
+use tokio::{fs::metadata, io::AsyncWriteExt, process::Command, spawn, sync::Semaphore};
 
 type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), InfrastructureError>> + Send>>;
 type BuildFuture = Shared<RawBuildFuture>;

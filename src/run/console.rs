@@ -1,5 +1,6 @@
 use tokio::io::{stderr, stdout, Stderr, Stdout};
 
+#[derive(Debug)]
 pub struct Console {
     stdout: Stdout,
     stderr: Stderr,

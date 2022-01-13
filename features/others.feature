@@ -100,5 +100,5 @@ Feature: Others
     """
     And a file named "bar" with ""
     And I cd to ".."
-    When I successfully run `turtle -C ..`
+    When I successfully run `turtle -C foo`
     Then a file named "foo/foo" should exist

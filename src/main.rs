@@ -27,11 +27,12 @@ use utilities::{canonicalize_path, read_file};
 use validation::{validate_configuration, validate_modules};
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
+const DEFAULT_LOG_PREFIX: &str = "turtle: ";
 
 #[tokio::main]
 async fn main() {
     if let Err(error) = execute().await {
-        eprintln!("{}", error);
+        eprintln!("{}{}", DEFAULT_LOG_PREFIX, error);
 
         exit(1)
     }

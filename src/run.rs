@@ -103,7 +103,9 @@ async fn spawn_build_future(
                     context.builds().read().await[build.id()].clone()
                 } else {
                     // TODO Consider registering this future as a build job of the input.
-                    let raw: RawBuildFuture = Box::pin(check_leaf_input(input.to_string()));
+                    let input = input.to_string();
+                    let raw: RawBuildFuture =
+                        Box::pin(async move { check_file_existence(&input).await });
                     raw.shared()
                 },
             );
@@ -196,10 +198,6 @@ async fn join_builds(
     try_join_all(builds.into_iter().chain([future.shared()])).await?;
 
     Ok(())
-}
-
-async fn check_leaf_input(output: String) -> Result<(), InfrastructureError> {
-    check_file_existence(&output).await
 }
 
 async fn check_file_existence(path: &str) -> Result<(), InfrastructureError> {

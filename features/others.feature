@@ -93,7 +93,7 @@ Feature: Others
     And a file named "build.ninja" with:
     """
     rule cp
-      command = cp
+      command = cp $in $out
 
     build foo: cp bar
 

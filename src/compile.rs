@@ -25,7 +25,7 @@ const BUILD_DIRECTORY_VARIABLE: &str = "builddir";
 const DYNAMIC_MODULE_VARIABLE: &str = "dyndep";
 
 static VARIABLE_PATTERN: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\$([[:alpha:]][[:alnum:]]*)").unwrap());
+    Lazy::new(|| Regex::new(r"\$([[:alpha:]_][[:alnum:]_]*)").unwrap());
 
 pub fn compile(
     modules: &HashMap<PathBuf, ast::Module>,
@@ -310,6 +310,38 @@ mod tests {
                 [(
                     "bar".into(),
                     ir_explicit_build("0", vec!["bar".into()], Rule::new("1 2", None), vec![])
+                        .into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect(),
+                None
+            )
+        );
+    }
+
+    #[test]
+    fn interpolate_variable_with_underscore_in_command() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast::VariableDefinition::new("x_y", "42").into(),
+                        ast::Rule::new("foo", "$x_y", None).into(),
+                        ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            Configuration::new(
+                [(
+                    "bar".into(),
+                    ir_explicit_build("0", vec!["bar".into()], Rule::new("42", None), vec![])
                         .into()
                 )]
                 .into_iter()

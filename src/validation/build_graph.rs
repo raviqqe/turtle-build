@@ -35,15 +35,15 @@ impl BuildGraph {
         Self { graph, indexes }
     }
 
-    pub fn insert(&mut self, configuration: &DynamicConfiguration) {
-        todo!()
-    }
-
     pub fn validate(&self) -> Result<(), ValidationError> {
         if is_cyclic_directed(&self.graph) {
             return Err(ValidationError::CircularBuildDependency);
         }
 
         Ok(())
+    }
+
+    pub fn insert(&mut self, configuration: &DynamicConfiguration) {
+        todo!()
     }
 }

@@ -1,19 +1,17 @@
 use super::Build;
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use fnv::FnvHashMap;
+use std::{collections::HashSet, sync::Arc};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Configuration {
-    outputs: HashMap<String, Arc<Build>>,
+    outputs: FnvHashMap<String, Arc<Build>>,
     default_outputs: HashSet<String>,
     build_directory: Option<String>,
 }
 
 impl Configuration {
     pub fn new(
-        outputs: HashMap<String, Arc<Build>>,
+        outputs: FnvHashMap<String, Arc<Build>>,
         default_outputs: HashSet<String>,
         build_directory: Option<String>,
     ) -> Self {
@@ -24,7 +22,7 @@ impl Configuration {
         }
     }
 
-    pub fn outputs(&self) -> &HashMap<String, Arc<Build>> {
+    pub fn outputs(&self) -> &FnvHashMap<String, Arc<Build>> {
         &self.outputs
     }
 

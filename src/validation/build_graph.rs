@@ -1,5 +1,6 @@
 use super::error::ValidationError;
 use crate::ir::{Build, DynamicConfiguration};
+use fnv::FnvHashMap;
 use petgraph::{
     algo::{kosaraju_scc, toposort},
     graph::{DefaultIx, NodeIndex},
@@ -14,7 +15,7 @@ pub struct BuildGraph {
 }
 
 impl BuildGraph {
-    pub fn new(outputs: &HashMap<String, Arc<Build>>) -> Result<Self, ValidationError> {
+    pub fn new(outputs: &FnvHashMap<String, Arc<Build>>) -> Result<Self, ValidationError> {
         let mut this = Self {
             graph: Graph::<String, ()>::new(),
             nodes: HashMap::<String, NodeIndex<DefaultIx>>::new(),
@@ -86,7 +87,9 @@ mod tests {
     use super::*;
     use crate::ir::{DynamicBuild, Rule};
 
-    fn validate_builds(dependencies: &HashMap<String, Arc<Build>>) -> Result<(), ValidationError> {
+    fn validate_builds(
+        dependencies: &FnvHashMap<String, Arc<Build>>,
+    ) -> Result<(), ValidationError> {
         BuildGraph::new(dependencies)?;
 
         Ok(())

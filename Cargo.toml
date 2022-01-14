@@ -16,6 +16,7 @@ path = "src/main.rs"
 async-recursion = "1"
 clap = { version = "3", features = ["derive"] }
 combine = "4"
+fnv = "1"
 futures = "0.3"
 num_cpus = "1"
 once_cell = "1"

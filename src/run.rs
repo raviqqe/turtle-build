@@ -61,7 +61,7 @@ pub async fn run(
 
     // Do not inline this to avoid borrowing a lock of builds.
     let futures = context
-        .builds()
+        .build_futures()
         .read()
         .await
         .values()
@@ -80,7 +80,7 @@ async fn create_build_future(
     build: &Arc<Build>,
 ) -> Result<(), InfrastructureError> {
     // Exclusive lock for atomic addition of a build job.
-    let mut builds = context.builds().write().await;
+    let mut builds = context.build_futures().write().await;
 
     if builds.contains_key(build.id()) {
         return Ok(());
@@ -105,7 +105,7 @@ async fn spawn_build_future(
                 if let Some(build) = context.configuration().outputs().get(input) {
                     create_build_future(&context, build).await?;
 
-                    context.builds().read().await[build.id()].clone()
+                    context.build_futures().read().await[build.id()].clone()
                 } else {
                     // TODO Consider registering this future as a build job of the input.
                     let input = input.to_string();
@@ -144,7 +144,7 @@ async fn spawn_build_future(
 
             create_build_future(&context, build).await?;
 
-            futures.push(context.builds().read().await[build.id()].clone());
+            futures.push(context.build_futures().read().await[build.id()].clone());
         }
 
         join_builds(futures).await?;

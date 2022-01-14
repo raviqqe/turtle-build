@@ -15,24 +15,21 @@ pub struct BuildGraph {
 
 impl BuildGraph {
     pub fn new(outputs: &HashMap<String, Arc<Build>>) -> Self {
-        let mut graph = Graph::<String, ()>::new();
-        let mut indexes = HashMap::<String, NodeIndex<DefaultIx>>::new();
-
-        for output in outputs.iter().flat_map(|(output, build)| {
-            [output]
-                .into_iter()
-                .chain(build.inputs().iter().chain(build.order_only_inputs()))
-        }) {
-            indexes.insert(output.clone(), graph.add_node(output.clone()));
-        }
+        let mut this = Self {
+            graph: Graph::<String, ()>::new(),
+            indexes: HashMap::<String, NodeIndex<DefaultIx>>::new(),
+        };
 
         for (output, build) in outputs {
             for input in build.inputs().iter().chain(build.order_only_inputs()) {
-                graph.add_edge(indexes[output.as_str()], indexes[input.as_str()], ());
+                this.add_node(&output);
+                this.add_node(&input);
+
+                this.add_edge(&output, &input);
             }
         }
 
-        Self { graph, indexes }
+        this
     }
 
     pub fn validate(&self) -> Result<(), ValidationError> {
@@ -44,14 +41,33 @@ impl BuildGraph {
     }
 
     pub fn insert(&mut self, configuration: &DynamicConfiguration) {
-        todo!()
+        for (output, build) in configuration.outputs() {
+            for input in build.inputs() {
+                self.add_node(&output);
+                self.add_node(&input);
+
+                self.add_edge(&output, &input);
+            }
+        }
+    }
+
+    fn add_node(&mut self, output: &str) {
+        if !self.indexes.contains_key(output) {
+            self.indexes
+                .insert(output.into(), self.graph.add_node(output.into()));
+        }
+    }
+
+    fn add_edge(&mut self, output: &str, input: &str) {
+        self.graph
+            .add_edge(self.indexes[output], self.indexes[input], ());
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::Rule;
+    use crate::ir::{DynamicBuild, Rule};
 
     fn validate_builds(dependencies: &HashMap<String, Arc<Build>>) -> Result<(), ValidationError> {
         BuildGraph::new(dependencies).validate()
@@ -197,6 +213,29 @@ mod tests {
                 .into_iter()
                 .collect()
             ),
+            Err(ValidationError::CircularBuildDependency)
+        );
+    }
+
+    #[test]
+    fn validate_with_dynamic_configuration() {
+        let mut graph = BuildGraph::new(
+            &[(
+                "foo".into(),
+                ir_explicit_build("", Rule::new("", None), vec!["bar".into()]).into(),
+            )]
+            .into_iter()
+            .collect(),
+        );
+
+        graph.insert(&DynamicConfiguration::new(
+            [("bar".into(), DynamicBuild::new(vec!["foo".into()]))]
+                .into_iter()
+                .collect(),
+        ));
+
+        assert_eq!(
+            graph.validate(),
             Err(ValidationError::CircularBuildDependency)
         );
     }

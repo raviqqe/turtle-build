@@ -18,12 +18,13 @@ pub struct Context {
 impl Context {
     pub fn new(
         configuration: Configuration,
+        build_graph: BuildGraph,
         database: BuildDatabase,
         job_semaphore: Semaphore,
         debug: bool,
     ) -> Self {
         Self {
-            build_graph: BuildGraph::new(configuration.outputs()).into(),
+            build_graph: build_graph.into(),
             configuration,
             build_futures: RwLock::new(HashMap::new()),
             database,

@@ -9,6 +9,7 @@ use crate::{
     ir::{Build, Configuration, Rule},
     parse::parse_dynamic,
     utilities::read_file,
+    validation::BuildGraph,
 };
 use async_recursion::async_recursion;
 use futures::future::{join_all, try_join_all, FutureExt, Shared};
@@ -38,14 +39,17 @@ pub async fn run(
     job_limit: Option<usize>,
     debug: bool,
 ) -> Result<(), InfrastructureError> {
+    let build_graph = BuildGraph::new(configuration.outputs());
+
+    build_graph.validate()?;
+
     let context = Arc::new(Context::new(
         configuration,
+        build_graph,
         BuildDatabase::new(build_directory)?,
         Semaphore::new(job_limit.unwrap_or_else(num_cpus::get)),
         debug,
     ));
-
-    context.build_graph().lock().await.validate()?;
 
     for output in context.configuration().default_outputs() {
         create_build_future(

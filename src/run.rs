@@ -45,6 +45,8 @@ pub async fn run(
         debug,
     ));
 
+    context.build_graph().lock().await.validate()?;
+
     for output in context.configuration().default_outputs() {
         create_build_future(
             &context,

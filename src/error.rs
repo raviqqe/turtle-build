@@ -1,4 +1,4 @@
-use crate::{compile::CompileError, ir::Build, parse::ParseError};
+use crate::{compile::CompileError, ir::Build, parse::ParseError, validation::ValidationError};
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
@@ -16,6 +16,7 @@ pub enum InfrastructureError {
     Other(String),
     Parse(ParseError),
     Sled(sled::Error),
+    Validation(ValidationError),
 }
 
 impl InfrastructureError {
@@ -56,6 +57,7 @@ impl Display for InfrastructureError {
             Self::Other(message) => write!(formatter, "{}", message),
             Self::Parse(error) => write!(formatter, "{}", error),
             Self::Sled(error) => write!(formatter, "{}", error),
+            Self::Validation(error) => write!(formatter, "{}", error),
         }
     }
 }
@@ -93,5 +95,11 @@ impl From<ParseError> for InfrastructureError {
 impl From<sled::Error> for InfrastructureError {
     fn from(error: sled::Error) -> Self {
         Self::Sled(error)
+    }
+}
+
+impl From<ValidationError> for InfrastructureError {
+    fn from(error: ValidationError) -> Self {
+        Self::Validation(error)
     }
 }

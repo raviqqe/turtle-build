@@ -124,12 +124,18 @@ async fn spawn_build_future(
 
         // TODO Consider caching dynamic modules.
         let dynamic_configuration = if let Some(dynamic_module) = build.dynamic_module() {
-            Some(compile_dynamic(&parse_dynamic(
-                &read_file(&dynamic_module).await?,
-            )?)?)
+            let configuration =
+                compile_dynamic(&parse_dynamic(&read_file(&dynamic_module).await?)?)?;
+
+            let mut graph = context.build_graph().lock().await;
+            graph.insert(&configuration);
+            graph.validate()?;
+
+            Some(configuration)
         } else {
             None
         };
+
         let dynamic_inputs = if let Some(configuration) = &dynamic_configuration {
             build
                 .outputs()

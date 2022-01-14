@@ -33,3 +33,15 @@ Feature: Others
     And I cd to ".."
     When I successfully run `turtle -C foo`
     Then a file named "foo/foo" should exist
+
+  Scenario: Prepare an output directory
+    Given a file named "build.ninja" with:
+    """
+    rule touch
+      command = touch $out
+
+    build foo/bar: touch
+
+    """
+    When I successfully run `turtle`
+    Then the file named "foo/bar" should exist

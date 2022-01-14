@@ -9,6 +9,7 @@ use crate::{
     ir::{Build, Configuration, Rule},
     parse::parse_dynamic,
     utilities::read_file,
+    validation::BuildGraph,
 };
 use async_recursion::async_recursion;
 use futures::future::{join_all, try_join_all, FutureExt, Shared};
@@ -38,8 +39,10 @@ pub async fn run(
     job_limit: Option<usize>,
     debug: bool,
 ) -> Result<(), InfrastructureError> {
+    let graph = BuildGraph::new(configuration.outputs())?;
     let context = Arc::new(Context::new(
         configuration,
+        graph,
         BuildDatabase::new(build_directory)?,
         Semaphore::new(job_limit.unwrap_or_else(num_cpus::get)),
         debug,
@@ -59,7 +62,7 @@ pub async fn run(
 
     // Do not inline this to avoid borrowing a lock of builds.
     let futures = context
-        .builds()
+        .build_futures()
         .read()
         .await
         .values()
@@ -78,7 +81,7 @@ async fn create_build_future(
     build: &Arc<Build>,
 ) -> Result<(), InfrastructureError> {
     // Exclusive lock for atomic addition of a build job.
-    let mut builds = context.builds().write().await;
+    let mut builds = context.build_futures().write().await;
 
     if builds.contains_key(build.id()) {
         return Ok(());
@@ -103,7 +106,7 @@ async fn spawn_build_future(
                 if let Some(build) = context.configuration().outputs().get(input) {
                     create_build_future(&context, build).await?;
 
-                    context.builds().read().await[build.id()].clone()
+                    context.build_futures().read().await[build.id()].clone()
                 } else {
                     // TODO Consider registering this future as a build job of the input.
                     let input = input.to_string();
@@ -118,12 +121,16 @@ async fn spawn_build_future(
 
         // TODO Consider caching dynamic modules.
         let dynamic_configuration = if let Some(dynamic_module) = build.dynamic_module() {
-            Some(compile_dynamic(&parse_dynamic(
-                &read_file(&dynamic_module).await?,
-            )?)?)
+            let configuration =
+                compile_dynamic(&parse_dynamic(&read_file(&dynamic_module).await?)?)?;
+
+            context.build_graph().lock().await.insert(&configuration)?;
+
+            Some(configuration)
         } else {
             None
         };
+
         let dynamic_inputs = if let Some(configuration) = &dynamic_configuration {
             build
                 .outputs()
@@ -142,7 +149,7 @@ async fn spawn_build_future(
 
             create_build_future(&context, build).await?;
 
-            futures.push(context.builds().read().await[build.id()].clone());
+            futures.push(context.build_futures().read().await[build.id()].clone());
         }
 
         join_builds(futures).await?;

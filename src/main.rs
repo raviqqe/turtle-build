@@ -25,7 +25,7 @@ use std::{
 };
 
 use utilities::{canonicalize_path, read_file};
-use validation::{validate_configuration, validate_modules};
+use validation::validate_modules;
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
 
@@ -60,9 +60,6 @@ async fn execute(arguments: &Arguments) -> Result<(), Box<dyn Error>> {
     validate_modules(&dependencies)?;
 
     let configuration = compile(&modules, &dependencies, &root_module_path)?;
-
-    validate_configuration(&configuration)?;
-
     let build_directory = configuration
         .build_directory()
         .map(PathBuf::from)

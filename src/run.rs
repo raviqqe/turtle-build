@@ -30,11 +30,13 @@ pub async fn run(
     configuration: Configuration,
     build_directory: &Path,
     job_limit: Option<usize>,
+    debug: bool,
 ) -> Result<(), InfrastructureError> {
     let context = Arc::new(Context::new(
         configuration,
         BuildDatabase::new(build_directory)?,
         Semaphore::new(job_limit.unwrap_or_else(num_cpus::get)),
+        debug,
     ));
 
     for output in context.configuration().default_outputs() {

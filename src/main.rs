@@ -61,7 +61,13 @@ async fn execute() -> Result<(), Box<dyn Error>> {
         .map(PathBuf::from)
         .unwrap_or_else(|| root_module_path.parent().unwrap().into());
 
-    run(configuration, &build_directory, arguments.job_limit).await?;
+    run(
+        configuration,
+        &build_directory,
+        arguments.job_limit,
+        arguments.debug,
+    )
+    .await?;
 
     Ok(())
 }

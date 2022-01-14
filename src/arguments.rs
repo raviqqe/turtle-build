@@ -9,4 +9,6 @@ pub struct Arguments {
     pub directory: Option<String>,
     #[clap(short, help = "Set a job limit")]
     pub job_limit: Option<usize>,
+    #[clap(long, help = "Show debug output")]
+    pub debug: bool,
 }

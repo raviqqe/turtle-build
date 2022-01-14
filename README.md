@@ -66,7 +66,7 @@ Turtle aims to support full syntax of the Ninja build files. It also supports ba
 - [x] Dynamic dependencies
   - [x] Implicit inputs
   - [ ] Implicit outputs
-  - [ ] Circular build dependency detection
+  - [x] Circular build dependency detection
 - [ ] C/C++ header dependencies
   - [ ] `depfile` option
   - [ ] `deps` option

@@ -1,7 +1,7 @@
 use super::error::ValidationError;
 use crate::ir::{Build, DynamicConfiguration};
 use petgraph::{
-    algo::is_cyclic_directed,
+    algo::{kosaraju_scc, toposort},
     graph::{DefaultIx, NodeIndex},
     Graph,
 };
@@ -48,8 +48,21 @@ impl BuildGraph {
     }
 
     fn validate(&self) -> Result<(), ValidationError> {
-        if is_cyclic_directed(&self.graph) {
-            return Err(ValidationError::CircularBuildDependency);
+        if let Err(cycle) = toposort(&self.graph, None) {
+            let mut components = kosaraju_scc(&self.graph);
+
+            components.sort_by_key(|component| component.len());
+
+            return Err(ValidationError::CircularBuildDependency(
+                components
+                    .into_iter()
+                    .rev()
+                    .find(|component| component.contains(&cycle.node_id()))
+                    .unwrap()
+                    .into_iter()
+                    .map(|id| self.graph[id].clone())
+                    .collect(),
+            ));
         }
 
         Ok(())
@@ -153,7 +166,7 @@ mod tests {
                 .into_iter()
                 .collect()
             ),
-            Err(ValidationError::CircularBuildDependency)
+            Err(ValidationError::CircularBuildDependency(vec!["foo".into()]))
         );
     }
 
@@ -177,7 +190,7 @@ mod tests {
                 .into_iter()
                 .collect()
             ),
-            Err(ValidationError::CircularBuildDependency)
+            Err(ValidationError::CircularBuildDependency(vec!["foo".into()]))
         );
     }
 
@@ -219,7 +232,10 @@ mod tests {
                 .into_iter()
                 .collect()
             ),
-            Err(ValidationError::CircularBuildDependency)
+            Err(ValidationError::CircularBuildDependency(vec![
+                "bar".into(),
+                "foo".into(),
+            ]))
         );
     }
 
@@ -241,7 +257,10 @@ mod tests {
                     .into_iter()
                     .collect(),
             )),
-            Err(ValidationError::CircularBuildDependency)
+            Err(ValidationError::CircularBuildDependency(vec![
+                "foo".into(),
+                "bar".into(),
+            ]))
         );
     }
 }

@@ -5,7 +5,7 @@ use std::{
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ValidationError {
-    CircularBuildDependency,
+    CircularBuildDependency(Vec<String>),
     CircularModuleDependency,
 }
 
@@ -14,7 +14,7 @@ impl Error for ValidationError {}
 impl Display for ValidationError {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            Self::CircularBuildDependency => {
+            Self::CircularBuildDependency(_) => {
                 write!(formatter, "circular build dependency detected")
             }
             Self::CircularModuleDependency => {

@@ -23,7 +23,7 @@ use std::{
     time::SystemTime,
 };
 use tokio::{
-    fs::metadata,
+    fs::{create_dir_all, metadata},
     io::{self, AsyncWriteExt},
     process::Command,
     spawn,
@@ -169,6 +169,15 @@ async fn spawn_build_future(
         {
             return Ok(());
         } else if let Some(rule) = build.rule() {
+            try_join_all(
+                build
+                    .outputs()
+                    .iter()
+                    .chain(build.implicit_outputs())
+                    .map(prepare_directory),
+            )
+            .await?;
+
             run_rule(&context, rule).await?;
         }
 
@@ -224,6 +233,14 @@ async fn check_file_existence(path: impl AsRef<Path>) -> Result<(), Infrastructu
     metadata(path)
         .await
         .map_err(|error| InfrastructureError::with_path(error, path))?;
+
+    Ok(())
+}
+
+async fn prepare_directory(path: impl AsRef<Path>) -> Result<(), InfrastructureError> {
+    if let Some(directory) = path.as_ref().parent() {
+        create_dir_all(directory).await?;
+    }
 
     Ok(())
 }

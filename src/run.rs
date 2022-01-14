@@ -28,6 +28,7 @@ use tokio::{
     process::Command,
     spawn,
     sync::Semaphore,
+    try_join,
 };
 
 type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), InfrastructureError>> + Send>>;
@@ -246,24 +247,35 @@ async fn prepare_directory(path: impl AsRef<Path>) -> Result<(), InfrastructureE
 }
 
 async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureError> {
+    // Acquire a semaphore first to guanrantee a lock orderi between a job semaphore and console.
     let permit = context.job_semaphore().acquire().await?;
-    let output = Command::new("sh")
-        .arg("-e")
-        .arg("-c")
-        .arg(rule.command())
-        .output()
-        .await?;
-    drop(permit);
 
-    let mut console = context.console().lock().await;
+    let (output, mut console) = try_join!(
+        async {
+            let output = Command::new("sh")
+                .arg("-e")
+                .arg("-c")
+                .arg(rule.command())
+                .output()
+                .await?;
+            drop(permit);
+            let result: Result<_, InfrastructureError> = Ok(output);
+            result
+        },
+        async {
+            let mut console = context.console().lock().await;
 
-    if context.debug() {
-        writeln(console.stderr(), rule.command()).await?;
-    }
+            if context.debug() {
+                writeln(console.stderr(), rule.command()).await?;
+            }
 
-    if let Some(description) = rule.description() {
-        writeln(console.stderr(), description).await?;
-    }
+            if let Some(description) = rule.description() {
+                writeln(console.stderr(), description).await?;
+            }
+
+            Ok(console)
+        }
+    )?;
 
     console.stdout().write_all(&output.stdout).await?;
     console.stderr().write_all(&output.stderr).await?;

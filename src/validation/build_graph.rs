@@ -22,10 +22,10 @@ impl BuildGraph {
 
         for (output, build) in outputs {
             for input in build.inputs().iter().chain(build.order_only_inputs()) {
-                this.add_node(&output);
-                this.add_node(&input);
+                this.add_node(output);
+                this.add_node(input);
 
-                this.add_edge(&output, &input);
+                this.add_edge(output, input);
             }
         }
 
@@ -43,10 +43,10 @@ impl BuildGraph {
     pub fn insert(&mut self, configuration: &DynamicConfiguration) {
         for (output, build) in configuration.outputs() {
             for input in build.inputs() {
-                self.add_node(&output);
-                self.add_node(&input);
+                self.add_node(output);
+                self.add_node(input);
 
-                self.add_edge(&output, &input);
+                self.add_edge(output, input);
             }
         }
     }
@@ -227,6 +227,8 @@ mod tests {
             .into_iter()
             .collect(),
         );
+
+        assert_eq!(graph.validate(), Ok(()));
 
         graph.insert(&DynamicConfiguration::new(
             [("bar".into(), DynamicBuild::new(vec!["foo".into()]))]

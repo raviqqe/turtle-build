@@ -1,5 +1,7 @@
+mod build_graph;
 mod error;
 
+pub use self::build_graph::BuildGraph;
 use self::error::ValidationError;
 use crate::{
     compile::ModuleDependencyMap,

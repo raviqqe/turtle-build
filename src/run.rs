@@ -39,13 +39,10 @@ pub async fn run(
     job_limit: Option<usize>,
     debug: bool,
 ) -> Result<(), InfrastructureError> {
-    let build_graph = BuildGraph::new(configuration.outputs());
-
-    build_graph.validate()?;
-
+    let graph = BuildGraph::new(configuration.outputs())?;
     let context = Arc::new(Context::new(
         configuration,
-        build_graph,
+        graph,
         BuildDatabase::new(build_directory)?,
         Semaphore::new(job_limit.unwrap_or_else(num_cpus::get)),
         debug,
@@ -127,9 +124,7 @@ async fn spawn_build_future(
             let configuration =
                 compile_dynamic(&parse_dynamic(&read_file(&dynamic_module).await?)?)?;
 
-            let mut graph = context.build_graph().lock().await;
-            graph.insert(&configuration);
-            graph.validate()?;
+            context.build_graph().lock().await.insert(&configuration)?;
 
             Some(configuration)
         } else {

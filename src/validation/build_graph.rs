@@ -14,7 +14,7 @@ pub struct BuildGraph {
 }
 
 impl BuildGraph {
-    pub fn new(outputs: &HashMap<String, Arc<Build>>) -> Self {
+    pub fn new(outputs: &HashMap<String, Arc<Build>>) -> Result<Self, ValidationError> {
         let mut this = Self {
             graph: Graph::<String, ()>::new(),
             indexes: HashMap::<String, NodeIndex<DefaultIx>>::new(),
@@ -29,18 +29,12 @@ impl BuildGraph {
             }
         }
 
-        this
+        this.validate()?;
+
+        Ok(this)
     }
 
-    pub fn validate(&self) -> Result<(), ValidationError> {
-        if is_cyclic_directed(&self.graph) {
-            return Err(ValidationError::CircularBuildDependency);
-        }
-
-        Ok(())
-    }
-
-    pub fn insert(&mut self, configuration: &DynamicConfiguration) {
+    pub fn insert(&mut self, configuration: &DynamicConfiguration) -> Result<(), ValidationError> {
         for (output, build) in configuration.outputs() {
             for input in build.inputs() {
                 self.add_node(output);
@@ -49,6 +43,16 @@ impl BuildGraph {
                 self.add_edge(output, input);
             }
         }
+
+        self.validate()
+    }
+
+    fn validate(&self) -> Result<(), ValidationError> {
+        if is_cyclic_directed(&self.graph) {
+            return Err(ValidationError::CircularBuildDependency);
+        }
+
+        Ok(())
     }
 
     fn add_node(&mut self, output: &str) {
@@ -70,7 +74,9 @@ mod tests {
     use crate::ir::{DynamicBuild, Rule};
 
     fn validate_builds(dependencies: &HashMap<String, Arc<Build>>) -> Result<(), ValidationError> {
-        BuildGraph::new(dependencies).validate()
+        BuildGraph::new(dependencies)?;
+
+        Ok(())
     }
 
     fn ir_explicit_build(id: impl Into<String>, rule: Rule, inputs: Vec<String>) -> Build {
@@ -226,18 +232,15 @@ mod tests {
             )]
             .into_iter()
             .collect(),
-        );
-
-        assert_eq!(graph.validate(), Ok(()));
-
-        graph.insert(&DynamicConfiguration::new(
-            [("bar".into(), DynamicBuild::new(vec!["foo".into()]))]
-                .into_iter()
-                .collect(),
-        ));
+        )
+        .unwrap();
 
         assert_eq!(
-            graph.validate(),
+            graph.insert(&DynamicConfiguration::new(
+                [("bar".into(), DynamicBuild::new(vec!["foo".into()]))]
+                    .into_iter()
+                    .collect(),
+            )),
             Err(ValidationError::CircularBuildDependency)
         );
     }

@@ -1,7 +1,8 @@
 use super::error::ValidationError;
 use crate::ir::{Build, DynamicConfiguration};
+use fnv::FnvHashMap;
 use petgraph::{
-    algo::is_cyclic_directed,
+    algo::{kosaraju_scc, toposort},
     graph::{DefaultIx, NodeIndex},
     Graph,
 };
@@ -10,14 +11,14 @@ use std::{collections::HashMap, sync::Arc};
 #[derive(Debug)]
 pub struct BuildGraph {
     graph: Graph<String, ()>,
-    indexes: HashMap<String, NodeIndex<DefaultIx>>,
+    nodes: HashMap<String, NodeIndex<DefaultIx>>,
 }
 
 impl BuildGraph {
-    pub fn new(outputs: &HashMap<String, Arc<Build>>) -> Result<Self, ValidationError> {
+    pub fn new(outputs: &FnvHashMap<String, Arc<Build>>) -> Result<Self, ValidationError> {
         let mut this = Self {
             graph: Graph::<String, ()>::new(),
-            indexes: HashMap::<String, NodeIndex<DefaultIx>>::new(),
+            nodes: HashMap::<String, NodeIndex<DefaultIx>>::new(),
         };
 
         for (output, build) in outputs {
@@ -48,23 +49,36 @@ impl BuildGraph {
     }
 
     fn validate(&self) -> Result<(), ValidationError> {
-        if is_cyclic_directed(&self.graph) {
-            return Err(ValidationError::CircularBuildDependency);
+        if let Err(cycle) = toposort(&self.graph, None) {
+            let mut components = kosaraju_scc(&self.graph);
+
+            components.sort_by_key(|component| component.len());
+
+            return Err(ValidationError::CircularBuildDependency(
+                components
+                    .into_iter()
+                    .rev()
+                    .find(|component| component.contains(&cycle.node_id()))
+                    .unwrap()
+                    .into_iter()
+                    .map(|id| self.graph[id].clone())
+                    .collect(),
+            ));
         }
 
         Ok(())
     }
 
     fn add_node(&mut self, output: &str) {
-        if !self.indexes.contains_key(output) {
-            self.indexes
+        if !self.nodes.contains_key(output) {
+            self.nodes
                 .insert(output.into(), self.graph.add_node(output.into()));
         }
     }
 
     fn add_edge(&mut self, output: &str, input: &str) {
         self.graph
-            .add_edge(self.indexes[output], self.indexes[input], ());
+            .add_edge(self.nodes[output], self.nodes[input], ());
     }
 }
 
@@ -73,7 +87,9 @@ mod tests {
     use super::*;
     use crate::ir::{DynamicBuild, Rule};
 
-    fn validate_builds(dependencies: &HashMap<String, Arc<Build>>) -> Result<(), ValidationError> {
+    fn validate_builds(
+        dependencies: &FnvHashMap<String, Arc<Build>>,
+    ) -> Result<(), ValidationError> {
         BuildGraph::new(dependencies)?;
 
         Ok(())
@@ -153,7 +169,7 @@ mod tests {
                 .into_iter()
                 .collect()
             ),
-            Err(ValidationError::CircularBuildDependency)
+            Err(ValidationError::CircularBuildDependency(vec!["foo".into()]))
         );
     }
 
@@ -177,7 +193,7 @@ mod tests {
                 .into_iter()
                 .collect()
             ),
-            Err(ValidationError::CircularBuildDependency)
+            Err(ValidationError::CircularBuildDependency(vec!["foo".into()]))
         );
     }
 
@@ -219,7 +235,10 @@ mod tests {
                 .into_iter()
                 .collect()
             ),
-            Err(ValidationError::CircularBuildDependency)
+            Err(ValidationError::CircularBuildDependency(vec![
+                "foo".into(),
+                "bar".into(),
+            ]))
         );
     }
 
@@ -241,7 +260,10 @@ mod tests {
                     .into_iter()
                     .collect(),
             )),
-            Err(ValidationError::CircularBuildDependency)
+            Err(ValidationError::CircularBuildDependency(vec![
+                "foo".into(),
+                "bar".into(),
+            ]))
         );
     }
 }

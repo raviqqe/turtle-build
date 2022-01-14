@@ -28,20 +28,27 @@ use utilities::{canonicalize_path, read_file};
 use validation::{validate_configuration, validate_modules};
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
-const DEFAULT_LOG_PREFIX: &str = "turtle: ";
 
 #[tokio::main]
 async fn main() {
-    if let Err(error) = execute().await {
-        eprintln!("{}{}", DEFAULT_LOG_PREFIX, error);
+    let arguments = Arguments::parse();
+
+    if let Err(error) = execute(&arguments).await {
+        eprintln!(
+            "{}{}",
+            if let Some(prefix) = &arguments.log_prefix {
+                prefix
+            } else {
+                ""
+            },
+            error
+        );
 
         exit(1)
     }
 }
 
-async fn execute() -> Result<(), Box<dyn Error>> {
-    let arguments = Arguments::parse();
-
+async fn execute(arguments: &Arguments) -> Result<(), Box<dyn Error>> {
     if let Some(directory) = &arguments.directory {
         set_current_dir(directory)?;
     }
@@ -61,7 +68,13 @@ async fn execute() -> Result<(), Box<dyn Error>> {
         .map(PathBuf::from)
         .unwrap_or_else(|| root_module_path.parent().unwrap().into());
 
-    run(configuration, &build_directory, arguments.job_limit).await?;
+    run(
+        configuration,
+        &build_directory,
+        arguments.job_limit,
+        arguments.debug,
+    )
+    .await?;
 
     Ok(())
 }

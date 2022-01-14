@@ -21,7 +21,13 @@ use std::{
     sync::Arc,
     time::SystemTime,
 };
-use tokio::{fs::metadata, io::AsyncWriteExt, process::Command, spawn, sync::Semaphore};
+use tokio::{
+    fs::metadata,
+    io::{self, AsyncWriteExt},
+    process::Command,
+    spawn,
+    sync::Semaphore,
+};
 
 type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), InfrastructureError>> + Send>>;
 type BuildFuture = Shared<RawBuildFuture>;
@@ -30,11 +36,13 @@ pub async fn run(
     configuration: Configuration,
     build_directory: &Path,
     job_limit: Option<usize>,
+    debug: bool,
 ) -> Result<(), InfrastructureError> {
     let context = Arc::new(Context::new(
         configuration,
         BuildDatabase::new(build_directory)?,
         Semaphore::new(job_limit.unwrap_or_else(num_cpus::get)),
+        debug,
     ));
 
     for output in context.configuration().default_outputs() {
@@ -225,9 +233,12 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
 
     let mut console = context.console().lock().await;
 
+    if context.debug() {
+        writeln(console.stderr(), rule.command()).await?;
+    }
+
     if let Some(description) = rule.description() {
-        console.stderr().write_all(description.as_bytes()).await?;
-        console.stderr().write_all("\n".as_bytes()).await?;
+        writeln(console.stderr(), description).await?;
     }
 
     console.stdout().write_all(&output.stdout).await?;
@@ -239,6 +250,16 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
             output.status.code(),
         ));
     }
+
+    Ok(())
+}
+
+async fn writeln(
+    writer: &mut (impl AsyncWriteExt + Unpin),
+    message: impl AsRef<str>,
+) -> Result<(), io::Error> {
+    writer.write_all(message.as_ref().as_bytes()).await?;
+    writer.write_all("\n".as_bytes()).await?;
 
     Ok(())
 }

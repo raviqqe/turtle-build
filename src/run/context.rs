@@ -11,6 +11,7 @@ pub struct Context {
     database: BuildDatabase,
     job_semaphore: Semaphore,
     console: Mutex<Console>,
+    debug: bool,
 }
 
 impl Context {
@@ -18,6 +19,7 @@ impl Context {
         configuration: Configuration,
         database: BuildDatabase,
         job_semaphore: Semaphore,
+        debug: bool,
     ) -> Self {
         Self {
             configuration,
@@ -25,6 +27,7 @@ impl Context {
             database,
             job_semaphore,
             console: Console::new().into(),
+            debug,
         }
     }
 
@@ -46,5 +49,9 @@ impl Context {
 
     pub fn console(&self) -> &Mutex<Console> {
         &self.console
+    }
+
+    pub fn debug(&self) -> bool {
+        self.debug
     }
 }

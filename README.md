@@ -9,7 +9,7 @@ Clone of [the Ninja build system](https://github.com/ninja-build/ninja) written 
 ## Goals
 
 - Safe (no `unsafe`) and fast implementation of the Ninja build system in Rust
-- Improved frontend support (WIP)
+- Improved frontend support
   - Full output from build rules and no output from Turtle by default
   - More customizable build/rule/progress/error output
 
@@ -84,7 +84,7 @@ Here is how parallel builds work in Turtle:
 3. Those futures are scheduled and run in parallel by an asynchronous runtime in Rust.
 4. Builds complete when all the futures are resolved.
 
-Currently, Turtle uses a topological sort algorithm only to detect dependency cycles but not for execution of build graphs.
+Currently, Turtle uses a topological sort algorithm only to detect dependency cycles but not for scheduling of build jobs.
 
 Turtle is powered by the following neat projects and others!
 

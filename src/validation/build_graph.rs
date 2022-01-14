@@ -236,8 +236,8 @@ mod tests {
                 .collect()
             ),
             Err(ValidationError::CircularBuildDependency(vec![
-                "bar".into(),
                 "foo".into(),
+                "bar".into(),
             ]))
         );
     }

@@ -10,7 +10,7 @@
 
 - Safe (no `unsafe`) and fast implementation of the Ninja build system in Rust
 - Frontend support for high-level programming languages
-  - Modest output by default.
+  - Modest and comprehensive output by default
   - Customizable progress/error output
 
 Turtle is originally written for [the Pen programming language](https://github.com/pen-lang/pen). Therefore, we support only dynamic dependencies but not C/C++ header dependencies currently. Your contribution is welcome! 😄

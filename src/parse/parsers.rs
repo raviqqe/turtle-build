@@ -66,6 +66,7 @@ fn rule<'a>() -> impl Parser<Stream<'a>, Output = Rule> {
         ),
     )
         .map(|(_, name, _, command, description)| Rule::new(name, command, description))
+        .expected("rule statement")
 }
 
 fn build<'a>() -> impl Parser<Stream<'a>, Output = Build> {
@@ -105,6 +106,7 @@ fn build<'a>() -> impl Parser<Stream<'a>, Output = Build> {
                 )
             },
         )
+        .expected("build statement")
 }
 
 pub fn dynamic_build<'a>() -> impl Parser<Stream<'a>, Output = DynamicBuild> {
@@ -119,24 +121,28 @@ pub fn dynamic_build<'a>() -> impl Parser<Stream<'a>, Output = DynamicBuild> {
         .map(|(_, output, _, _, implicit_inputs, _)| {
             DynamicBuild::new(output, implicit_inputs.into_iter().flatten().collect())
         })
+        .expected("build statement")
 }
 
 fn default<'a>() -> impl Parser<Stream<'a>, Output = DefaultOutput> {
     (keyword("default"), many1(string_literal()))
         .skip(line_break())
         .map(|(_, outputs)| DefaultOutput::new(outputs))
+        .expected("default statement")
 }
 
 fn include<'a>() -> impl Parser<Stream<'a>, Output = Include> {
     (keyword("include"), string_line())
         .skip(line_break())
         .map(|(_, path)| Include::new(path))
+        .expected("include statement")
 }
 
 fn submodule<'a>() -> impl Parser<Stream<'a>, Output = Submodule> {
     (keyword("subninja"), string_line())
         .skip(line_break())
         .map(|(_, path)| Submodule::new(path))
+        .expected("subninja statement")
 }
 
 fn string_line<'a>() -> impl Parser<Stream<'a>, Output = String> {
@@ -152,7 +158,9 @@ fn string_literal<'a>() -> impl Parser<Stream<'a>, Output = String> {
 }
 
 fn keyword<'a>(name: &'static str) -> impl Parser<Stream<'a>, Output = ()> {
-    token(attempt(string(name).skip(not_followed_by(alpha_num())))).with(value(()))
+    token(attempt(string(name).skip(not_followed_by(alpha_num()))))
+        .with(value(()))
+        .expected(name)
 }
 
 fn identifier<'a>() -> impl Parser<Stream<'a>, Output = String> {
@@ -163,11 +171,13 @@ fn identifier<'a>() -> impl Parser<Stream<'a>, Output = String> {
         )
             .map(|(head, tail): (_, String)| [head.into(), tail].concat()),
     )
+    .expected("identifier")
 }
 
 fn sign<'a>(sign: &'static str) -> impl Parser<Stream<'a>, Output = ()> {
     attempt(token(string(sign)).skip(not_followed_by(one_of(OPERATOR_CHARACTERS.iter().cloned()))))
         .with(value(()))
+        .expected(sign)
 }
 
 fn token<'a, O, P: Parser<Stream<'a>, Output = O>>(
@@ -177,7 +187,9 @@ fn token<'a, O, P: Parser<Stream<'a>, Output = O>>(
 }
 
 fn indent<'a>() -> impl Parser<Stream<'a>, Output = ()> {
-    many1::<Vec<_>, _, _>(char(' ')).with(value(()))
+    many1::<Vec<_>, _, _>(char(' '))
+        .with(value(()))
+        .expected("indent")
 }
 
 fn blank<'a>() -> impl Parser<Stream<'a>, Output = ()> {

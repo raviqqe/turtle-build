@@ -1,7 +1,8 @@
 use combine::easy;
+use combine::stream::position::{self, SourcePosition};
 
-pub type Stream<'a> = easy::Stream<&'a str>;
+pub type Stream<'a> = easy::Stream<position::Stream<&'a str, SourcePosition>>;
 
 pub fn stream(source: &str) -> Stream {
-    easy::Stream(source)
+    easy::Stream(position::Stream::new(source))
 }

@@ -4,7 +4,7 @@
 [![crates.io](https://img.shields.io/crates/v/turtle-build?style=flat-square)](https://crates.io/crates/turtle-build)
 [![License](https://img.shields.io/crates/l/turtle-build?style=flat-square)](#License)
 
-Clone of [the Ninja build system](https://github.com/ninja-build/ninja) written in Rust
+[Ninja](https://github.com/ninja-build/ninja)-compatible build system for high-level programming languages written in Rust
 
 ## Goals
 

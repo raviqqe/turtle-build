@@ -4,7 +4,7 @@
 [![crates.io](https://img.shields.io/crates/v/turtle-build?style=flat-square)](https://crates.io/crates/turtle-build)
 [![License](https://img.shields.io/crates/l/turtle-build?style=flat-square)](#License)
 
-[Ninja](https://github.com/ninja-build/ninja)-compatible build system for high-level programming languages written in Rust
+[Ninja][ninja]-compatible build system for high-level programming languages written in Rust
 
 ## Goals
 
@@ -28,6 +28,12 @@ turtle
 ```
 
 For more information, see `turtle --help`.
+
+## Features
+
+- [Ninja][ninja]-compatible build file syntax and command line options
+- Console output handling
+  - Turtle shows outputs of build jobs running currently. So it's easier to track what is going on in the build system currently.
 
 ## Compatibility
 
@@ -100,3 +106,5 @@ Turtle is powered by the following neat projects and others!
 ## License
 
 Dual-licensed under [MIT](LICENSE-MIT) and [Apache 2.0](LICENSE-APACHE).
+
+[ninja]: https://github.com/ninja-build/ninja

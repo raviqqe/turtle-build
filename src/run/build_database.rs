@@ -28,6 +28,12 @@ impl BuildDatabase {
 
         Ok(())
     }
+
+    pub async fn flush(&self) -> Result<(), InfrastructureError> {
+        self.database.flush_async().await?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

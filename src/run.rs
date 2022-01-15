@@ -71,7 +71,11 @@ pub async fn run(
         .collect::<Vec<_>>();
 
     // Start running build futures actually.
-    join_builds(futures).await?;
+    if let Err(error) = join_builds(futures).await {
+        context.database().flush().await?;
+
+        return Err(error);
+    }
 
     Ok(())
 }

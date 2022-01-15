@@ -23,7 +23,6 @@ use std::{
     path::{Path, PathBuf},
     process::exit,
 };
-
 use utilities::{canonicalize_path, read_file};
 use validation::validate_modules;
 

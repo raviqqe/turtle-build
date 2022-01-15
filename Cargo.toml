@@ -1,6 +1,6 @@
 [package]
 name = "turtle-build"
-description = "The Ninja build system clone written in Rust"
+description = "Ninja-compatible build system for high-level programming languages"
 authors = ["Yota Toyama <raviqqe@gmail.com>"]
 repository = "https://github.com/raviqqe/turtle"
 version = "0.2.4"

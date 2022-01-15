@@ -4,14 +4,14 @@
 [![crates.io](https://img.shields.io/crates/v/turtle-build?style=flat-square)](https://crates.io/crates/turtle-build)
 [![License](https://img.shields.io/crates/l/turtle-build?style=flat-square)](#License)
 
-Clone of [the Ninja build system](https://github.com/ninja-build/ninja) written in Rust
+[Ninja][ninja]-compatible build system for high-level programming languages written in Rust
 
 ## Goals
 
 - Safe (no `unsafe`) and fast implementation of the Ninja build system in Rust
 - Frontend support for high-level programming languages
-  - Full output from build rules and no output from Turtle by default
-  - More customizable build/rule/progress/error output
+  - Modest and comprehensive output by default
+  - Customizable progress/error output
 
 Turtle is originally written for [the Pen programming language](https://github.com/pen-lang/pen). Therefore, we support only dynamic dependencies but not C/C++ header dependencies currently. Your contribution is welcome! 😄
 
@@ -29,11 +29,22 @@ turtle
 
 For more information, see `turtle --help`.
 
-## Compatibility
+## Features
+
+- [Ninja][ninja]-compatible build file syntax and command line options
+- Comprehensive build output
+  - Turtle doesn't show any information that is not understandable to end-users.
+  - It is important for users of high-level programming languages who do not know how compilers and build systems work.
+- Console output handling
+  - Turtle shows outputs of build jobs running currently. So it's easy to track what is going on during builds.
+- Log format customization
+  - Log prefixes can be changed by a command line option.
+
+### Compatibility with [Ninja][ninja]
 
 Turtle aims to support full syntax of the Ninja build files. It also supports basic command line arguments but is not going to implement all the original options (e.g. `-t` option.)
 
-### Syntax
+#### Syntax
 
 - [x] `build` statement
   - [x] Explicit outputs
@@ -51,14 +62,14 @@ Turtle aims to support full syntax of the Ninja build files. It also supports ba
 - [x] Build-local variables
 - [x] `in` and `out` special variable
 
-### Command line arguments
+#### Command line arguments
 
 - [x] `-f` custom build file option
 - [x] `-j` job limit option
 - [ ] `-k` keep-going option
 - [x] `-C` change-directory option
 
-### Others
+#### Others
 
 - [x] Circular build dependency detection
 - [x] Circular build file dependency detection
@@ -100,3 +111,5 @@ Turtle is powered by the following neat projects and others!
 ## License
 
 Dual-licensed under [MIT](LICENSE-MIT) and [Apache 2.0](LICENSE-APACHE).
+
+[ninja]: https://github.com/ninja-build/ninja

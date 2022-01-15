@@ -16,6 +16,7 @@
     "subninja",
     "tempdir",
     "tempfile",
-    "toposort"
+    "toposort",
+    "yota"
   ]
 }

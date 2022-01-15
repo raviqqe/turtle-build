@@ -1,10 +1,10 @@
 mod build_database;
-mod console;
 mod context;
 
 use self::{build_database::BuildDatabase, context::Context};
 use crate::{
     compile::compile_dynamic,
+    console::Console,
     debug,
     error::InfrastructureError,
     ir::{Build, Configuration, Rule},
@@ -29,7 +29,7 @@ use tokio::{
     io::AsyncWriteExt,
     process::Command,
     spawn,
-    sync::Semaphore,
+    sync::{Mutex, Semaphore},
     try_join,
 };
 
@@ -38,6 +38,7 @@ type BuildFuture = Shared<RawBuildFuture>;
 
 pub async fn run(
     configuration: Configuration,
+    console: &Arc<Mutex<Console>>,
     build_directory: &Path,
     job_limit: Option<usize>,
     debug: bool,
@@ -48,6 +49,7 @@ pub async fn run(
         graph,
         BuildDatabase::new(build_directory)?,
         Semaphore::new(job_limit.unwrap_or_else(num_cpus::get)),
+        console.clone(),
         debug,
     ));
 

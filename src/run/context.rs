@@ -1,6 +1,6 @@
-use super::{build_database::BuildDatabase, console::Console, BuildFuture};
-use crate::{ir::Configuration, validation::BuildGraph};
-use std::collections::HashMap;
+use super::{build_database::BuildDatabase, BuildFuture};
+use crate::{console::Console, ir::Configuration, validation::BuildGraph};
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{Mutex, RwLock, Semaphore};
 
 #[derive(Debug)]
@@ -11,7 +11,7 @@ pub struct Context {
     build_graph: Mutex<BuildGraph>,
     database: BuildDatabase,
     job_semaphore: Semaphore,
-    console: Mutex<Console>,
+    console: Arc<Mutex<Console>>,
     debug: bool,
 }
 
@@ -21,6 +21,7 @@ impl Context {
         build_graph: BuildGraph,
         database: BuildDatabase,
         job_semaphore: Semaphore,
+        console: Arc<Mutex<Console>>,
         debug: bool,
     ) -> Self {
         Self {
@@ -29,7 +30,7 @@ impl Context {
             build_futures: RwLock::new(HashMap::new()),
             database,
             job_semaphore,
-            console: Console::new().into(),
+            console,
             debug,
         }
     }

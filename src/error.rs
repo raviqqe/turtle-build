@@ -9,15 +9,18 @@ use tokio::{io, sync::AcquireError, task::JoinError};
 
 #[derive(Clone, Debug)]
 pub enum InfrastructureError {
+    // Expected
     Build,
+    InputNotFound(String),
+    Validation(ValidationError),
+
+    // Unexpected
     Compile(CompileError),
     DefaultOutputNotFound(String),
     DynamicDependencyNotFound(Arc<Build>),
-    InputNotFound(String),
     Other(String),
     Parse(ParseError),
     Sled(sled::Error),
-    Validation(ValidationError),
 }
 
 impl InfrastructureError {

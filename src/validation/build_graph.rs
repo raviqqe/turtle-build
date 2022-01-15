@@ -12,6 +12,7 @@ use std::{collections::HashMap, sync::Arc};
 pub struct BuildGraph {
     graph: Graph<String, ()>,
     nodes: HashMap<String, NodeIndex<DefaultIx>>,
+    primary_outputs: HashMap<String, String>,
 }
 
 impl BuildGraph {
@@ -19,11 +20,22 @@ impl BuildGraph {
         let mut this = Self {
             graph: Graph::<String, ()>::new(),
             nodes: HashMap::<String, NodeIndex<DefaultIx>>::new(),
+            primary_outputs: HashMap::new(),
         };
 
         for (output, build) in outputs {
             for input in build.inputs().iter().chain(build.order_only_inputs()) {
                 this.add_edge(output, input);
+            }
+
+            // Is this output primary?
+            if output == &build.outputs()[0] {
+                this.primary_outputs.insert(output.into(), output.into());
+
+                for secondary in build.outputs().iter().skip(1) {
+                    this.add_edge(secondary, output);
+                    this.primary_outputs.insert(secondary.into(), output.into());
+                }
             }
         }
 
@@ -35,7 +47,7 @@ impl BuildGraph {
     pub fn insert(&mut self, configuration: &DynamicConfiguration) -> Result<(), ValidationError> {
         for (output, build) in configuration.outputs() {
             for input in build.inputs() {
-                self.add_edge(output, input);
+                self.add_edge(&self.primary_outputs[output].clone(), input);
             }
         }
 
@@ -92,8 +104,13 @@ mod tests {
         Ok(())
     }
 
-    fn ir_explicit_build(id: impl Into<String>, rule: Rule, inputs: Vec<String>) -> Build {
-        Build::new(id, vec![], vec![], rule.into(), inputs, vec![], None)
+    fn ir_explicit_build(
+        id: impl Into<String>,
+        outputs: Vec<String>,
+        rule: Rule,
+        inputs: Vec<String>,
+    ) -> Build {
+        Build::new(id, outputs, vec![], rule.into(), inputs, vec![], None)
     }
 
     #[test]
@@ -107,7 +124,7 @@ mod tests {
             validate_builds(
                 &[(
                     "foo".into(),
-                    ir_explicit_build("", Rule::new("", None), vec![]).into()
+                    ir_explicit_build("", vec!["foo".into()], Rule::new("", None), vec![]).into()
                 )]
                 .into_iter()
                 .collect()
@@ -122,7 +139,13 @@ mod tests {
             validate_builds(
                 &[(
                     "foo".into(),
-                    ir_explicit_build("", Rule::new("", None), vec!["bar".into()]).into()
+                    ir_explicit_build(
+                        "",
+                        vec!["foo".into()],
+                        Rule::new("", None),
+                        vec!["bar".into()]
+                    )
+                    .into()
                 )]
                 .into_iter()
                 .collect()
@@ -139,7 +162,7 @@ mod tests {
                     "foo".into(),
                     Build::new(
                         "",
-                        vec![],
+                        vec!["foo".into()],
                         vec![],
                         Rule::new("", None).into(),
                         vec![],
@@ -161,7 +184,13 @@ mod tests {
             validate_builds(
                 &[(
                     "foo".into(),
-                    ir_explicit_build("", Rule::new("", None), vec!["foo".into()]).into()
+                    ir_explicit_build(
+                        "",
+                        vec!["foo".into()],
+                        Rule::new("", None),
+                        vec!["foo".into()]
+                    )
+                    .into()
                 )]
                 .into_iter()
                 .collect()
@@ -178,7 +207,7 @@ mod tests {
                     "foo".into(),
                     Build::new(
                         "",
-                        vec![],
+                        vec!["foo".into()],
                         vec![],
                         Rule::new("", None).into(),
                         vec![],
@@ -201,11 +230,18 @@ mod tests {
                 &[
                     (
                         "foo".into(),
-                        ir_explicit_build("", Rule::new("", None), vec!["bar".into()]).into()
+                        ir_explicit_build(
+                            "",
+                            vec!["foo".into()],
+                            Rule::new("", None),
+                            vec!["bar".into()]
+                        )
+                        .into()
                     ),
                     (
                         "bar".into(),
-                        ir_explicit_build("", Rule::new("", None), vec![]).into()
+                        ir_explicit_build("", vec!["bar".into()], Rule::new("", None), vec![])
+                            .into()
                     )
                 ]
                 .into_iter()
@@ -222,11 +258,23 @@ mod tests {
                 &[
                     (
                         "foo".into(),
-                        ir_explicit_build("", Rule::new("", None), vec!["bar".into()]).into()
+                        ir_explicit_build(
+                            "",
+                            vec!["foo".into()],
+                            Rule::new("", None),
+                            vec!["bar".into()]
+                        )
+                        .into()
                     ),
                     (
                         "bar".into(),
-                        ir_explicit_build("", Rule::new("", None), vec!["foo".into()]).into()
+                        ir_explicit_build(
+                            "",
+                            vec!["bar".into()],
+                            Rule::new("", None),
+                            vec!["foo".into()]
+                        )
+                        .into()
                     )
                 ]
                 .into_iter()
@@ -242,10 +290,22 @@ mod tests {
     #[test]
     fn validate_with_dynamic_configuration() {
         let mut graph = BuildGraph::new(
-            &[(
-                "foo".into(),
-                ir_explicit_build("", Rule::new("", None), vec!["bar".into()]).into(),
-            )]
+            &[
+                (
+                    "foo".into(),
+                    ir_explicit_build(
+                        "",
+                        vec!["foo".into()],
+                        Rule::new("", None),
+                        vec!["bar".into()],
+                    )
+                    .into(),
+                ),
+                (
+                    "bar".into(),
+                    ir_explicit_build("", vec!["bar".into()], Rule::new("", None), vec![]).into(),
+                ),
+            ]
             .into_iter()
             .collect(),
         )
@@ -260,6 +320,61 @@ mod tests {
             Err(ValidationError::CircularBuildDependency(vec![
                 "foo".into(),
                 "bar".into(),
+            ]))
+        );
+    }
+
+    #[test]
+    fn validate_circular_build_with_dependency_from_secondary_to_primary() {
+        let build = Arc::new(ir_explicit_build(
+            "",
+            vec!["foo".into(), "bar".into()],
+            Rule::new("", None),
+            vec![],
+        ));
+
+        let mut graph = BuildGraph::new(
+            &[("foo".into(), build.clone()), ("bar".into(), build)]
+                .into_iter()
+                .collect(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            graph.insert(&DynamicConfiguration::new(
+                [("bar".into(), DynamicBuild::new(vec!["foo".into()]))]
+                    .into_iter()
+                    .collect(),
+            )),
+            Err(ValidationError::CircularBuildDependency(vec!["foo".into()]))
+        );
+    }
+
+    #[test]
+    fn validate_circular_build_with_dependency_from_primary_to_secondary() {
+        let build = Arc::new(ir_explicit_build(
+            "",
+            vec!["foo".into(), "bar".into()],
+            Rule::new("", None),
+            vec![],
+        ));
+
+        let mut graph = BuildGraph::new(
+            &[("foo".into(), build.clone()), ("bar".into(), build)]
+                .into_iter()
+                .collect(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            graph.insert(&DynamicConfiguration::new(
+                [("foo".into(), DynamicBuild::new(vec!["bar".into()]))]
+                    .into_iter()
+                    .collect(),
+            )),
+            Err(ValidationError::CircularBuildDependency(vec![
+                "bar".into(),
+                "foo".into()
             ]))
         );
     }

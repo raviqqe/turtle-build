@@ -24,7 +24,9 @@ use std::{
     path::{Path, PathBuf},
     process::exit,
     sync::Arc,
+    time::Duration,
 };
+use tokio::time::sleep;
 use tokio::{io::AsyncWriteExt, sync::Mutex};
 use utilities::{canonicalize_path, read_file};
 use validation::validate_modules;
@@ -57,6 +59,9 @@ async fn main() {
                 .await
                 .unwrap();
         }
+
+        // Delay for the error message to be written completely hopefully.
+        sleep(Duration::from_millis(1)).await;
 
         exit(1)
     }

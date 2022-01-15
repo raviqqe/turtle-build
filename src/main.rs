@@ -1,6 +1,7 @@
 mod arguments;
 mod ast;
 mod compile;
+mod console;
 mod error;
 mod ir;
 mod parse;
@@ -12,6 +13,7 @@ use arguments::Arguments;
 use ast::{Module, Statement};
 use clap::Parser;
 use compile::{compile, ModuleDependencyMap};
+use console::Console;
 use error::InfrastructureError;
 use futures::future::try_join_all;
 use parse::parse;
@@ -21,7 +23,9 @@ use std::{
     env::set_current_dir,
     path::{Path, PathBuf},
     process::exit,
+    sync::Arc,
 };
+use tokio::{io::AsyncWriteExt, sync::Mutex};
 use utilities::{canonicalize_path, read_file};
 use validation::validate_modules;
 
@@ -30,25 +34,38 @@ const DEFAULT_BUILD_FILE: &str = "build.ninja";
 #[tokio::main]
 async fn main() {
     let arguments = Arguments::parse();
+    let console = Arc::new(Mutex::new(Console::new()));
 
-    if let Err(error) = execute(&arguments).await {
+    if let Err(error) = execute(&arguments, &console).await {
         if !(arguments.quiet && matches!(error, InfrastructureError::Build)) {
-            eprintln!(
-                "{}{}",
-                if let Some(prefix) = &arguments.log_prefix {
-                    prefix
-                } else {
-                    ""
-                },
-                error
-            );
+            console
+                .lock()
+                .await
+                .stderr()
+                .write_all(
+                    format!(
+                        "{}{}",
+                        if let Some(prefix) = &arguments.log_prefix {
+                            prefix
+                        } else {
+                            ""
+                        },
+                        error
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
         }
 
         exit(1)
     }
 }
 
-async fn execute(arguments: &Arguments) -> Result<(), InfrastructureError> {
+async fn execute(
+    arguments: &Arguments,
+    console: &Arc<Mutex<Console>>,
+) -> Result<(), InfrastructureError> {
     if let Some(directory) = &arguments.directory {
         set_current_dir(directory)?;
     }
@@ -67,6 +84,7 @@ async fn execute(arguments: &Arguments) -> Result<(), InfrastructureError> {
 
     run(
         configuration,
+        console,
         &build_directory,
         arguments.job_limit,
         arguments.debug,

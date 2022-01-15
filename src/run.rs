@@ -274,7 +274,7 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
             let mut console = context.console().lock().await;
 
             if context.debug() {
-                writeln(console.stderr(), rule.command()).await?;
+                writeln(console.stderr(), format_debug_log(rule.command())).await?;
             }
 
             if let Some(description) = rule.description() {
@@ -292,12 +292,14 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
         if context.debug() {
             writeln(
                 console.stderr(),
-                "command exited".to_owned()
-                    + &if let Some(code) = output.status.code() {
-                        format!(" with status code {}", code)
-                    } else {
-                        "".into()
-                    },
+                format_debug_log(
+                    "command exited".to_owned()
+                        + &if let Some(code) = output.status.code() {
+                            format!(" with status code {}", code)
+                        } else {
+                            "".into()
+                        },
+                ),
             )
             .await?;
         }
@@ -316,4 +318,8 @@ async fn writeln(
     writer.write_all("\n".as_bytes()).await?;
 
     Ok(())
+}
+
+fn format_debug_log(message: impl AsRef<str>) -> String {
+    format!("turtle: {}", message.as_ref())
 }

@@ -38,7 +38,7 @@ For more information, see `turtle --help`.
 - Console output handling
   - Turtle shows outputs of build jobs running currently. So it's easy to track what is going on during builds.
 - Log format customization
-  - Log prefixes can be changed by a command option.
+  - Log prefixes can be changed by a command line option.
 
 ### Compatibility with [Ninja][ninja]
 

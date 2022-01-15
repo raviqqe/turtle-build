@@ -104,13 +104,16 @@ mod tests {
         Ok(())
     }
 
-    fn ir_explicit_build(
-        id: impl Into<String>,
-        outputs: Vec<String>,
-        rule: Rule,
-        inputs: Vec<String>,
-    ) -> Build {
-        Build::new(id, outputs, vec![], rule.into(), inputs, vec![], None)
+    fn explicit_build(outputs: Vec<String>, inputs: Vec<String>) -> Build {
+        Build::new(
+            "",
+            outputs,
+            vec![],
+            Rule::new("", None).into(),
+            inputs,
+            vec![],
+            None,
+        )
     }
 
     #[test]
@@ -124,7 +127,7 @@ mod tests {
             validate_builds(
                 &[(
                     "foo".into(),
-                    ir_explicit_build("", vec!["foo".into()], Rule::new("", None), vec![]).into()
+                    explicit_build(vec!["foo".into()], vec![]).into()
                 )]
                 .into_iter()
                 .collect()
@@ -139,13 +142,7 @@ mod tests {
             validate_builds(
                 &[(
                     "foo".into(),
-                    ir_explicit_build(
-                        "",
-                        vec!["foo".into()],
-                        Rule::new("", None),
-                        vec!["bar".into()]
-                    )
-                    .into()
+                    explicit_build(vec!["foo".into()], vec!["bar".into()]).into()
                 )]
                 .into_iter()
                 .collect()
@@ -184,13 +181,7 @@ mod tests {
             validate_builds(
                 &[(
                     "foo".into(),
-                    ir_explicit_build(
-                        "",
-                        vec!["foo".into()],
-                        Rule::new("", None),
-                        vec!["foo".into()]
-                    )
-                    .into()
+                    explicit_build(vec!["foo".into()], vec!["foo".into()]).into()
                 )]
                 .into_iter()
                 .collect()
@@ -230,18 +221,11 @@ mod tests {
                 &[
                     (
                         "foo".into(),
-                        ir_explicit_build(
-                            "",
-                            vec!["foo".into()],
-                            Rule::new("", None),
-                            vec!["bar".into()]
-                        )
-                        .into()
+                        explicit_build(vec!["foo".into()], vec!["bar".into()]).into()
                     ),
                     (
                         "bar".into(),
-                        ir_explicit_build("", vec!["bar".into()], Rule::new("", None), vec![])
-                            .into()
+                        explicit_build(vec!["bar".into()], vec![]).into()
                     )
                 ]
                 .into_iter()
@@ -258,23 +242,11 @@ mod tests {
                 &[
                     (
                         "foo".into(),
-                        ir_explicit_build(
-                            "",
-                            vec!["foo".into()],
-                            Rule::new("", None),
-                            vec!["bar".into()]
-                        )
-                        .into()
+                        explicit_build(vec!["foo".into()], vec!["bar".into()]).into()
                     ),
                     (
                         "bar".into(),
-                        ir_explicit_build(
-                            "",
-                            vec!["bar".into()],
-                            Rule::new("", None),
-                            vec!["foo".into()]
-                        )
-                        .into()
+                        explicit_build(vec!["bar".into()], vec!["foo".into()]).into()
                     )
                 ]
                 .into_iter()
@@ -293,17 +265,11 @@ mod tests {
             &[
                 (
                     "foo".into(),
-                    ir_explicit_build(
-                        "",
-                        vec!["foo".into()],
-                        Rule::new("", None),
-                        vec!["bar".into()],
-                    )
-                    .into(),
+                    explicit_build(vec!["foo".into()], vec!["bar".into()]).into(),
                 ),
                 (
                     "bar".into(),
-                    ir_explicit_build("", vec!["bar".into()], Rule::new("", None), vec![]).into(),
+                    explicit_build(vec!["bar".into()], vec![]).into(),
                 ),
             ]
             .into_iter()
@@ -326,12 +292,7 @@ mod tests {
 
     #[test]
     fn validate_circular_build_with_dependency_from_secondary_to_primary() {
-        let build = Arc::new(ir_explicit_build(
-            "",
-            vec!["foo".into(), "bar".into()],
-            Rule::new("", None),
-            vec![],
-        ));
+        let build = Arc::new(explicit_build(vec!["foo".into(), "bar".into()], vec![]));
 
         let mut graph = BuildGraph::new(
             &[("foo".into(), build.clone()), ("bar".into(), build)]
@@ -352,12 +313,7 @@ mod tests {
 
     #[test]
     fn validate_circular_build_with_dependency_from_primary_to_secondary() {
-        let build = Arc::new(ir_explicit_build(
-            "",
-            vec!["foo".into(), "bar".into()],
-            Rule::new("", None),
-            vec![],
-        ));
+        let build = Arc::new(explicit_build(vec!["foo".into(), "bar".into()], vec![]));
 
         let mut graph = BuildGraph::new(
             &[("foo".into(), build.clone()), ("bar".into(), build)]

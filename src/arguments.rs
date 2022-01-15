@@ -11,6 +11,8 @@ pub struct Arguments {
     pub job_limit: Option<usize>,
     #[clap(long, help = "Set a log prefix")]
     pub log_prefix: Option<String>,
+    #[clap(long, help = "Show no message on failure of build jobs")]
+    pub quiet: bool,
     #[clap(long, help = "Show debug output", env = "TURTLE_DEBUG")]
     pub debug: bool,
 }

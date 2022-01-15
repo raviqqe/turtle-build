@@ -19,7 +19,6 @@ use run::run;
 use std::{
     collections::HashMap,
     env::set_current_dir,
-    error::Error,
     path::{Path, PathBuf},
     process::exit,
 };
@@ -33,21 +32,23 @@ async fn main() {
     let arguments = Arguments::parse();
 
     if let Err(error) = execute(&arguments).await {
-        eprintln!(
-            "{}{}",
-            if let Some(prefix) = &arguments.log_prefix {
-                prefix
-            } else {
-                ""
-            },
-            error
-        );
+        if !(arguments.quiet && matches!(error, InfrastructureError::Build)) {
+            eprintln!(
+                "{}{}",
+                if let Some(prefix) = &arguments.log_prefix {
+                    prefix
+                } else {
+                    ""
+                },
+                error
+            );
+        }
 
         exit(1)
     }
 }
 
-async fn execute(arguments: &Arguments) -> Result<(), Box<dyn Error>> {
+async fn execute(arguments: &Arguments) -> Result<(), InfrastructureError> {
     if let Some(directory) = &arguments.directory {
         set_current_dir(directory)?;
     }

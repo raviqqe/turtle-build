@@ -12,6 +12,7 @@ use std::{collections::HashMap, sync::Arc};
 pub struct BuildGraph {
     graph: Graph<String, ()>,
     nodes: HashMap<String, NodeIndex<DefaultIx>>,
+    primary_outputs: HashMap<String, String>,
 }
 
 impl BuildGraph {
@@ -19,14 +20,22 @@ impl BuildGraph {
         let mut this = Self {
             graph: Graph::<String, ()>::new(),
             nodes: HashMap::<String, NodeIndex<DefaultIx>>::new(),
+            primary_outputs: HashMap::new(),
         };
 
         for (output, build) in outputs {
             for input in build.inputs().iter().chain(build.order_only_inputs()) {
-                this.add_node(output);
-                this.add_node(input);
-
                 this.add_edge(output, input);
+            }
+
+            // Is this output primary?
+            if output == &build.outputs()[0] {
+                this.primary_outputs.insert(output.into(), output.into());
+
+                for secondary in build.outputs().iter().skip(1) {
+                    this.add_edge(secondary, output);
+                    this.primary_outputs.insert(secondary.into(), output.into());
+                }
             }
         }
 
@@ -38,10 +47,7 @@ impl BuildGraph {
     pub fn insert(&mut self, configuration: &DynamicConfiguration) -> Result<(), ValidationError> {
         for (output, build) in configuration.outputs() {
             for input in build.inputs() {
-                self.add_node(output);
-                self.add_node(input);
-
-                self.add_edge(output, input);
+                self.add_edge(&self.primary_outputs[output].clone(), input);
             }
         }
 
@@ -69,16 +75,19 @@ impl BuildGraph {
         Ok(())
     }
 
+    fn add_edge(&mut self, output: &str, input: &str) {
+        self.add_node(output);
+        self.add_node(input);
+
+        self.graph
+            .add_edge(self.nodes[output], self.nodes[input], ());
+    }
+
     fn add_node(&mut self, output: &str) {
         if !self.nodes.contains_key(output) {
             self.nodes
                 .insert(output.into(), self.graph.add_node(output.into()));
         }
-    }
-
-    fn add_edge(&mut self, output: &str, input: &str) {
-        self.graph
-            .add_edge(self.nodes[output], self.nodes[input], ());
     }
 }
 
@@ -95,8 +104,16 @@ mod tests {
         Ok(())
     }
 
-    fn ir_explicit_build(id: impl Into<String>, rule: Rule, inputs: Vec<String>) -> Build {
-        Build::new(id, vec![], vec![], rule.into(), inputs, vec![], None)
+    fn explicit_build(outputs: Vec<String>, inputs: Vec<String>) -> Build {
+        Build::new(
+            "",
+            outputs,
+            vec![],
+            Rule::new("", None).into(),
+            inputs,
+            vec![],
+            None,
+        )
     }
 
     #[test]
@@ -110,7 +127,7 @@ mod tests {
             validate_builds(
                 &[(
                     "foo".into(),
-                    ir_explicit_build("", Rule::new("", None), vec![]).into()
+                    explicit_build(vec!["foo".into()], vec![]).into()
                 )]
                 .into_iter()
                 .collect()
@@ -125,7 +142,7 @@ mod tests {
             validate_builds(
                 &[(
                     "foo".into(),
-                    ir_explicit_build("", Rule::new("", None), vec!["bar".into()]).into()
+                    explicit_build(vec!["foo".into()], vec!["bar".into()]).into()
                 )]
                 .into_iter()
                 .collect()
@@ -142,7 +159,7 @@ mod tests {
                     "foo".into(),
                     Build::new(
                         "",
-                        vec![],
+                        vec!["foo".into()],
                         vec![],
                         Rule::new("", None).into(),
                         vec![],
@@ -164,7 +181,7 @@ mod tests {
             validate_builds(
                 &[(
                     "foo".into(),
-                    ir_explicit_build("", Rule::new("", None), vec!["foo".into()]).into()
+                    explicit_build(vec!["foo".into()], vec!["foo".into()]).into()
                 )]
                 .into_iter()
                 .collect()
@@ -181,7 +198,7 @@ mod tests {
                     "foo".into(),
                     Build::new(
                         "",
-                        vec![],
+                        vec!["foo".into()],
                         vec![],
                         Rule::new("", None).into(),
                         vec![],
@@ -204,11 +221,11 @@ mod tests {
                 &[
                     (
                         "foo".into(),
-                        ir_explicit_build("", Rule::new("", None), vec!["bar".into()]).into()
+                        explicit_build(vec!["foo".into()], vec!["bar".into()]).into()
                     ),
                     (
                         "bar".into(),
-                        ir_explicit_build("", Rule::new("", None), vec![]).into()
+                        explicit_build(vec!["bar".into()], vec![]).into()
                     )
                 ]
                 .into_iter()
@@ -225,11 +242,11 @@ mod tests {
                 &[
                     (
                         "foo".into(),
-                        ir_explicit_build("", Rule::new("", None), vec!["bar".into()]).into()
+                        explicit_build(vec!["foo".into()], vec!["bar".into()]).into()
                     ),
                     (
                         "bar".into(),
-                        ir_explicit_build("", Rule::new("", None), vec!["foo".into()]).into()
+                        explicit_build(vec!["bar".into()], vec!["foo".into()]).into()
                     )
                 ]
                 .into_iter()
@@ -245,10 +262,16 @@ mod tests {
     #[test]
     fn validate_with_dynamic_configuration() {
         let mut graph = BuildGraph::new(
-            &[(
-                "foo".into(),
-                ir_explicit_build("", Rule::new("", None), vec!["bar".into()]).into(),
-            )]
+            &[
+                (
+                    "foo".into(),
+                    explicit_build(vec!["foo".into()], vec!["bar".into()]).into(),
+                ),
+                (
+                    "bar".into(),
+                    explicit_build(vec!["bar".into()], vec![]).into(),
+                ),
+            ]
             .into_iter()
             .collect(),
         )
@@ -263,6 +286,51 @@ mod tests {
             Err(ValidationError::CircularBuildDependency(vec![
                 "foo".into(),
                 "bar".into(),
+            ]))
+        );
+    }
+
+    #[test]
+    fn validate_circular_build_with_dependency_from_secondary_to_primary() {
+        let build = Arc::new(explicit_build(vec!["foo".into(), "bar".into()], vec![]));
+
+        let mut graph = BuildGraph::new(
+            &[("foo".into(), build.clone()), ("bar".into(), build)]
+                .into_iter()
+                .collect(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            graph.insert(&DynamicConfiguration::new(
+                [("bar".into(), DynamicBuild::new(vec!["foo".into()]))]
+                    .into_iter()
+                    .collect(),
+            )),
+            Err(ValidationError::CircularBuildDependency(vec!["foo".into()]))
+        );
+    }
+
+    #[test]
+    fn validate_circular_build_with_dependency_from_primary_to_secondary() {
+        let build = Arc::new(explicit_build(vec!["foo".into(), "bar".into()], vec![]));
+
+        let mut graph = BuildGraph::new(
+            &[("foo".into(), build.clone()), ("bar".into(), build)]
+                .into_iter()
+                .collect(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            graph.insert(&DynamicConfiguration::new(
+                [("foo".into(), DynamicBuild::new(vec!["bar".into()]))]
+                    .into_iter()
+                    .collect(),
+            )),
+            Err(ValidationError::CircularBuildDependency(vec![
+                "bar".into(),
+                "foo".into()
             ]))
         );
     }

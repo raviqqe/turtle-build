@@ -71,7 +71,11 @@ pub async fn run(
         .collect::<Vec<_>>();
 
     // Start running build futures actually.
-    join_builds(futures).await?;
+    if let Err(error) = join_builds(futures).await {
+        context.database().flush().await?;
+
+        return Err(error);
+    }
 
     Ok(())
 }
@@ -146,7 +150,11 @@ async fn spawn_build_future(
         let mut futures = vec![];
 
         for input in dynamic_inputs {
-            let build = &context.configuration().outputs()[input];
+            let build = &context
+                .configuration()
+                .outputs()
+                .get(input)
+                .ok_or_else(|| InfrastructureError::InputNotFound(input.into()))?;
 
             create_build_future(&context, build).await?;
 

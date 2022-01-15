@@ -32,8 +32,13 @@ For more information, see `turtle --help`.
 ## Features
 
 - [Ninja][ninja]-compatible build file syntax and command line options
+- Comprehensive build output
+  - Turtle doesn't show any information that is not understandable to end-users.
+  - It is important for users of high-level programming languages who do not know how compilers and build systems work.
 - Console output handling
   - Turtle shows outputs of build jobs running currently. So it's easier to track what is going on in the build system currently.
+- Log format customization
+  - Log prefixes can be changed by a command option.
 
 ## Compatibility
 

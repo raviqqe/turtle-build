@@ -146,6 +146,7 @@ async fn spawn_build_future(
         let mut futures = vec![];
 
         for input in dynamic_inputs {
+            // TODO Handle unknown outputs.
             let build = &context.configuration().outputs()[input];
 
             create_build_future(&context, build).await?;

@@ -9,7 +9,7 @@ use tokio::{io, sync::AcquireError, task::JoinError};
 
 #[derive(Clone, Debug)]
 pub enum InfrastructureError {
-    CommandExit(String, Option<i32>),
+    Build,
     Compile(CompileError),
     DefaultOutputNotFound(String),
     DynamicDependencyNotFound(Arc<Build>),
@@ -31,18 +31,7 @@ impl Error for InfrastructureError {}
 impl Display for InfrastructureError {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            Self::CommandExit(command, code) => {
-                write!(
-                    formatter,
-                    "command exited {}: {}",
-                    if let Some(code) = code {
-                        format!("with status code {}", code)
-                    } else {
-                        "without status code".into()
-                    },
-                    command
-                )
-            }
+            Self::Build => write!(formatter, "build failed"),
             Self::Compile(error) => write!(formatter, "{}", error),
             Self::DefaultOutputNotFound(output) => {
                 write!(formatter, "default output \"{}\" not found", output)

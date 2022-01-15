@@ -5,11 +5,13 @@ mod context;
 use self::{build_database::BuildDatabase, context::Context};
 use crate::{
     compile::compile_dynamic,
+    debug,
     error::InfrastructureError,
     ir::{Build, Configuration, Rule},
     parse::parse_dynamic,
     utilities::read_file,
     validation::BuildGraph,
+    writeln,
 };
 use async_recursion::async_recursion;
 use futures::future::{join_all, try_join_all, FutureExt, Shared};
@@ -24,7 +26,7 @@ use std::{
 };
 use tokio::{
     fs::{create_dir_all, metadata},
-    io::{self, AsyncWriteExt},
+    io::AsyncWriteExt,
     process::Command,
     spawn,
     sync::Semaphore,
@@ -273,13 +275,11 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
         async {
             let mut console = context.console().lock().await;
 
-            if context.debug() {
-                writeln(console.stderr(), rule.command()).await?;
+            if let Some(description) = rule.description() {
+                writeln!(console.stderr(), "{}", description);
             }
 
-            if let Some(description) = rule.description() {
-                writeln(console.stderr(), description).await?;
-            }
+            debug!(context.debug(), console.stderr(), "{}", rule.command());
 
             Ok(console)
         }
@@ -289,21 +289,19 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
     console.stderr().write_all(&output.stderr).await?;
 
     if !output.status.success() {
-        return Err(InfrastructureError::CommandExit(
-            rule.command().into(),
-            output.status.code(),
-        ));
+        debug!(
+            context.debug(),
+            console.stderr(),
+            "command exited{}",
+            &if let Some(code) = output.status.code() {
+                format!(" with status code {}", code)
+            } else {
+                "".into()
+            }
+        );
+
+        return Err(InfrastructureError::Build);
     }
-
-    Ok(())
-}
-
-async fn writeln(
-    writer: &mut (impl AsyncWriteExt + Unpin),
-    message: impl AsRef<str>,
-) -> Result<(), io::Error> {
-    writer.write_all(message.as_ref().as_bytes()).await?;
-    writer.write_all("\n".as_bytes()).await?;
 
     Ok(())
 }

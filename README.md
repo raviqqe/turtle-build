@@ -40,7 +40,7 @@ For more information, see `turtle --help`.
 - Log format customization
   - Log prefixes can be changed by a command option.
 
-### Compatibility
+### Compatibility with [Ninja][ninja]
 
 Turtle aims to support full syntax of the Ninja build files. It also supports basic command line arguments but is not going to implement all the original options (e.g. `-t` option.)
 

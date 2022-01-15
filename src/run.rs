@@ -289,10 +289,20 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
     console.stderr().write_all(&output.stderr).await?;
 
     if !output.status.success() {
-        return Err(InfrastructureError::CommandExit(
-            rule.command().into(),
-            output.status.code(),
-        ));
+        if context.debug() {
+            writeln(
+                console.stderr(),
+                "command exited".to_owned()
+                    + &if let Some(code) = output.status.code() {
+                        format!(" with status code {}", code)
+                    } else {
+                        "".into()
+                    },
+            )
+            .await?;
+        }
+
+        return Err(InfrastructureError::Build);
     }
 
     Ok(())

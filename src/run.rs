@@ -275,11 +275,11 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
         async {
             let mut console = context.console().lock().await;
 
-            debug!(context.debug(), console.stderr(), "{}", rule.command());
-
             if let Some(description) = rule.description() {
                 writeln!(console.stderr(), "{}", description);
             }
+
+            debug!(context.debug(), console.stderr(), "{}", rule.command());
 
             Ok(console)
         }

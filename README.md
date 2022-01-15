@@ -40,11 +40,11 @@ For more information, see `turtle --help`.
 - Log format customization
   - Log prefixes can be changed by a command option.
 
-## Compatibility
+### Compatibility
 
 Turtle aims to support full syntax of the Ninja build files. It also supports basic command line arguments but is not going to implement all the original options (e.g. `-t` option.)
 
-### Syntax
+#### Syntax
 
 - [x] `build` statement
   - [x] Explicit outputs
@@ -62,14 +62,14 @@ Turtle aims to support full syntax of the Ninja build files. It also supports ba
 - [x] Build-local variables
 - [x] `in` and `out` special variable
 
-### Command line arguments
+#### Command line arguments
 
 - [x] `-f` custom build file option
 - [x] `-j` job limit option
 - [ ] `-k` keep-going option
 - [x] `-C` change-directory option
 
-### Others
+#### Others
 
 - [x] Circular build dependency detection
 - [x] Circular build file dependency detection

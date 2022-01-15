@@ -150,8 +150,11 @@ async fn spawn_build_future(
         let mut futures = vec![];
 
         for input in dynamic_inputs {
-            // TODO Handle unknown outputs.
-            let build = &context.configuration().outputs()[input];
+            let build = &context
+                .configuration()
+                .outputs()
+                .get(input)
+                .ok_or_else(|| InfrastructureError::InputNotFound(input.into()))?;
 
             create_build_future(&context, build).await?;
 

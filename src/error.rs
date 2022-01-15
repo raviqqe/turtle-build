@@ -55,8 +55,8 @@ impl Display for InfrastructureError {
                     build.dynamic_module().unwrap()
                 )
             }
-            Self::InputNotFound(output) => {
-                write!(formatter, "input \"{}\" not found", output)
+            Self::InputNotFound(input) => {
+                write!(formatter, "input \"{}\" not found", input)
             }
             Self::Other(message) => write!(formatter, "{}", message),
             Self::Parse(error) => write!(formatter, "{}", error),

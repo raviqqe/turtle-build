@@ -23,9 +23,6 @@ impl BuildGraph {
 
         for (output, build) in outputs {
             for input in build.inputs().iter().chain(build.order_only_inputs()) {
-                this.add_node(output);
-                this.add_node(input);
-
                 this.add_edge(output, input);
             }
         }
@@ -38,9 +35,6 @@ impl BuildGraph {
     pub fn insert(&mut self, configuration: &DynamicConfiguration) -> Result<(), ValidationError> {
         for (output, build) in configuration.outputs() {
             for input in build.inputs() {
-                self.add_node(output);
-                self.add_node(input);
-
                 self.add_edge(output, input);
             }
         }
@@ -69,16 +63,19 @@ impl BuildGraph {
         Ok(())
     }
 
+    fn add_edge(&mut self, output: &str, input: &str) {
+        self.add_node(output);
+        self.add_node(input);
+
+        self.graph
+            .add_edge(self.nodes[output], self.nodes[input], ());
+    }
+
     fn add_node(&mut self, output: &str) {
         if !self.nodes.contains_key(output) {
             self.nodes
                 .insert(output.into(), self.graph.add_node(output.into()));
         }
-    }
-
-    fn add_edge(&mut self, output: &str, input: &str) {
-        self.graph
-            .add_edge(self.nodes[output], self.nodes[input], ());
     }
 }
 

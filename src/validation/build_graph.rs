@@ -106,7 +106,6 @@ mod tests {
 
     fn explicit_build(outputs: Vec<String>, inputs: Vec<String>) -> Build {
         Build::new(
-            "",
             outputs,
             vec![],
             Rule::new("", None).into(),
@@ -158,7 +157,6 @@ mod tests {
                 &[(
                     "foo".into(),
                     Build::new(
-                        "",
                         vec!["foo".into()],
                         vec![],
                         Rule::new("", None).into(),
@@ -197,7 +195,6 @@ mod tests {
                 &[(
                     "foo".into(),
                     Build::new(
-                        "",
                         vec!["foo".into()],
                         vec![],
                         Rule::new("", None).into(),

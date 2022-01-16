@@ -1,7 +1,13 @@
 use super::Rule;
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Build {
+    // IDs are persistent across different builds so that they can be used for,
+    // for example, caching.
     id: String,
     outputs: Vec<String>,
     implicit_outputs: Vec<String>,
@@ -13,7 +19,6 @@ pub struct Build {
 
 impl Build {
     pub fn new(
-        id: impl Into<String>,
         outputs: Vec<String>,
         implicit_outputs: Vec<String>,
         rule: Option<Rule>,
@@ -22,7 +27,7 @@ impl Build {
         dynamic_module: Option<String>,
     ) -> Self {
         Self {
-            id: id.into(),
+            id: Self::calculate_id(&outputs, &implicit_outputs),
             outputs,
             implicit_outputs,
             rule,
@@ -58,5 +63,14 @@ impl Build {
 
     pub fn dynamic_module(&self) -> Option<&str> {
         self.dynamic_module.as_deref()
+    }
+
+    fn calculate_id(outputs: &[String], implicit_outputs: &[String]) -> String {
+        let mut hasher = DefaultHasher::new();
+
+        outputs.hash(&mut hasher);
+        implicit_outputs.hash(&mut hasher);
+
+        format!("{:x}", hasher.finish())
     }
 }

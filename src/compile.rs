@@ -1,3 +1,4 @@
+mod build_id_calculator;
 mod chain_map;
 mod context;
 mod error;
@@ -5,7 +6,8 @@ mod global_state;
 mod module_state;
 
 use self::{
-    chain_map::ChainMap, context::Context, global_state::GlobalState, module_state::ModuleState,
+    build_id_calculator::BuildIdCalculator, chain_map::ChainMap, context::Context,
+    global_state::GlobalState, module_state::ModuleState,
 };
 pub use self::{context::ModuleDependencyMap, error::CompileError};
 use crate::{
@@ -76,6 +78,7 @@ fn compile_module(
         .modules()
         .get(path)
         .ok_or_else(|| CompileError::ModuleNotFound(path.into()))?;
+    let mut build_id_calculator = BuildIdCalculator::new(path.into());
 
     for statement in module.statements() {
         match statement {
@@ -94,7 +97,7 @@ fn compile_module(
                 );
 
                 let ir = Arc::new(Build::new(
-                    context.generate_build_id(),
+                    build_id_calculator.calculate(),
                     build.outputs().to_vec(),
                     build.implicit_outputs().to_vec(),
                     if build.rule() == PHONY_RULE {

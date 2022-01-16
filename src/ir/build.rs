@@ -2,6 +2,8 @@ use super::Rule;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Build {
+    // IDs are persistent across different builds so that they can be used for,
+    // for example, caching.
     id: String,
     outputs: Vec<String>,
     implicit_outputs: Vec<String>,
@@ -13,7 +15,6 @@ pub struct Build {
 
 impl Build {
     pub fn new(
-        id: impl Into<String>,
         outputs: Vec<String>,
         implicit_outputs: Vec<String>,
         rule: Option<Rule>,
@@ -22,7 +23,7 @@ impl Build {
         dynamic_module: Option<String>,
     ) -> Self {
         Self {
-            id: id.into(),
+            id: outputs[0].clone(),
             outputs,
             implicit_outputs,
             rule,

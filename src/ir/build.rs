@@ -1,4 +1,8 @@
 use super::Rule;
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Build {
@@ -23,7 +27,7 @@ impl Build {
         dynamic_module: Option<String>,
     ) -> Self {
         Self {
-            id: outputs[0].clone(),
+            id: Self::calculate_id(&outputs, &implicit_outputs),
             outputs,
             implicit_outputs,
             rule,
@@ -59,5 +63,14 @@ impl Build {
 
     pub fn dynamic_module(&self) -> Option<&str> {
         self.dynamic_module.as_deref()
+    }
+
+    fn calculate_id(outputs: &[String], implicit_outputs: &[String]) -> String {
+        let mut hasher = DefaultHasher::new();
+
+        outputs.hash(&mut hasher);
+        implicit_outputs.hash(&mut hasher);
+
+        format!("{:x}", hasher.finish())
     }
 }

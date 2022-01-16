@@ -26,8 +26,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tokio::time::sleep;
-use tokio::{io::AsyncWriteExt, sync::Mutex};
+use tokio::{io::AsyncWriteExt, sync::Mutex, time::sleep};
 use utilities::{canonicalize_path, read_file};
 use validation::validate_modules;
 

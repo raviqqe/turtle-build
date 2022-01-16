@@ -1,5 +1,7 @@
-use combine::easy;
-use combine::stream::position::{self, SourcePosition};
+use combine::{
+    easy,
+    stream::position::{self, SourcePosition},
+};
 
 pub type Stream<'a> = easy::Stream<position::Stream<&'a str, SourcePosition>>;
 

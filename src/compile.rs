@@ -279,8 +279,13 @@ mod tests {
             Configuration::new(
                 [(
                     "bar".into(),
-                    ir_explicit_build("0", vec!["bar".into()], Rule::new("42", None), vec![])
-                        .into()
+                    ir_explicit_build(
+                        "build.ninja:0",
+                        vec!["bar".into()],
+                        Rule::new("42", None),
+                        vec![]
+                    )
+                    .into()
                 )]
                 .into_iter()
                 .collect(),
@@ -312,8 +317,13 @@ mod tests {
             Configuration::new(
                 [(
                     "bar".into(),
-                    ir_explicit_build("0", vec!["bar".into()], Rule::new("1 2", None), vec![])
-                        .into()
+                    ir_explicit_build(
+                        "build.ninja:0",
+                        vec!["bar".into()],
+                        Rule::new("1 2", None),
+                        vec![]
+                    )
+                    .into()
                 )]
                 .into_iter()
                 .collect(),
@@ -344,8 +354,13 @@ mod tests {
             Configuration::new(
                 [(
                     "bar".into(),
-                    ir_explicit_build("0", vec!["bar".into()], Rule::new("42", None), vec![])
-                        .into()
+                    ir_explicit_build(
+                        "build.ninja:0",
+                        vec!["bar".into()],
+                        Rule::new("42", None),
+                        vec![]
+                    )
+                    .into()
                 )]
                 .into_iter()
                 .collect(),
@@ -375,7 +390,13 @@ mod tests {
             Configuration::new(
                 [(
                     "bar".into(),
-                    ir_explicit_build("0", vec!["bar".into()], Rule::new("$", None), vec![]).into()
+                    ir_explicit_build(
+                        "build.ninja:0",
+                        vec!["bar".into()],
+                        Rule::new("$", None),
+                        vec![]
+                    )
+                    .into()
                 )]
                 .into_iter()
                 .collect(),
@@ -407,7 +428,7 @@ mod tests {
                 [(
                     "bar".into(),
                     ir_explicit_build(
-                        "0",
+                        "build.ninja:0",
                         vec!["bar".into()],
                         Rule::new("baz", None),
                         vec!["baz".into()]
@@ -452,7 +473,7 @@ mod tests {
                 [(
                     "bar".into(),
                     ir_explicit_build(
-                        "0",
+                        "build.ninja:0",
                         vec!["bar".into()],
                         Rule::new("baz", None),
                         vec!["baz".into(), "blah".into()]
@@ -487,8 +508,13 @@ mod tests {
             Configuration::new(
                 [(
                     "bar".into(),
-                    ir_explicit_build("0", vec!["bar".into()], Rule::new("bar", None), vec![])
-                        .into()
+                    ir_explicit_build(
+                        "build.ninja:0",
+                        vec!["bar".into()],
+                        Rule::new("bar", None),
+                        vec![]
+                    )
+                    .into()
                 )]
                 .into_iter()
                 .collect(),
@@ -501,7 +527,7 @@ mod tests {
     #[test]
     fn interpolate_out_variable_with_implicit_output() {
         let build = Arc::new(Build::new(
-            "0",
+            "build.ninja:0",
             vec!["bar".into()],
             vec!["baz".into()],
             Rule::new("bar", None).into(),
@@ -574,7 +600,7 @@ mod tests {
                 [(
                     "bar".into(),
                     Build::new(
-                        "0",
+                        "build.ninja:0",
                         vec!["bar".into()],
                         vec![],
                         Some(Rule::new("", None)),
@@ -614,13 +640,23 @@ mod tests {
                 [
                     (
                         "bar".into(),
-                        ir_explicit_build("0", vec!["bar".into()], Rule::new("", None), vec![])
-                            .into()
+                        ir_explicit_build(
+                            "build.ninja:0",
+                            vec!["bar".into()],
+                            Rule::new("", None),
+                            vec![]
+                        )
+                        .into()
                     ),
                     (
                         "baz".into(),
-                        ir_explicit_build("1", vec!["baz".into()], Rule::new("", None), vec![])
-                            .into()
+                        ir_explicit_build(
+                            "build.ninja:1",
+                            vec!["baz".into()],
+                            Rule::new("", None),
+                            vec![]
+                        )
+                        .into()
                     )
                 ]
                 .into_iter()
@@ -657,8 +693,13 @@ mod tests {
             Configuration::new(
                 [(
                     "bar".into(),
-                    ir_explicit_build("0", vec!["bar".into()], Rule::new("42", None), vec![])
-                        .into()
+                    ir_explicit_build(
+                        "build.ninja:0",
+                        vec!["bar".into()],
+                        Rule::new("42", None),
+                        vec![]
+                    )
+                    .into()
                 )]
                 .into_iter()
                 .collect(),
@@ -692,7 +733,7 @@ mod tests {
                 [(
                     "foo".into(),
                     Build::new(
-                        "0",
+                        "build.ninja:0",
                         vec!["foo".into()],
                         vec![],
                         None,
@@ -752,7 +793,7 @@ mod tests {
                 [(
                     "foo".into(),
                     Build::new(
-                        "0",
+                        "build.ninja:0",
                         vec!["foo".into()],
                         vec![],
                         None,
@@ -813,8 +854,13 @@ mod tests {
                 Configuration::new(
                     [(
                         "bar".into(),
-                        ir_explicit_build("0", vec!["bar".into()], Rule::new("42", None), vec![])
-                            .into()
+                        ir_explicit_build(
+                            "foo.ninja:0",
+                            vec!["bar".into()],
+                            Rule::new("42", None),
+                            vec![]
+                        )
+                        .into()
                     )]
                     .into_iter()
                     .collect(),
@@ -866,8 +912,13 @@ mod tests {
                 Configuration::new(
                     [(
                         "bar".into(),
-                        ir_explicit_build("0", vec!["bar".into()], Rule::new("42", None), vec![])
-                            .into()
+                        ir_explicit_build(
+                            "foo.ninja:0",
+                            vec!["bar".into()],
+                            Rule::new("42", None),
+                            vec![]
+                        )
+                        .into()
                     )]
                     .into_iter()
                     .collect(),
@@ -915,8 +966,13 @@ mod tests {
                 Configuration::new(
                     [(
                         "bar".into(),
-                        ir_explicit_build("0", vec!["bar".into()], Rule::new("42", None), vec![])
-                            .into()
+                        ir_explicit_build(
+                            "build.ninja:0",
+                            vec!["bar".into()],
+                            Rule::new("42", None),
+                            vec![]
+                        )
+                        .into()
                     )]
                     .into_iter()
                     .collect(),

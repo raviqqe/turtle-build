@@ -14,7 +14,7 @@ impl BuildIdCalculator {
     }
 
     pub fn calculate(&mut self) -> String {
-        let id = format!("{}-{}", self.module_path.display(), self.index);
+        let id = format!("{}:{}", self.module_path.display(), self.index);
 
         self.index += 1;
 

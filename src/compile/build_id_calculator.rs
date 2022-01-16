@@ -1,8 +1,4 @@
-use std::{
-    collections::hash_map::DefaultHasher,
-    hash::{Hash, Hasher},
-    path::PathBuf,
-};
+use std::path::PathBuf;
 
 pub struct BuildIdCalculator {
     index: usize,
@@ -18,13 +14,10 @@ impl BuildIdCalculator {
     }
 
     pub fn calculate(&mut self) -> String {
-        let mut hasher = DefaultHasher::new();
-
-        self.module_path.hash(&mut hasher);
-        self.index.hash(&mut hasher);
+        let id = format!("{}-{}", self.module_path.display(), self.index);
 
         self.index += 1;
 
-        format!("{:x}", hasher.finish())
+        id
     }
 }

@@ -76,6 +76,8 @@ pub async fn run(
 
     // Start running build futures actually.
     if let Err(error) = join_builds(futures).await {
+        // Flush explicitly as flush on drop doesn't work in general because of
+        // possible dependency cycles.
         context.database().flush().await?;
 
         return Err(error);

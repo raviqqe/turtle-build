@@ -38,6 +38,8 @@ For more information, see `turtle --help`.
   - It changes log prefixes attached to every line of logs from Turtle itself (e.g. `--log-prefix my-build-system` for a log of `my-build-system: build failed`.)
 - Source mapping
   - Turtle maps outputs in error messages to source filenames defined as `srcdep` variables defined in `build` directives to make them understandable to end-users. 
+- Description-only outputs
+  - Turtle never shows commands of build rules but only descriptions because the former is hard for end-users to digest.
 - Console output handling similar to Rust's Cargo
   - Turtle shows outputs of build jobs running currently. So it's easy to track what is going on during builds.
 

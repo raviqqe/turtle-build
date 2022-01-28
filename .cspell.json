@@ -12,6 +12,7 @@
     "petgraph",
     "reimplementation",
     "rsplit",
+    "srcdep",
     "stackless",
     "subninja",
     "tempdir",

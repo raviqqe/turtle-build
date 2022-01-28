@@ -33,7 +33,7 @@ For more information, see `turtle --help`.
 
 - [Ninja][ninja]-compatible build file syntax and command line options 🥷
 - `--quiet` option
-  - It suppresses error messages from Turtle itself on expected build errors. This is useful when you are spawning Turtle as a child process of a higher-level build system.
+  - It suppresses error messages from Turtle itself on expected build errors. This is useful when you are spawning Turtle as a child process of some higher-level build system.
 - `--log-prefix` option
   - It changes log prefixes attached to every line of logs from Turtle itself (e.g. `--log-prefix my-build-system` for `my-build-system: build failed`)
 - Source mapping

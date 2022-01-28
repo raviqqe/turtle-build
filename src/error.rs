@@ -1,4 +1,5 @@
 use crate::{compile::CompileError, ir::Build, parse::ParseError, validation::ValidationError};
+use fnv::FnvHashMap;
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
@@ -23,6 +24,20 @@ pub enum InfrastructureError {
 impl InfrastructureError {
     pub fn with_path(error: io::Error, path: impl AsRef<Path>) -> Self {
         Self::Other(format!("{}: {}", error, path.as_ref().display()))
+    }
+
+    pub fn map_outputs(self, source_map: &FnvHashMap<String, String>) -> Self {
+        match self {
+            Self::Validation(ValidationError::CircularBuildDependency(outputs)) => {
+                Self::Validation(ValidationError::CircularBuildDependency(
+                    outputs
+                        .into_iter()
+                        .map(|output| source_map.get(&output).cloned().unwrap_or(output))
+                        .collect(),
+                ))
+            }
+            _ => self,
+        }
     }
 }
 

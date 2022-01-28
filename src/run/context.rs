@@ -5,7 +5,7 @@ use tokio::sync::{Mutex, RwLock, Semaphore};
 
 #[derive(Debug)]
 pub struct Context {
-    configuration: Configuration,
+    configuration: Arc<Configuration>,
     // TODO Use a concurrent hash map. We only need atomic insertion but not a great lock.
     build_futures: RwLock<HashMap<String, BuildFuture>>,
     build_graph: Mutex<BuildGraph>,
@@ -17,7 +17,7 @@ pub struct Context {
 
 impl Context {
     pub fn new(
-        configuration: Configuration,
+        configuration: Arc<Configuration>,
         build_graph: BuildGraph,
         database: BuildDatabase,
         job_semaphore: Semaphore,

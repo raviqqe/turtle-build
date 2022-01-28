@@ -9,9 +9,9 @@
 ## Goals
 
 - Safe (no `unsafe`) and fast implementation of the Ninja build system in Rust
-- Frontend support for high-level programming languages
-  - Modest and comprehensive output by default
-  - Customizable progress/error output
+- Modest, comprehensive, and customizable build/error outputs
+  - Turtle never shows any information that is not understandable to end-users.
+  - This is important for users of high-level programming languages who do not know how compilers and build systems work.
 
 Turtle is originally written for [the Pen programming language](https://github.com/pen-lang/pen). Therefore, we support only dynamic dependencies but not C/C++ header dependencies currently. Your contribution is welcome! 😄
 
@@ -31,14 +31,17 @@ For more information, see `turtle --help`.
 
 ## Features
 
-- [Ninja][ninja]-compatible build file syntax and command line options
-- Comprehensive build output
-  - Turtle doesn't show any information that is not understandable to end-users.
-  - It is important for users of high-level programming languages who do not know how compilers and build systems work.
-- Console output handling
-  - Turtle shows outputs of build jobs running currently. So it's easy to track what is going on during builds.
-- Log format customization
-  - Log prefixes can be changed by a command line option.
+- [Ninja][ninja]-compatible build file syntax and command line options 🥷
+- Description-only outputs
+  - Turtle never shows commands of build rules but only descriptions because the former is hard for end-users to digest.
+- Source mapping
+  - Turtle maps outputs in error messages to source filenames defined as `srcdep` variables defined in `build` directives to make them understandable to end-users. 
+- `--log-prefix` option
+  - It changes log prefixes attached to every line of logs from Turtle itself (e.g. `--log-prefix my-build-system` for a log of `my-build-system: build failed`.)
+- `--quiet` option
+  - It suppresses error messages from Turtle itself on expected build errors. This is useful when you are spawning Turtle as a child process of some higher-level build system.
+- Console output handling similar to Rust's Cargo
+  - Turtle shows outputs of build jobs running currently at the bottom of logs. So it's easy to track what is going on during builds.
 
 ### Compatibility with [Ninja][ninja]
 

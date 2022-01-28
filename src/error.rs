@@ -1,4 +1,6 @@
 use crate::{compile::CompileError, ir::Build, parse::ParseError, validation::ValidationError};
+use fnv::FnvHashMap;
+use itertools::Itertools;
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
@@ -7,7 +9,7 @@ use std::{
 };
 use tokio::{io, sync::AcquireError, task::JoinError};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InfrastructureError {
     Build,
     Compile(CompileError),
@@ -23,6 +25,21 @@ pub enum InfrastructureError {
 impl InfrastructureError {
     pub fn with_path(error: io::Error, path: impl AsRef<Path>) -> Self {
         Self::Other(format!("{}: {}", error, path.as_ref().display()))
+    }
+
+    pub fn map_outputs(self, source_map: &FnvHashMap<String, String>) -> Self {
+        match self {
+            Self::Validation(ValidationError::CircularBuildDependency(outputs)) => {
+                Self::Validation(ValidationError::CircularBuildDependency(
+                    outputs
+                        .into_iter()
+                        .map(|output| source_map.get(&output).cloned().unwrap_or(output))
+                        .dedup()
+                        .collect(),
+                ))
+            }
+            _ => self,
+        }
     }
 }
 
@@ -94,5 +111,53 @@ impl From<sled::Error> for InfrastructureError {
 impl From<ValidationError> for InfrastructureError {
     fn from(error: ValidationError) -> Self {
         Self::Validation(error)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn map_dependency_cycle_error() {
+        assert_eq!(
+            InfrastructureError::from(ValidationError::CircularBuildDependency(vec![
+                "foo.o".into(),
+                "bar.o".into()
+            ]))
+            .map_outputs(
+                &[
+                    ("foo.o".into(), "foo.c".into()),
+                    ("bar.o".into(), "bar.c".into())
+                ]
+                .into_iter()
+                .collect()
+            ),
+            InfrastructureError::from(ValidationError::CircularBuildDependency(vec![
+                "foo.c".into(),
+                "bar.c".into()
+            ]))
+        );
+    }
+
+    #[test]
+    fn map_dependency_cycle_error_with_duplicate_sources() {
+        assert_eq!(
+            InfrastructureError::from(ValidationError::CircularBuildDependency(vec![
+                "foo.o".into(),
+                "foo.h".into()
+            ]))
+            .map_outputs(
+                &[
+                    ("foo.o".into(), "foo.c".into()),
+                    ("foo.h".into(), "foo.c".into())
+                ]
+                .into_iter()
+                .collect()
+            ),
+            InfrastructureError::from(ValidationError::CircularBuildDependency(vec![
+                "foo.c".into()
+            ]))
+        );
     }
 }

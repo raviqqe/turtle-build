@@ -45,7 +45,7 @@ async fn main() {
                 .stderr()
                 .write_all(
                     format!(
-                        "{}{}",
+                        "{}{}\n",
                         if let Some(prefix) = &arguments.log_prefix {
                             prefix
                         } else {
@@ -80,20 +80,21 @@ async fn execute(
 
     validate_modules(&dependencies)?;
 
-    let configuration = compile(&modules, &dependencies, &root_module_path)?;
+    let configuration = Arc::new(compile(&modules, &dependencies, &root_module_path)?);
     let build_directory = configuration
         .build_directory()
         .map(PathBuf::from)
         .unwrap_or_else(|| root_module_path.parent().unwrap().into());
 
     run(
-        configuration,
+        configuration.clone(),
         console,
         &build_directory,
         arguments.job_limit,
         arguments.debug,
     )
-    .await?;
+    .await
+    .map_err(|error| error.map_outputs(configuration.source_map()))?;
 
     Ok(())
 }

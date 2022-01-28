@@ -37,7 +37,7 @@ type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), InfrastructureError
 type BuildFuture = Shared<RawBuildFuture>;
 
 pub async fn run(
-    configuration: Configuration,
+    configuration: Arc<Configuration>,
     console: &Arc<Mutex<Console>>,
     build_directory: &Path,
     job_limit: Option<usize>,

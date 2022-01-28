@@ -23,6 +23,7 @@ use std::{
 const PHONY_RULE: &str = "phony";
 const BUILD_DIRECTORY_VARIABLE: &str = "builddir";
 const DYNAMIC_MODULE_VARIABLE: &str = "dyndep";
+const SOURCE_VARIABLE_NAME: &str = "srcdep";
 
 static VARIABLE_PATTERN: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\$([[:alpha:]_][[:alnum:]_]*)").unwrap());
@@ -37,6 +38,7 @@ pub fn compile(
     let mut global_state = GlobalState {
         outputs: Default::default(),
         default_outputs: Default::default(),
+        source_map: Default::default(),
     };
     let mut module_state = ModuleState {
         rules: ChainMap::new(),
@@ -59,6 +61,7 @@ pub fn compile(
     Ok(Configuration::new(
         global_state.outputs,
         default_outputs,
+        global_state.source_map,
         module_state
             .variables
             .get(BUILD_DIRECTORY_VARIABLE)
@@ -120,13 +123,17 @@ fn compile_module(
                     variables.get(DYNAMIC_MODULE_VARIABLE).cloned(),
                 ));
 
-                global_state.outputs.extend(
-                    build
-                        .outputs()
-                        .iter()
-                        .chain(build.implicit_outputs())
-                        .map(|output| (output.clone(), ir.clone())),
-                );
+                let outputs = || build.outputs().iter().chain(build.implicit_outputs());
+
+                global_state
+                    .outputs
+                    .extend(outputs().map(|output| (output.clone(), ir.clone())));
+
+                if let Some(source) = variables.get(SOURCE_VARIABLE_NAME) {
+                    global_state
+                        .source_map
+                        .extend(outputs().map(|output| (output.clone(), source.clone())));
+                }
             }
             ast::Statement::Default(default) => {
                 global_state
@@ -203,6 +210,7 @@ fn interpolate_variables(template: &str, variables: &ChainMap<String, String>) -
 mod tests {
     use super::*;
     use crate::ast;
+    use fnv::{FnvHashMap, FnvHashSet};
     use once_cell::sync::Lazy;
     use pretty_assertions::assert_eq;
 
@@ -234,6 +242,13 @@ mod tests {
         Build::new(outputs, vec![], rule.into(), inputs, vec![], None)
     }
 
+    fn create_simple_configuration(
+        outputs: FnvHashMap<String, Arc<Build>>,
+        default_outputs: FnvHashSet<String>,
+    ) -> Configuration {
+        Configuration::new(outputs, default_outputs, Default::default(), None)
+    }
+
     #[test]
     fn compile_empty_module() {
         assert_eq!(
@@ -245,7 +260,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            Configuration::new(Default::default(), Default::default(), None)
+            create_simple_configuration(Default::default(), Default::default())
         );
     }
 
@@ -267,15 +282,14 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            Configuration::new(
+            create_simple_configuration(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
-                ["bar".into()].into_iter().collect(),
-                None
+                ["bar".into()].into_iter().collect()
             )
         );
     }
@@ -299,15 +313,14 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            Configuration::new(
+            create_simple_configuration(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("1 2", None), vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
-                ["bar".into()].into_iter().collect(),
-                None
+                ["bar".into()].into_iter().collect()
             )
         );
     }
@@ -330,15 +343,14 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            Configuration::new(
+            create_simple_configuration(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
-                ["bar".into()].into_iter().collect(),
-                None
+                ["bar".into()].into_iter().collect()
             )
         );
     }
@@ -360,15 +372,14 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            Configuration::new(
+            create_simple_configuration(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("$", None), vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
-                ["bar".into()].into_iter().collect(),
-                None
+                ["bar".into()].into_iter().collect()
             )
         );
     }
@@ -391,7 +402,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            Configuration::new(
+            create_simple_configuration(
                 [(
                     "bar".into(),
                     ir_explicit_build(
@@ -403,8 +414,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                ["bar".into()].into_iter().collect(),
-                None
+                ["bar".into()].into_iter().collect()
             )
         );
     }
@@ -435,7 +445,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            Configuration::new(
+            create_simple_configuration(
                 [(
                     "bar".into(),
                     ir_explicit_build(
@@ -447,8 +457,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                ["bar".into()].into_iter().collect(),
-                None
+                ["bar".into()].into_iter().collect()
             )
         );
     }
@@ -470,15 +479,14 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            Configuration::new(
+            create_simple_configuration(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("bar", None), vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
-                ["bar".into()].into_iter().collect(),
-                None
+                ["bar".into()].into_iter().collect()
             )
         );
     }
@@ -518,12 +526,11 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            Configuration::new(
+            create_simple_configuration(
                 [("baz".into(), build.clone()), ("bar".into(), build)]
                     .into_iter()
                     .collect(),
-                ["baz".into(), "bar".into()].into_iter().collect(),
-                None
+                ["baz".into(), "bar".into()].into_iter().collect()
             )
         );
     }
@@ -554,7 +561,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            Configuration::new(
+            create_simple_configuration(
                 [(
                     "bar".into(),
                     Build::new(
@@ -569,8 +576,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                ["bar".into()].into_iter().collect(),
-                None
+                ["bar".into()].into_iter().collect()
             )
         );
     }
@@ -593,7 +599,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            Configuration::new(
+            create_simple_configuration(
                 [
                     (
                         "bar".into(),
@@ -606,8 +612,7 @@ mod tests {
                 ]
                 .into_iter()
                 .collect(),
-                ["bar".into(), "baz".into()].into_iter().collect(),
-                None
+                ["bar".into(), "baz".into()].into_iter().collect()
             )
         );
     }
@@ -635,15 +640,54 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            Configuration::new(
+            create_simple_configuration(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn compile_source_map() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast::Rule::new("foo", "foo", None).into(),
+                        ast_explicit_build(
+                            vec!["bar".into()],
+                            "foo",
+                            vec![],
+                            vec![ast::VariableDefinition::new(
+                                SOURCE_VARIABLE_NAME,
+                                "oh-my-src"
+                            )]
+                        )
+                        .into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            Configuration::new(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(vec!["bar".into()], Rule::new("foo", None), vec![]).into()
+                )]
+                .into_iter()
+                .collect(),
                 ["bar".into()].into_iter().collect(),
-                None
+                [("bar".into(), "oh-my-src".into())].into_iter().collect(),
+                None,
             )
         );
     }
@@ -668,7 +712,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            Configuration::new(
+            create_simple_configuration(
                 [(
                     "foo".into(),
                     Build::new(
@@ -683,8 +727,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                ["foo".into()].into_iter().collect(),
-                None
+                ["foo".into()].into_iter().collect()
             )
         );
     }
@@ -703,7 +746,12 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            Configuration::new(Default::default(), Default::default(), Some("foo".into()))
+            Configuration::new(
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                Some("foo".into())
+            )
         );
     }
 
@@ -727,7 +775,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            Configuration::new(
+            create_simple_configuration(
                 [(
                     "foo".into(),
                     Build::new(
@@ -742,8 +790,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                ["foo".into()].into_iter().collect(),
-                None
+                ["foo".into()].into_iter().collect()
             )
         );
     }
@@ -788,15 +835,14 @@ mod tests {
                     &ROOT_MODULE_PATH
                 )
                 .unwrap(),
-                Configuration::new(
+                create_simple_configuration(
                     [(
                         "bar".into(),
                         ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()
                     )]
                     .into_iter()
                     .collect(),
-                    ["bar".into()].into_iter().collect(),
-                    None
+                    ["bar".into()].into_iter().collect()
                 )
             );
         }
@@ -840,15 +886,14 @@ mod tests {
                     &ROOT_MODULE_PATH
                 )
                 .unwrap(),
-                Configuration::new(
+                create_simple_configuration(
                     [(
                         "bar".into(),
                         ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()
                     )]
                     .into_iter()
                     .collect(),
-                    ["bar".into()].into_iter().collect(),
-                    None
+                    ["bar".into()].into_iter().collect()
                 )
             );
         }
@@ -888,15 +933,14 @@ mod tests {
                     &ROOT_MODULE_PATH
                 )
                 .unwrap(),
-                Configuration::new(
+                create_simple_configuration(
                     [(
                         "bar".into(),
                         ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()
                     )]
                     .into_iter()
                     .collect(),
-                    ["bar".into()].into_iter().collect(),
-                    None,
+                    ["bar".into()].into_iter().collect()
                 )
             );
         }

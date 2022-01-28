@@ -41,7 +41,7 @@ For more information, see `turtle --help`.
 - `--quiet` option
   - It suppresses error messages from Turtle itself on expected build errors. This is useful when you are spawning Turtle as a child process of some higher-level build system.
 - Console output handling similar to Rust's Cargo
-  - Turtle shows outputs of build jobs running currently. So it's easy to track what is going on during builds.
+  - Turtle shows outputs of build jobs running currently at the bottom of logs. So it's easy to track what is going on during builds.
 
 ### Compatibility with [Ninja][ninja]
 

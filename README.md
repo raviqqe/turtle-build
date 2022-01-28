@@ -35,7 +35,7 @@ For more information, see `turtle --help`.
 - `--quiet` option
   - It suppresses error messages from Turtle itself on expected build errors. This is useful when you are spawning Turtle as a child process of some higher-level build system.
 - `--log-prefix` option
-  - It changes log prefixes attached to every line of logs from Turtle itself (e.g. `--log-prefix my-build-system` for a log of `my-build-system: build failed`)
+  - It changes log prefixes attached to every line of logs from Turtle itself (e.g. `--log-prefix my-build-system` for a log of `my-build-system: build failed`.)
 - Source mapping
   - Turtle maps outputs in error messages to source filenames defined in `srcdep` variables defined in `build` directives to make them understandable to end-users. 
 - Console output handling similar to Rust's Cargo

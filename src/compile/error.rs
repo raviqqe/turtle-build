@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CompileError {
     ModuleNotFound(PathBuf),
     RuleNotFound(String),

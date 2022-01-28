@@ -1,5 +1,6 @@
 use crate::{compile::CompileError, ir::Build, parse::ParseError, validation::ValidationError};
 use fnv::FnvHashMap;
+use itertools::Itertools;
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
@@ -8,7 +9,7 @@ use std::{
 };
 use tokio::{io, sync::AcquireError, task::JoinError};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InfrastructureError {
     Build,
     Compile(CompileError),
@@ -33,6 +34,7 @@ impl InfrastructureError {
                     outputs
                         .into_iter()
                         .map(|output| source_map.get(&output).cloned().unwrap_or(output))
+                        .dedup()
                         .collect(),
                 ))
             }
@@ -109,5 +111,53 @@ impl From<sled::Error> for InfrastructureError {
 impl From<ValidationError> for InfrastructureError {
     fn from(error: ValidationError) -> Self {
         Self::Validation(error)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn map_dependency_cyle_error() {
+        assert_eq!(
+            InfrastructureError::from(ValidationError::CircularBuildDependency(vec![
+                "foo.o".into(),
+                "bar.o".into()
+            ]))
+            .map_outputs(
+                &[
+                    ("foo.o".into(), "foo.c".into()),
+                    ("bar.o".into(), "bar.c".into())
+                ]
+                .into_iter()
+                .collect()
+            ),
+            InfrastructureError::from(ValidationError::CircularBuildDependency(vec![
+                "foo.c".into(),
+                "bar.c".into()
+            ]))
+        );
+    }
+
+    #[test]
+    fn map_dependency_cyle_error_with_duplicate_sources() {
+        assert_eq!(
+            InfrastructureError::from(ValidationError::CircularBuildDependency(vec![
+                "foo.o".into(),
+                "foo.h".into()
+            ]))
+            .map_outputs(
+                &[
+                    ("foo.o".into(), "foo.c".into()),
+                    ("foo.h".into(), "foo.c".into())
+                ]
+                .into_iter()
+                .collect()
+            ),
+            InfrastructureError::from(ValidationError::CircularBuildDependency(vec![
+                "foo.c".into()
+            ]))
+        );
     }
 }

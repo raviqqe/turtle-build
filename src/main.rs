@@ -45,7 +45,7 @@ async fn main() {
                 .stderr()
                 .write_all(
                     format!(
-                        "{}{}",
+                        "{}{}\n",
                         if let Some(prefix) = &arguments.log_prefix {
                             prefix
                         } else {

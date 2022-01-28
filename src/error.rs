@@ -119,7 +119,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn map_dependency_cyle_error() {
+    fn map_dependency_cycle_error() {
         assert_eq!(
             InfrastructureError::from(ValidationError::CircularBuildDependency(vec![
                 "foo.o".into(),
@@ -141,7 +141,7 @@ mod tests {
     }
 
     #[test]
-    fn map_dependency_cyle_error_with_duplicate_sources() {
+    fn map_dependency_cycle_error_with_duplicate_sources() {
         assert_eq!(
             InfrastructureError::from(ValidationError::CircularBuildDependency(vec![
                 "foo.o".into(),

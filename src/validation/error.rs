@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
@@ -21,6 +22,7 @@ impl Display for ValidationError {
                     cycle
                         .iter()
                         .chain(cycle.first())
+                        .dedup()
                         .map(String::as_str)
                         .collect::<Vec<_>>()
                         .join(" -> ")

@@ -711,7 +711,7 @@ dependencies = [
 
 [[package]]
 name = "turtle-build"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "async-recursion",
  "clap",

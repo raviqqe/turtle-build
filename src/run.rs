@@ -225,11 +225,11 @@ async fn hash_build(build: &Build, dynamic_inputs: &[String]) -> Result<u64, Inf
 async fn get_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, InfrastructureError> {
     let path = path.as_ref();
 
-    Ok(metadata(path)
+    metadata(path)
         .await
         .map_err(|error| InfrastructureError::with_path(error, path))?
         .modified()
-        .map_err(|error| InfrastructureError::with_path(error, path))?)
+        .map_err(|error| InfrastructureError::with_path(error, path))
 }
 
 async fn join_builds(

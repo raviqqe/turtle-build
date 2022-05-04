@@ -304,6 +304,14 @@ mod tests {
                 .0,
             VariableDefinition::new("foo", "1 + 1")
         );
+        assert_eq!(
+            variable_definition().parse(stream("x =\n")).unwrap().0,
+            VariableDefinition::new("x", "")
+        );
+        assert_eq!(
+            variable_definition().parse(stream("x = \n")).unwrap().0,
+            VariableDefinition::new("x", "")
+        );
     }
 
     #[test]

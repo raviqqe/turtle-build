@@ -40,9 +40,12 @@ fn statement<'a>() -> impl Parser<Stream<'a>, Output = Statement> {
 }
 
 fn variable_definition<'a>() -> impl Parser<Stream<'a>, Output = VariableDefinition> {
-    (attempt(identifier().skip(sign("="))), string_line())
+    (
+        attempt(identifier().skip(sign("="))),
+        optional(string_line()),
+    )
         .skip(line_break())
-        .map(|(name, value)| VariableDefinition::new(name, value))
+        .map(|(name, value)| VariableDefinition::new(name, value.unwrap_or_default()))
 }
 
 fn dynamic_module_version<'a>() -> impl Parser<Stream<'a>, Output = String> {
@@ -303,6 +306,14 @@ mod tests {
                 .unwrap()
                 .0,
             VariableDefinition::new("foo", "1 + 1")
+        );
+        assert_eq!(
+            variable_definition().parse(stream("x =\n")).unwrap().0,
+            VariableDefinition::new("x", "")
+        );
+        assert_eq!(
+            variable_definition().parse(stream("x = \n")).unwrap().0,
+            VariableDefinition::new("x", "")
         );
     }
 

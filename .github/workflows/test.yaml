@@ -66,7 +66,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: ruby/setup-ruby@v1
-      - run: brew install --HEAD ninja
+      - uses: aminya/setup-cpp@v1
+        with:
+          ninja: true
       - run: mkdir -p target/release
       - run: cp tools/turtle.sh target/release/turtle
       - run: rm -r features/turtle

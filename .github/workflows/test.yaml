@@ -25,7 +25,7 @@ jobs:
       - uses: actions/upload-artifact@v2
         with:
           name: build-${{ matrix.os }}
-          path: target/release/turtle
+          path: target/release/turtle*
   unit_test:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -53,7 +53,7 @@ jobs:
         with:
           name: build-${{ matrix.os }}
           path: target/release
-      - run: chmod +x target/release/turtle
+      - run: chmod +x target/release/turtle*
       - run: tools/integration_test.sh
   integration_test_test:
     runs-on: ${{ matrix.os }}
@@ -61,8 +61,9 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-          - windows-latest
           - macos-latest
+          # TODO Enable this on Windows.
+          # - windows-latest
     steps:
       - uses: actions/checkout@v2
       - uses: ruby/setup-ruby@v1

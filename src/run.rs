@@ -267,20 +267,12 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
     let (output, mut console) = try_join!(
         async {
             let output = if cfg!(target_os = "windows") {
-                let cmd = rule
-                    .command()
-                    .trim()
-                    .split_whitespace()
-                    .take(1)
-                    .collect::<Vec<_>>()
-                    .join("");
-                let args = rule
-                    .command()
-                    .trim()
-                    .split_whitespace()
-                    .skip(1)
-                    .collect::<Vec<_>>();
-                Command::new(cmd).args(&args).output().await?
+                let components = rule.command().split_whitespace().collect::<Vec<_>>();
+
+                Command::new(&components[0])
+                    .args(&components[1..])
+                    .output()
+                    .await?
             } else {
                 Command::new("sh")
                     .arg("-e")

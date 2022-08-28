@@ -50,6 +50,7 @@ Feature: Others
     Given a file named "build.ninja" with:
     """
     # foo
+
     """
     When I successfully run `turtle`
     Then the exit status should be 0

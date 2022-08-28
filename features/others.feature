@@ -45,3 +45,11 @@ Feature: Others
     """
     When I successfully run `turtle`
     Then the file named "foo/bar" should exist
+
+  Scenario: Skip comments
+    Given a file named "build.ninja" with:
+    """
+    # foo
+    """
+    When I successfully run `turtle`
+    Then the exit status should be 0

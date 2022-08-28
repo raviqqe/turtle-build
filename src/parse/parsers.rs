@@ -196,7 +196,17 @@ fn indent<'a>() -> impl Parser<Stream<'a>, Output = ()> {
 }
 
 fn blank<'a>() -> impl Parser<Stream<'a>, Output = ()> {
-    many::<Vec<_>, _, _>(one_of([' ', '\t', '\r'])).with(value(()))
+    many::<Vec<_>, _, _>(choice((
+        one_of([' ', '\t', '\r']).with(value(())),
+        comment(),
+    )))
+    .with(value(()))
+}
+
+fn comment<'a>() -> impl Parser<Stream<'a>, Output = ()> {
+    (string("#"), many::<Vec<_>, _, _>(none_of("\n".chars())))
+        .with(value(()))
+        .expected("comment")
 }
 
 fn line_break<'a>() -> impl Parser<Stream<'a>, Output = ()> {
@@ -596,6 +606,9 @@ mod tests {
         assert!(blank().skip(eof()).parse(stream("\r")).is_ok());
         assert!(blank().skip(eof()).parse(stream("  ")).is_ok());
         assert!(blank().skip(eof()).parse(stream(" \t")).is_ok());
+        assert!(blank().skip(eof()).parse(stream("#")).is_ok());
+        assert!(blank().skip(eof()).parse(stream("#foo")).is_ok());
+        assert!(blank().skip(eof()).parse(stream(" #foo")).is_ok());
         assert!(blank().skip(eof()).parse(stream("\n")).is_err());
         assert!(blank().skip(eof()).parse(stream(" \n")).is_err());
     }

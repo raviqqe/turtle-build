@@ -196,11 +196,11 @@ fn indent<'a>() -> impl Parser<Stream<'a>, Output = ()> {
 }
 
 fn blank<'a>() -> impl Parser<Stream<'a>, Output = ()> {
-    many::<Vec<_>, _, _>(choice((
-        one_of([' ', '\t', '\r']).with(value(())),
-        comment(),
-    )))
-    .with(value(()))
+    many::<Vec<_>, _, _>(choice((space(), comment()))).with(value(()))
+}
+
+fn space<'a>() -> impl Parser<Stream<'a>, Output = ()> {
+    one_of([' ', '\t', '\r']).with(value(()))
 }
 
 fn comment<'a>() -> impl Parser<Stream<'a>, Output = ()> {

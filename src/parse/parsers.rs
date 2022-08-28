@@ -200,7 +200,7 @@ fn blank<'a>() -> impl Parser<Stream<'a>, Output = ()> {
 }
 
 fn space<'a>() -> impl Parser<Stream<'a>, Output = ()> {
-    one_of([' ', '\t', '\r']).with(value(()))
+    one_of([' ', '\t', '\r']).with(value(())).expected("space")
 }
 
 fn comment<'a>() -> impl Parser<Stream<'a>, Output = ()> {
@@ -238,6 +238,10 @@ mod tests {
     #[test]
     fn parse_module() {
         assert_eq!(module().parse(stream("")).unwrap().0, Module::new(vec![]));
+        assert_eq!(
+            module().parse(stream("#foo\n")).unwrap().0,
+            Module::new(vec![])
+        );
         assert_eq!(
             module().parse(stream("x = 42\n")).unwrap().0,
             Module::new(vec![VariableDefinition::new("x", "42").into()])

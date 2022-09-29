@@ -14,7 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 async-recursion = "1"
-clap = { version = "3", features = ["derive", "env"] }
+clap = { version = "4", features = ["derive", "env"] }
 combine = "4"
 fnv = "1"
 futures = "0.3"

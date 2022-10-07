@@ -13,7 +13,6 @@ name = "turtle"
 path = "src/main.rs"
 
 [dependencies]
-async-recursion = "1"
 clap = { version = "4", features = ["derive", "env"] }
 combine = "4"
 fnv = "1"

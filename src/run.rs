@@ -15,7 +15,6 @@ use crate::{
     validation::BuildGraph,
     writeln,
 };
-use async_recursion::async_recursion;
 use futures::future::{join_all, try_join_all, FutureExt, Shared};
 pub use options::Options;
 use std::{

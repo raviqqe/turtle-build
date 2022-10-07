@@ -1,6 +1,7 @@
 {
   "words": [
     "alnum",
+    "bincode",
     "builddir",
     "canonicalize",
     "cpus",
@@ -14,6 +15,7 @@
     "petgraph",
     "reimplementation",
     "rsplit",
+    "serde",
     "srcdep",
     "stackless",
     "subninja",

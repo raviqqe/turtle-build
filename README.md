@@ -32,6 +32,7 @@ For more information, see `turtle --help`.
 ## Features
 
 - [Ninja][ninja]-compatible build file syntax and command line options 🥷
+- Content hash-based rebuild
 - Description-only outputs
   - Turtle never shows commands of build rules but only descriptions because the former is hard for end-users to digest.
 - Source mapping

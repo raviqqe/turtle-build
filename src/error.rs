@@ -78,6 +78,12 @@ impl From<AcquireError> for InfrastructureError {
     }
 }
 
+impl From<bincode::Error> for InfrastructureError {
+    fn from(error: bincode::Error) -> Self {
+        Self::Other(format!("{}", &error))
+    }
+}
+
 impl From<CompileError> for InfrastructureError {
     fn from(error: CompileError) -> Self {
         Self::Compile(error)

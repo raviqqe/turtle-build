@@ -56,7 +56,7 @@ pub async fn run(
     ));
 
     for output in context.configuration().default_outputs() {
-        create_build_future(
+        trigger_build(
             &context,
             context
                 .configuration()
@@ -89,7 +89,7 @@ pub async fn run(
 }
 
 #[async_recursion]
-async fn create_build_future(
+async fn trigger_build(
     context: &Arc<Context>,
     build: &Arc<Build>,
 ) -> Result<(), InfrastructureError> {
@@ -100,28 +100,24 @@ async fn create_build_future(
         return Ok(());
     }
 
-    let future: RawBuildFuture = Box::pin(spawn_build_future(context.clone(), build.clone()));
+    let future: RawBuildFuture = Box::pin(spawn_build(context.clone(), build.clone()));
 
     builds.insert(build.id().into(), future.shared());
 
     Ok(())
 }
 
-async fn spawn_build_future(
-    context: Arc<Context>,
-    build: Arc<Build>,
-) -> Result<(), InfrastructureError> {
+async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), InfrastructureError> {
     spawn(async move {
         let mut futures = vec![];
 
         for input in build.inputs().iter().chain(build.order_only_inputs()) {
             futures.push(
                 if let Some(build) = context.configuration().outputs().get(input) {
-                    create_build_future(&context, build).await?;
+                    trigger_build(&context, build).await?;
 
                     context.build_futures().read().await[build.id()].clone()
                 } else {
-                    // TODO Consider registering this future as a build job of the input.
                     let input = input.to_string();
                     let raw: RawBuildFuture =
                         Box::pin(async move { check_file_existence(&input).await });
@@ -164,7 +160,7 @@ async fn spawn_build_future(
                 .get(input)
                 .ok_or_else(|| InfrastructureError::InputNotFound(input.into()))?;
 
-            create_build_future(&context, build).await?;
+            trigger_build(&context, build).await?;
 
             futures.push(context.build_futures().read().await[build.id()].clone());
         }

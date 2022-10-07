@@ -266,10 +266,10 @@ async fn prepare_directory(path: impl AsRef<Path>) -> Result<(), InfrastructureE
 async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureError> {
     // Acquire a job semaphore first to guarantee a lock order between a job semaphore and console.
     let permit = context.job_semaphore().acquire().await?;
-    let start_time = Instant::now();
 
-    let (output, mut console) = try_join!(
+    let ((output, duration), mut console) = try_join!(
         async {
+            let start_time = Instant::now();
             let output = if cfg!(target_os = "windows") {
                 let components = rule.command().split_whitespace().collect::<Vec<_>>();
                 Command::new(&components[0])
@@ -283,10 +283,11 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
                     .output()
                     .await?
             };
+            let duration = Instant::now() - start_time;
 
             drop(permit);
 
-            Ok::<_, InfrastructureError>(output)
+            Ok::<_, InfrastructureError>((output, duration))
         },
         async {
             let mut console = context.console().lock().await;
@@ -310,7 +311,7 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
         context.options().profile,
         console.stderr(),
         "duration: {}ms",
-        (Instant::now() - start_time).as_millis()
+        duration.as_millis()
     );
 
     console.stdout().write_all(&output.stdout).await?;

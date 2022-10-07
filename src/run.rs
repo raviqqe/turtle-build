@@ -100,17 +100,14 @@ async fn create_build_future(
         return Ok(());
     }
 
-    let future: RawBuildFuture = Box::pin(spawn_build_future(context.clone(), build.clone()));
+    let future: RawBuildFuture = Box::pin(spawn_build(context.clone(), build.clone()));
 
     builds.insert(build.id().into(), future.shared());
 
     Ok(())
 }
 
-async fn spawn_build_future(
-    context: Arc<Context>,
-    build: Arc<Build>,
-) -> Result<(), InfrastructureError> {
+async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), InfrastructureError> {
     spawn(async move {
         let mut futures = vec![];
 

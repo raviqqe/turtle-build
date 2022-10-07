@@ -298,7 +298,7 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
             debug!(
                 context.options().debug,
                 console.stderr(),
-                "{}",
+                "command: {}",
                 rule.command()
             );
 
@@ -320,12 +320,12 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
         debug!(
             context.options().debug,
             console.stderr(),
-            "command exited{}",
-            &if let Some(code) = output.status.code() {
-                format!(" with status code {}", code)
-            } else {
-                "".into()
-            }
+            "exit status: {}",
+            output
+                .status
+                .code()
+                .map(|code| code.to_string())
+                .unwrap_or("-".into())
         );
 
         return Err(InfrastructureError::Build);

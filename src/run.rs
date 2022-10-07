@@ -225,7 +225,7 @@ async fn hash_build_with_timestamp(
 ) -> Result<u64, InfrastructureError> {
     let mut hasher = DefaultHasher::new();
 
-    build.rule().map(Rule::command).hash(&mut hasher);
+    hash_command(build, &mut hasher);
 
     join_all(
         build
@@ -248,7 +248,7 @@ async fn hash_build_with_content(
 ) -> Result<u64, InfrastructureError> {
     let mut hasher = DefaultHasher::new();
 
-    build.rule().map(Rule::command).hash(&mut hasher);
+    hash_command(build, &mut hasher);
 
     let mut buffer = Vec::with_capacity(BUFFER_CAPACITY);
 
@@ -259,6 +259,10 @@ async fn hash_build_with_content(
     }
 
     Ok(hasher.finish())
+}
+
+fn hash_command(build: &Build, hasher: &mut impl Hasher) {
+    build.rule().map(Rule::command).hash(hasher);
 }
 
 async fn read_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, InfrastructureError> {

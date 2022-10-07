@@ -1,4 +1,4 @@
-use super::{build_database::BuildDatabase, BuildFuture};
+use super::{build_database::BuildDatabase, options::Options, BuildFuture};
 use crate::{console::Console, ir::Configuration, validation::BuildGraph};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{Mutex, RwLock, Semaphore};
@@ -12,7 +12,7 @@ pub struct Context {
     database: BuildDatabase,
     job_semaphore: Semaphore,
     console: Arc<Mutex<Console>>,
-    debug: bool,
+    options: Options,
 }
 
 impl Context {
@@ -22,7 +22,7 @@ impl Context {
         database: BuildDatabase,
         job_semaphore: Semaphore,
         console: Arc<Mutex<Console>>,
-        debug: bool,
+        options: Options,
     ) -> Self {
         Self {
             build_graph: build_graph.into(),
@@ -31,7 +31,7 @@ impl Context {
             database,
             job_semaphore,
             console,
-            debug,
+            options,
         }
     }
 
@@ -59,7 +59,7 @@ impl Context {
         &self.console
     }
 
-    pub fn debug(&self) -> bool {
-        self.debug
+    pub fn options(&self) -> &Options {
+        &self.options
     }
 }

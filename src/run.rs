@@ -1,5 +1,6 @@
 mod build_database;
 mod context;
+mod options;
 
 use self::{build_database::BuildDatabase, context::Context};
 use crate::{
@@ -15,6 +16,7 @@ use crate::{
 };
 use async_recursion::async_recursion;
 use futures::future::{join_all, try_join_all, FutureExt, Shared};
+pub use options::Options;
 use std::{
     collections::hash_map::DefaultHasher,
     future::{ready, Future},
@@ -41,7 +43,7 @@ pub async fn run(
     console: &Arc<Mutex<Console>>,
     build_directory: &Path,
     job_limit: Option<usize>,
-    debug: bool,
+    options: Options,
 ) -> Result<(), InfrastructureError> {
     let graph = BuildGraph::new(configuration.outputs())?;
     let context = Arc::new(Context::new(
@@ -50,7 +52,7 @@ pub async fn run(
         BuildDatabase::new(build_directory)?,
         Semaphore::new(job_limit.unwrap_or_else(num_cpus::get)),
         console.clone(),
-        debug,
+        options,
     ));
 
     for output in context.configuration().default_outputs() {
@@ -291,7 +293,12 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
                 writeln!(console.stderr(), "{}", description);
             }
 
-            debug!(context.debug(), console.stderr(), "{}", rule.command());
+            debug!(
+                context.options().debug,
+                console.stderr(),
+                "{}",
+                rule.command()
+            );
 
             Ok(console)
         }
@@ -302,7 +309,7 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
 
     if !output.status.success() {
         debug!(
-            context.debug(),
+            context.options().debug,
             console.stderr(),
             "command exited{}",
             &if let Some(code) = output.status.code() {

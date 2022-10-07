@@ -1,4 +1,5 @@
 Feature: Command line options
+  @turtle
   Scenario: Set a log prefix
     Given a file named "build.ninja" with:
     """
@@ -11,6 +12,7 @@ Feature: Command line options
     When I successfully run `turtle --debug`
     Then the stderr should contain "touch"
 
+  @turtle
   Scenario: Set a log prefix
     Given a file named "build.ninja" with:
     """

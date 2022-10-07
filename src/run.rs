@@ -118,7 +118,6 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
 
                     context.build_futures().read().await[build.id()].clone()
                 } else {
-                    // TODO Consider registering this future as a build job of the input.
                     let input = input.to_string();
                     let raw: RawBuildFuture =
                         Box::pin(async move { check_file_existence(&input).await });

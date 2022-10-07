@@ -1,4 +1,5 @@
 mod build_database;
+mod build_hash;
 mod context;
 mod options;
 
@@ -27,8 +28,8 @@ use std::{
     time::SystemTime,
 };
 use tokio::{
-    fs::{create_dir_all, metadata},
-    io::AsyncWriteExt,
+    fs::{create_dir_all, metadata, File},
+    io::{AsyncReadExt, AsyncWriteExt},
     process::Command,
     spawn,
     sync::{Mutex, Semaphore},
@@ -38,6 +39,8 @@ use tokio::{
 
 type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), InfrastructureError>> + Send>>;
 type BuildFuture = Shared<RawBuildFuture>;
+
+const BUFFER_CAPACITY: usize = 2 << 16;
 
 pub async fn run(
     configuration: Arc<Configuration>,
@@ -167,18 +170,18 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
 
         join_builds(futures).await?;
 
-        let hash = hash_build(&build, dynamic_inputs).await?;
+        let hash = hash_build_with_content(&build, dynamic_inputs).await?;
 
-        if hash == context.database().get(build.id())?
-            && try_join_all(
-                build
-                    .outputs()
-                    .iter()
-                    .chain(build.implicit_outputs())
-                    .map(check_file_existence),
-            )
-            .await
-            .is_ok()
+        if try_join_all(
+            build
+                .outputs()
+                .iter()
+                .chain(build.implicit_outputs())
+                .map(check_file_existence),
+        )
+        .await
+        .is_ok()
+            && Some(hash) == context.database().get(build.id())?
         {
             return Ok(());
         } else if let Some(rule) = build.rule() {
@@ -201,7 +204,10 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
     .await?
 }
 
-async fn hash_build(build: &Build, dynamic_inputs: &[String]) -> Result<u64, InfrastructureError> {
+async fn hash_build_with_timestamp(
+    build: &Build,
+    dynamic_inputs: &[String],
+) -> Result<u64, InfrastructureError> {
     let mut hasher = DefaultHasher::new();
 
     build.rule().map(Rule::command).hash(&mut hasher);
@@ -217,6 +223,25 @@ async fn hash_build(build: &Build, dynamic_inputs: &[String]) -> Result<u64, Inf
     .into_iter()
     .collect::<Result<Vec<SystemTime>, _>>()?
     .hash(&mut hasher);
+
+    Ok(hasher.finish())
+}
+
+async fn hash_build_with_content(
+    build: &Build,
+    dynamic_inputs: &[String],
+) -> Result<u64, InfrastructureError> {
+    let mut hasher = DefaultHasher::new();
+
+    build.rule().map(Rule::command).hash(&mut hasher);
+
+    let mut buffer = Vec::with_capacity(BUFFER_CAPACITY);
+
+    for input in build.inputs().iter().chain(dynamic_inputs) {
+        File::open(input).await?.read_to_end(&mut buffer).await?;
+        buffer.hash(&mut hasher);
+        buffer.clear();
+    }
 
     Ok(hasher.finish())
 }

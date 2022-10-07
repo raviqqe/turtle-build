@@ -60,13 +60,12 @@ pub async fn run(
 
     for output in context.configuration().default_outputs() {
         trigger_build(
-            context.clone(),
+            &context,
             context
                 .configuration()
                 .outputs()
                 .get(output)
-                .ok_or_else(|| InfrastructureError::DefaultOutputNotFound(output.into()))?
-                .clone(),
+                .ok_or_else(|| InfrastructureError::DefaultOutputNotFound(output.into()))?,
         )
         .await?;
     }
@@ -92,21 +91,23 @@ pub async fn run(
     Ok(())
 }
 
-fn trigger_build(context: Arc<Context>, build: Arc<Build>) -> RawBuildFuture {
-    Box::pin(async move {
-        // Exclusive lock for atomic addition of a build job.
-        let mut builds = context.build_futures().write().await;
+#[async_recursion]
+async fn trigger_build(
+    context: &Arc<Context>,
+    build: &Arc<Build>,
+) -> Result<(), InfrastructureError> {
+    // Exclusive lock for atomic addition of a build job.
+    let mut builds = context.build_futures().write().await;
 
-        if builds.contains_key(build.id()) {
-            return Ok(());
-        }
+    if builds.contains_key(build.id()) {
+        return Ok(());
+    }
 
-        let future: RawBuildFuture = Box::pin(spawn_build(context.clone(), build.clone()));
+    let future: RawBuildFuture = Box::pin(spawn_build(context.clone(), build.clone()));
 
-        builds.insert(build.id().into(), future.shared());
+    builds.insert(build.id().into(), future.shared());
 
-        Ok(())
-    })
+    Ok(())
 }
 
 async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), InfrastructureError> {
@@ -116,7 +117,7 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
         for input in build.inputs().iter().chain(build.order_only_inputs()) {
             futures.push(
                 if let Some(build) = context.configuration().outputs().get(input) {
-                    trigger_build(context.clone(), build.clone()).await?;
+                    trigger_build(&context, build).await?;
 
                     context.build_futures().read().await[build.id()].clone()
                 } else {
@@ -156,14 +157,13 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
         let mut futures = vec![];
 
         for input in dynamic_inputs {
-            let build = context
+            let build = &context
                 .configuration()
                 .outputs()
                 .get(input)
-                .ok_or_else(|| InfrastructureError::InputNotFound(input.into()))?
-                .clone();
+                .ok_or_else(|| InfrastructureError::InputNotFound(input.into()))?;
 
-            trigger_build(context.clone(), build.clone()).await?;
+            trigger_build(&context, build).await?;
 
             futures.push(context.build_futures().read().await[build.id()].clone());
         }

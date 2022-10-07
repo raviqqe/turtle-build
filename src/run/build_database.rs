@@ -20,12 +20,12 @@ impl BuildDatabase {
         Ok(self
             .database
             .get(id)?
-            .map(|value| bincode::deserialize(value.as_ref().try_into().unwrap()).unwrap()))
+            .map(|value| bincode::deserialize(value.as_ref().try_into().unwrap()))
+            .transpose()?)
     }
 
     pub fn set(&self, id: &str, hash: BuildHash) -> Result<(), InfrastructureError> {
-        self.database
-            .insert(id, bincode::serialize(&hash).unwrap())?;
+        self.database.insert(id, bincode::serialize(&hash)?)?;
 
         Ok(())
     }

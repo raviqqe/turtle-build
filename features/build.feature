@@ -18,6 +18,7 @@ Feature: Build statement
     hello
     """
 
+  @turtle
   Scenario: Do not rebuild an output on timestamp update of an input
     Given a file named "build.ninja" with:
     """
@@ -55,6 +56,7 @@ Feature: Build statement
     hello
     """
 
+  @turtle
   Scenario: Do not rebuild an output on timestamp update of an implicit input
     Given a file named "build.ninja" with:
     """

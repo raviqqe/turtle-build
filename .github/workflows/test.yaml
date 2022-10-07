@@ -42,4 +42,4 @@ jobs:
       - run: mkdir -p target/release
       - run: cp tools/turtle.sh target/release/turtle
       - run: rm -r features/turtle
-      - run: tools/integration_test.sh
+      - run: tools/integration_test.sh --tags 'not @turtle'

@@ -16,7 +16,7 @@ pub struct BuildGraph {
 }
 
 impl BuildGraph {
-    pub fn new(outputs: &FnvHashMap<String, Arc<Build>>) -> Result<Self, ValidationError> {
+    pub fn new(outputs: &FnvHashMap<String, Arc<Build>>) -> Self {
         let mut this = Self {
             graph: Graph::<String, ()>::new(),
             nodes: HashMap::<String, NodeIndex<DefaultIx>>::new(),
@@ -39,22 +39,10 @@ impl BuildGraph {
             }
         }
 
-        this.validate()?;
-
-        Ok(this)
+        this
     }
 
-    pub fn insert(&mut self, configuration: &DynamicConfiguration) -> Result<(), ValidationError> {
-        for (output, build) in configuration.outputs() {
-            for input in build.inputs() {
-                self.add_edge(&self.primary_outputs[output].clone(), input);
-            }
-        }
-
-        self.validate()
-    }
-
-    fn validate(&self) -> Result<(), ValidationError> {
+    pub fn validate(&self) -> Result<(), ValidationError> {
         if let Err(cycle) = toposort(&self.graph, None) {
             let mut components = kosaraju_scc(&self.graph);
 
@@ -73,6 +61,19 @@ impl BuildGraph {
         }
 
         Ok(())
+    }
+
+    pub fn validate_dynamic(
+        &mut self,
+        configuration: &DynamicConfiguration,
+    ) -> Result<(), ValidationError> {
+        for (output, build) in configuration.outputs() {
+            for input in build.inputs() {
+                self.add_edge(&self.primary_outputs[output].clone(), input);
+            }
+        }
+
+        self.validate()
     }
 
     fn add_edge(&mut self, output: &str, input: &str) {
@@ -99,9 +100,7 @@ mod tests {
     fn validate_builds(
         dependencies: &FnvHashMap<String, Arc<Build>>,
     ) -> Result<(), ValidationError> {
-        BuildGraph::new(dependencies)?;
-
-        Ok(())
+        BuildGraph::new(dependencies).validate()
     }
 
     fn explicit_build(outputs: Vec<String>, inputs: Vec<String>) -> Build {
@@ -271,11 +270,12 @@ mod tests {
             ]
             .into_iter()
             .collect(),
-        )
-        .unwrap();
+        );
+
+        graph.validate().unwrap();
 
         assert_eq!(
-            graph.insert(&DynamicConfiguration::new(
+            graph.validate_dynamic(&DynamicConfiguration::new(
                 [("bar".into(), DynamicBuild::new(vec!["foo".into()]))]
                     .into_iter()
                     .collect(),
@@ -295,11 +295,12 @@ mod tests {
             &[("foo".into(), build.clone()), ("bar".into(), build)]
                 .into_iter()
                 .collect(),
-        )
-        .unwrap();
+        );
+
+        graph.validate().unwrap();
 
         assert_eq!(
-            graph.insert(&DynamicConfiguration::new(
+            graph.validate_dynamic(&DynamicConfiguration::new(
                 [("bar".into(), DynamicBuild::new(vec!["foo".into()]))]
                     .into_iter()
                     .collect(),
@@ -316,11 +317,12 @@ mod tests {
             &[("foo".into(), build.clone()), ("bar".into(), build)]
                 .into_iter()
                 .collect(),
-        )
-        .unwrap();
+        );
+
+        graph.validate().unwrap();
 
         assert_eq!(
-            graph.insert(&DynamicConfiguration::new(
+            graph.validate_dynamic(&DynamicConfiguration::new(
                 [("foo".into(), DynamicBuild::new(vec!["bar".into()]))]
                     .into_iter()
                     .collect(),

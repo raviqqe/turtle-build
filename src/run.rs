@@ -48,7 +48,10 @@ pub async fn run(
     build_directory: &Path,
     options: Options,
 ) -> Result<(), InfrastructureError> {
-    let graph = BuildGraph::new(configuration.outputs())?;
+    let graph = BuildGraph::new(configuration.outputs());
+
+    graph.validate()?;
+
     let context = Arc::new(Context::new(
         configuration,
         graph,
@@ -136,7 +139,11 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
             let configuration =
                 compile_dynamic(&parse_dynamic(&read_file(&dynamic_module).await?)?)?;
 
-            context.build_graph().lock().await.insert(&configuration)?;
+            context
+                .build_graph()
+                .lock()
+                .await
+                .validate_dynamic(&configuration)?;
 
             Some(configuration)
         } else {

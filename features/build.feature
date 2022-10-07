@@ -1,5 +1,24 @@
 Feature: Build statement
-  Scenario: Rebuild an output on update of an input
+  Scenario: Rebuild an output on content update of an input
+    Given a file named "build.ninja" with:
+    """
+    rule cp
+      command = echo hello && cp $in $out
+
+    build foo: cp bar
+
+    """
+    And a file named "bar" with ""
+    When I successfully run `turtle`
+    And a file named "bar" with "bar"
+    And I successfully run `turtle`
+    Then the stdout should contain exactly:
+    """
+    hello
+    hello
+    """
+
+  Scenario: Do not rebuild an output on timestamp update of an input
     Given a file named "build.ninja" with:
     """
     rule cp
@@ -15,10 +34,28 @@ Feature: Build statement
     Then the stdout should contain exactly:
     """
     hello
+    """
+
+  Scenario: Rebuild an output on content update of an implicit input
+    Given a file named "build.ninja" with:
+    """
+    rule cp
+      command = echo hello && cp bar $out
+
+    build foo: cp | bar
+
+    """
+    And a file named "bar" with ""
+    When I successfully run `turtle`
+    And a file named "bar" with "bar"
+    And I successfully run `turtle`
+    Then the stdout should contain exactly:
+    """
+    hello
     hello
     """
 
-  Scenario: Rebuild an output on update of an implicit input
+  Scenario: Do not rebuild an output on timestamp update of an implicit input
     Given a file named "build.ninja" with:
     """
     rule cp
@@ -33,7 +70,6 @@ Feature: Build statement
     And I successfully run `turtle`
     Then the stdout should contain exactly:
     """
-    hello
     hello
     """
 
@@ -93,7 +129,7 @@ Feature: Build statement
     """
     And a file named "baz" with ""
     When I successfully run `turtle`
-    And I successfully run `touch baz`
+    And a file named "baz" with "baz"
     And I successfully run `turtle`
     Then the stdout should contain exactly:
     """

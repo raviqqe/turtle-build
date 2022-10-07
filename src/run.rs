@@ -274,15 +274,15 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
                     .await?
             } else {
                 Command::new("sh")
-                    .arg("-e")
-                    .arg("-c")
+                    .arg("-ec")
                     .arg(rule.command())
                     .output()
                     .await?
             };
+
             drop(permit);
-            let result: Result<_, InfrastructureError> = Ok(output);
-            result
+
+            Ok::<_, InfrastructureError>(output)
         },
         async {
             let mut console = context.console().lock().await;

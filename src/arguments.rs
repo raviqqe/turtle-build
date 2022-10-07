@@ -15,6 +15,6 @@ pub struct Arguments {
     pub quiet: bool,
     #[clap(long, help = "Show debug output", env = "TURTLE_DEBUG")]
     pub debug: bool,
-    #[clap(long, help = "Show timings", env = "TURTLE_PROFILE")]
+    #[clap(long, help = "Show profile timings", env = "TURTLE_PROFILE")]
     pub profile: bool,
 }

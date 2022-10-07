@@ -40,7 +40,7 @@ use tokio::{
 type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), InfrastructureError>> + Send>>;
 type BuildFuture = Shared<RawBuildFuture>;
 
-const BUFFER_CAPACITY: usize = 2 << 16;
+const BUFFER_CAPACITY: usize = 2 << 10;
 
 pub async fn run(
     configuration: Arc<Configuration>,

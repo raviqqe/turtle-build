@@ -32,6 +32,7 @@ use tokio::{
     process::Command,
     spawn,
     sync::{Mutex, Semaphore},
+    time::Instant,
     try_join,
 };
 
@@ -265,6 +266,7 @@ async fn prepare_directory(path: impl AsRef<Path>) -> Result<(), InfrastructureE
 async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureError> {
     // Acquire a job semaphore first to guarantee a lock order between a job semaphore and console.
     let permit = context.job_semaphore().acquire().await?;
+    let start_time = Instant::now();
 
     let (output, mut console) = try_join!(
         async {
@@ -303,6 +305,13 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
             Ok(console)
         }
     )?;
+
+    debug!(
+        context.options().profile,
+        console.stderr(),
+        "duration: {}ms",
+        (Instant::now() - start_time).as_millis()
+    );
 
     console.stdout().write_all(&output.stdout).await?;
     console.stderr().write_all(&output.stderr).await?;

@@ -20,7 +20,7 @@ impl BuildDatabase {
         Ok(self
             .database
             .get(id)?
-            .map(|value| bincode::deserialize(value.as_ref().try_into().unwrap()))
+            .map(|value| bincode::deserialize(value.as_ref()))
             .transpose()?)
     }
 

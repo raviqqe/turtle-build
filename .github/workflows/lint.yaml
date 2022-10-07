@@ -8,18 +8,18 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3.1.0
       # TODO Enable a dead_code rule.
       - run: cargo clippy -- -D warnings
   format:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3.1.0
       - run: cargo fmt -- --check
   spell_check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3.1.0
       - uses: streetsidesoftware/cspell-action@main
         with:
           files: "**/*.{md,rs,sh,toml}"

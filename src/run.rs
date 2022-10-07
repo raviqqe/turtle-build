@@ -43,7 +43,6 @@ pub async fn run(
     configuration: Arc<Configuration>,
     console: &Arc<Mutex<Console>>,
     build_directory: &Path,
-    job_limit: Option<usize>,
     options: Options,
 ) -> Result<(), InfrastructureError> {
     let graph = BuildGraph::new(configuration.outputs())?;
@@ -51,7 +50,7 @@ pub async fn run(
         configuration,
         graph,
         BuildDatabase::new(build_directory)?,
-        Semaphore::new(job_limit.unwrap_or_else(num_cpus::get)),
+        Semaphore::new(options.job_limit.unwrap_or_else(num_cpus::get)),
         console.clone(),
         options,
     ));

@@ -89,9 +89,9 @@ async fn execute(
         configuration.clone(),
         console,
         &build_directory,
-        arguments.job_limit,
         run::Options {
             debug: arguments.debug,
+            job_limit: arguments.job_limit,
             profile: arguments.profile,
         },
     )

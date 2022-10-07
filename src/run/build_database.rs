@@ -1,3 +1,4 @@
+use super::build_hash::BuildHash;
 use crate::error::InfrastructureError;
 use std::path::Path;
 
@@ -15,15 +16,16 @@ impl BuildDatabase {
         })
     }
 
-    pub fn get(&self, id: &str) -> Result<Option<u64>, InfrastructureError> {
+    pub fn get(&self, id: &str) -> Result<Option<BuildHash>, InfrastructureError> {
         Ok(self
             .database
             .get(id)?
-            .map(|value| u64::from_le_bytes(value.as_ref().try_into().unwrap())))
+            .map(|value| bincode::deserialize(value.as_ref().try_into().unwrap()).unwrap()))
     }
 
-    pub fn set(&self, id: &str, hash: u64) -> Result<(), InfrastructureError> {
-        self.database.insert(id, &hash.to_le_bytes())?;
+    pub fn set(&self, id: &str, hash: BuildHash) -> Result<(), InfrastructureError> {
+        self.database
+            .insert(id, bincode::serialize(&hash).unwrap())?;
 
         Ok(())
     }
@@ -50,14 +52,15 @@ mod tests {
     fn set_hash() {
         let database = BuildDatabase::new(tempdir().unwrap().path()).unwrap();
 
-        database.set("foo", 42).unwrap();
+        database.set("foo", BuildHash::new(0, 0)).unwrap();
     }
 
     #[test]
     fn get_hash() {
         let database = BuildDatabase::new(tempdir().unwrap().path()).unwrap();
+        let hash = BuildHash::new(0, 1);
 
-        database.set("foo", 42).unwrap();
-        assert_eq!(database.get("foo").unwrap(), Some(42));
+        database.set("foo", hash).unwrap();
+        assert_eq!(database.get("foo").unwrap(), Some(hash));
     }
 }

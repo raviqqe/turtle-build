@@ -3,7 +3,7 @@ mod build_hash;
 mod context;
 mod options;
 
-use self::{build_database::BuildDatabase, context::Context};
+use self::{build_database::BuildDatabase, build_hash::BuildHash, context::Context};
 use crate::{
     compile::compile_dynamic,
     console::Console,
@@ -170,9 +170,7 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
 
         join_builds(futures).await?;
 
-        let hash = hash_build_with_content(&build, dynamic_inputs).await?;
-
-        if try_join_all(
+        let outputs_exist = try_join_all(
             build
                 .outputs()
                 .iter()
@@ -180,9 +178,17 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
                 .map(check_file_existence),
         )
         .await
-        .is_ok()
-            && Some(hash) == context.database().get(build.id())?
-        {
+        .is_ok();
+        let old_hash = context.database().get(build.id())?;
+        let timestamp_hash = hash_build_with_timestamp(&build, dynamic_inputs).await?;
+
+        if outputs_exist && Some(timestamp_hash) == old_hash.map(|hash| hash.timestamp()) {
+            return Ok(());
+        }
+
+        let content_hash = hash_build_with_content(&build, dynamic_inputs).await?;
+
+        if outputs_exist && Some(content_hash) == old_hash.map(|hash| hash.content()) {
             return Ok(());
         } else if let Some(rule) = build.rule() {
             try_join_all(
@@ -197,7 +203,9 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
             run_rule(&context, rule).await?;
         }
 
-        context.database().set(build.id(), hash)?;
+        context
+            .database()
+            .set(build.id(), BuildHash::new(timestamp_hash, content_hash))?;
 
         Ok(())
     })

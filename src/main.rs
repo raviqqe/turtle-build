@@ -17,7 +17,6 @@ use console::Console;
 use error::InfrastructureError;
 use futures::future::try_join_all;
 use parse::parse;
-use run::run;
 use std::{
     collections::HashMap,
     env::set_current_dir,
@@ -86,12 +85,15 @@ async fn execute(
         .map(PathBuf::from)
         .unwrap_or_else(|| root_module_path.parent().unwrap().into());
 
-    run(
+    run::run(
         configuration.clone(),
         console,
         &build_directory,
-        arguments.job_limit,
-        arguments.debug,
+        run::Options {
+            debug: arguments.debug,
+            job_limit: arguments.job_limit,
+            profile: arguments.profile,
+        },
     )
     .await
     .map_err(|error| error.map_outputs(configuration.source_map()))?;

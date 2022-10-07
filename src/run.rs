@@ -1,5 +1,6 @@
 mod build_database;
 mod context;
+mod options;
 
 use self::{build_database::BuildDatabase, context::Context};
 use crate::{
@@ -15,6 +16,7 @@ use crate::{
 };
 use async_recursion::async_recursion;
 use futures::future::{join_all, try_join_all, FutureExt, Shared};
+pub use options::Options;
 use std::{
     collections::hash_map::DefaultHasher,
     future::{ready, Future},
@@ -30,6 +32,7 @@ use tokio::{
     process::Command,
     spawn,
     sync::{Mutex, Semaphore},
+    time::Instant,
     try_join,
 };
 
@@ -40,17 +43,16 @@ pub async fn run(
     configuration: Arc<Configuration>,
     console: &Arc<Mutex<Console>>,
     build_directory: &Path,
-    job_limit: Option<usize>,
-    debug: bool,
+    options: Options,
 ) -> Result<(), InfrastructureError> {
     let graph = BuildGraph::new(configuration.outputs())?;
     let context = Arc::new(Context::new(
         configuration,
         graph,
         BuildDatabase::new(build_directory)?,
-        Semaphore::new(job_limit.unwrap_or_else(num_cpus::get)),
+        Semaphore::new(options.job_limit.unwrap_or_else(num_cpus::get)),
         console.clone(),
-        debug,
+        options,
     ));
 
     for output in context.configuration().default_outputs() {
@@ -261,11 +263,13 @@ async fn prepare_directory(path: impl AsRef<Path>) -> Result<(), InfrastructureE
 }
 
 async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureError> {
-    // Acquire a job semaphore first to guarantee a lock order between a job semaphore and console.
+    // Acquire a job semaphore first to guarantee a lock order between a job
+    // semaphore and console.
     let permit = context.job_semaphore().acquire().await?;
 
-    let (output, mut console) = try_join!(
+    let ((output, duration), mut console) = try_join!(
         async {
+            let start_time = Instant::now();
             let output = if cfg!(target_os = "windows") {
                 let components = rule.command().split_whitespace().collect::<Vec<_>>();
                 Command::new(&components[0])
@@ -274,15 +278,16 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
                     .await?
             } else {
                 Command::new("sh")
-                    .arg("-e")
-                    .arg("-c")
+                    .arg("-ec")
                     .arg(rule.command())
                     .output()
                     .await?
             };
+            let duration = Instant::now() - start_time;
+
             drop(permit);
-            let result: Result<_, InfrastructureError> = Ok(output);
-            result
+
+            Ok::<_, InfrastructureError>((output, duration))
         },
         async {
             let mut console = context.console().lock().await;
@@ -291,25 +296,37 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
                 writeln!(console.stderr(), "{}", description);
             }
 
-            debug!(context.debug(), console.stderr(), "{}", rule.command());
+            debug!(
+                context.options().debug,
+                console.stderr(),
+                "command: {}",
+                rule.command()
+            );
 
             Ok(console)
         }
     )?;
+
+    debug!(
+        context.options().profile,
+        console.stderr(),
+        "duration: {}ms",
+        duration.as_millis()
+    );
 
     console.stdout().write_all(&output.stdout).await?;
     console.stderr().write_all(&output.stderr).await?;
 
     if !output.status.success() {
         debug!(
-            context.debug(),
+            context.options().debug,
             console.stderr(),
-            "command exited{}",
-            &if let Some(code) = output.status.code() {
-                format!(" with status code {}", code)
-            } else {
-                "".into()
-            }
+            "exit status: {}",
+            output
+                .status
+                .code()
+                .map(|code| code.to_string())
+                .unwrap_or_else(|| "-".into())
         );
 
         return Err(InfrastructureError::Build);

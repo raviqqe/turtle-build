@@ -264,7 +264,8 @@ async fn prepare_directory(path: impl AsRef<Path>) -> Result<(), InfrastructureE
 }
 
 async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureError> {
-    // Acquire a job semaphore first to guarantee a lock order between a job semaphore and console.
+    // Acquire a job semaphore first to guarantee a lock order between a job
+    // semaphore and console.
     let permit = context.job_semaphore().acquire().await?;
 
     let ((output, duration), mut console) = try_join!(
@@ -326,7 +327,7 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
                 .status
                 .code()
                 .map(|code| code.to_string())
-                .unwrap_or("-".into())
+                .unwrap_or_else(|| "-".into())
         );
 
         return Err(InfrastructureError::Build);

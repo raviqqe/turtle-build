@@ -205,12 +205,13 @@ async fn hash_build(build: &Build, dynamic_inputs: &[String]) -> Result<u64, Inf
     let mut hasher = DefaultHasher::new();
 
     build.rule().map(Rule::command).hash(&mut hasher);
+
     join_all(
         build
             .inputs()
             .iter()
             .chain(dynamic_inputs)
-            .map(get_timestamp),
+            .map(read_timestamp),
     )
     .await
     .into_iter()
@@ -220,7 +221,7 @@ async fn hash_build(build: &Build, dynamic_inputs: &[String]) -> Result<u64, Inf
     Ok(hasher.finish())
 }
 
-async fn get_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, InfrastructureError> {
+async fn read_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, InfrastructureError> {
     let path = path.as_ref();
 
     metadata(path)

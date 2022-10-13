@@ -158,10 +158,6 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
 
         try_join_all(futures).await?;
 
-        if build.rule().is_none() {
-            return Ok(());
-        }
-
         let outputs_exist = try_join_all(
             build
                 .outputs()
@@ -172,13 +168,27 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
         .await
         .is_ok();
         let old_hash = context.database().get(build.id())?;
-        let timestamp_hash = hash_build_with_timestamp(&build, dynamic_inputs).await?;
+        let (file_inputs, phony_inputs) = build
+            .inputs()
+            .iter()
+            .chain(dynamic_inputs)
+            .map(|input| input.as_str())
+            .partition::<Vec<_>, _>(|&input| {
+                context
+                    .configuration()
+                    .outputs()
+                    .get(input)
+                    .map(|build| build.rule().is_some())
+                    .unwrap_or_default()
+            });
+        let timestamp_hash =
+            hash_build_with_timestamp(&context, &build, &file_inputs, &phony_inputs).await?;
 
         if outputs_exist && Some(timestamp_hash) == old_hash.map(|hash| hash.timestamp()) {
             return Ok(());
         }
 
-        let content_hash = hash_build_with_content(&build, dynamic_inputs).await?;
+        let content_hash = hash_build_with_content(&build, &file_inputs).await?;
 
         if outputs_exist && Some(content_hash) == old_hash.map(|hash| hash.content()) {
             return Ok(());
@@ -227,31 +237,43 @@ async fn build_input(
 }
 
 async fn hash_build_with_timestamp(
+    context: &Context,
     build: &Build,
-    dynamic_inputs: &[String],
+    file_inputs: &[&str],
+    phony_inputs: &[&str],
 ) -> Result<u64, InfrastructureError> {
     let mut hasher = DefaultHasher::new();
 
     hash_command(build, &mut hasher);
 
-    join_all(
-        build
-            .inputs()
-            .iter()
-            .chain(dynamic_inputs)
-            .map(read_timestamp),
-    )
-    .await
-    .into_iter()
-    .collect::<Result<Vec<SystemTime>, _>>()?
-    .hash(&mut hasher);
+    join_all(file_inputs.iter().map(read_timestamp))
+        .await
+        .into_iter()
+        .collect::<Result<Vec<SystemTime>, _>>()?
+        .hash(&mut hasher);
+
+    for &input in phony_inputs {
+        context
+            .database()
+            .get(
+                context
+                    .configuration()
+                    .outputs()
+                    .get(input)
+                    .expect("phony input build")
+                    .id(),
+            )?
+            .expect("phony input timestamp hash")
+            .timestamp()
+            .hash(&mut hasher);
+    }
 
     Ok(hasher.finish())
 }
 
 async fn hash_build_with_content(
     build: &Build,
-    dynamic_inputs: &[String],
+    file_inputs: &[&str],
 ) -> Result<u64, InfrastructureError> {
     let mut hasher = DefaultHasher::new();
 
@@ -259,7 +281,7 @@ async fn hash_build_with_content(
 
     let mut buffer = Vec::with_capacity(BUFFER_CAPACITY);
 
-    for input in build.inputs().iter().chain(dynamic_inputs) {
+    for input in file_inputs {
         File::open(input).await?.read_to_end(&mut buffer).await?;
         buffer.hash(&mut hasher);
         buffer.clear();

@@ -1,6 +1,7 @@
 mod build_database;
 mod build_hash;
 mod context;
+mod hash;
 mod options;
 
 use self::{build_database::BuildDatabase, build_hash::BuildHash, context::Context};
@@ -19,17 +20,14 @@ use async_recursion::async_recursion;
 use futures::future::{try_join_all, FutureExt, Shared};
 pub use options::Options;
 use std::{
-    collections::hash_map::DefaultHasher,
     future::{ready, Future},
-    hash::{Hash, Hasher},
     path::Path,
     pin::Pin,
     sync::Arc,
-    time::SystemTime,
 };
 use tokio::{
-    fs::{create_dir_all, metadata, File},
-    io::{AsyncReadExt, AsyncWriteExt},
+    fs::{create_dir_all, metadata},
+    io::AsyncWriteExt,
     process::Command,
     spawn,
     sync::{Mutex, Semaphore},
@@ -39,8 +37,6 @@ use tokio::{
 
 type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), InfrastructureError>> + Send>>;
 type BuildFuture = Shared<RawBuildFuture>;
-
-const BUFFER_CAPACITY: usize = 2 << 10;
 
 pub async fn run(
     configuration: Arc<Configuration>,
@@ -182,14 +178,14 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
                     .unwrap_or_default()
             });
         let timestamp_hash =
-            hash_build_with_timestamp(&context, &build, &file_inputs, &phony_inputs).await?;
+            hash::calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
         if outputs_exist && Some(timestamp_hash) == old_hash.map(|hash| hash.timestamp()) {
             return Ok(());
         }
 
         let content_hash =
-            hash_build_with_content(&context, &build, &file_inputs, &phony_inputs).await?;
+            hash::calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
         if outputs_exist && Some(content_hash) == old_hash.map(|hash| hash.content()) {
             return Ok(());
@@ -235,98 +231,6 @@ async fn build_input(
             future.shared()
         },
     )
-}
-
-async fn hash_build_with_timestamp(
-    context: &Context,
-    build: &Build,
-    file_inputs: &[&str],
-    phony_inputs: &[&str],
-) -> Result<u64, InfrastructureError> {
-    if build.rule().is_none() && file_inputs.is_empty() && phony_inputs.is_empty() {
-        return Ok(rand::random());
-    }
-
-    let mut hasher = DefaultHasher::new();
-
-    hash_command(build, &mut hasher);
-
-    for input in file_inputs {
-        read_timestamp(input).await?.hash(&mut hasher);
-    }
-
-    for &input in phony_inputs {
-        context
-            .database()
-            .get(
-                context
-                    .configuration()
-                    .outputs()
-                    .get(input)
-                    .expect("phony input build")
-                    .id(),
-            )?
-            .expect("phony input timestamp hash")
-            .timestamp()
-            .hash(&mut hasher);
-    }
-
-    Ok(hasher.finish())
-}
-
-async fn hash_build_with_content(
-    context: &Context,
-    build: &Build,
-    file_inputs: &[&str],
-    phony_inputs: &[&str],
-) -> Result<u64, InfrastructureError> {
-    if build.rule().is_none() && file_inputs.is_empty() && phony_inputs.is_empty() {
-        return Ok(rand::random());
-    }
-
-    let mut hasher = DefaultHasher::new();
-
-    hash_command(build, &mut hasher);
-
-    let mut buffer = Vec::with_capacity(BUFFER_CAPACITY);
-
-    for input in file_inputs {
-        File::open(input).await?.read_to_end(&mut buffer).await?;
-        buffer.hash(&mut hasher);
-        buffer.clear();
-    }
-
-    for &input in phony_inputs {
-        context
-            .database()
-            .get(
-                context
-                    .configuration()
-                    .outputs()
-                    .get(input)
-                    .expect("phony input build")
-                    .id(),
-            )?
-            .expect("phony input timestamp hash")
-            .content()
-            .hash(&mut hasher);
-    }
-
-    Ok(hasher.finish())
-}
-
-fn hash_command(build: &Build, hasher: &mut impl Hasher) {
-    build.rule().map(Rule::command).hash(hasher);
-}
-
-async fn read_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, InfrastructureError> {
-    let path = path.as_ref();
-
-    metadata(path)
-        .await
-        .map_err(|error| InfrastructureError::with_path(error, path))?
-        .modified()
-        .map_err(|error| InfrastructureError::with_path(error, path))
 }
 
 async fn check_file_existence(path: impl AsRef<Path>) -> Result<(), InfrastructureError> {

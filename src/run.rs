@@ -118,8 +118,7 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
         let mut futures = vec![];
 
         for input in build.inputs().iter().chain(build.order_only_inputs()) {
-            let future: RawBuildFuture = Box::pin(build_input(context.clone(), input.to_owned()));
-            futures.push(future.shared());
+            futures.push(build_input(context.clone(), input.to_owned()).await?);
         }
 
         join_builds(futures).await?;
@@ -154,8 +153,7 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
         let mut futures = vec![];
 
         for input in dynamic_inputs {
-            let future: RawBuildFuture = Box::pin(build_input(context.clone(), input.to_owned()));
-            futures.push(future.shared());
+            futures.push(build_input(context.clone(), input.to_owned()).await?);
         }
 
         join_builds(futures).await?;
@@ -206,20 +204,25 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
     .await?
 }
 
-async fn build_input(context: Arc<Context>, input: String) -> Result<(), InfrastructureError> {
-    if let Some(build) = context.configuration().outputs().get(&input) {
-        if build.rule().is_none() {
-            return Ok(());
-        }
+async fn build_input(
+    context: Arc<Context>,
+    input: String,
+) -> Result<BuildFuture, InfrastructureError> {
+    Ok(
+        if let Some(build) = context.configuration().outputs().get(&input) {
+            if build.rule().is_none() {
+                let future: RawBuildFuture = Box::pin(ready(Ok(())));
+                return Ok(future.shared());
+            }
 
-        trigger_build(&context, build).await?;
+            trigger_build(&context, build).await?;
 
-        context.build_futures().read().await[build.id()]
-            .clone()
-            .await
-    } else {
-        check_file_existence(&input).await
-    }
+            context.build_futures().read().await[build.id()].clone()
+        } else {
+            let raw: RawBuildFuture = Box::pin(async move { check_file_existence(&input).await });
+            raw.shared()
+        },
+    )
 }
 
 async fn hash_build_with_timestamp(

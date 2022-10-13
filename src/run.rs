@@ -16,7 +16,7 @@ use crate::{
     writeln,
 };
 use async_recursion::async_recursion;
-use futures::future::{join_all, try_join_all, FutureExt, Shared};
+use futures::future::{try_join_all, FutureExt, Shared};
 pub use options::Options;
 use std::{
     collections::hash_map::DefaultHasher,
@@ -188,7 +188,8 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
             return Ok(());
         }
 
-        let content_hash = hash_build_with_content(&build, &file_inputs).await?;
+        let content_hash =
+            hash_build_with_content(&context, &build, &file_inputs, &phony_inputs).await?;
 
         if outputs_exist && Some(content_hash) == old_hash.map(|hash| hash.content()) {
             return Ok(());
@@ -242,15 +243,17 @@ async fn hash_build_with_timestamp(
     file_inputs: &[&str],
     phony_inputs: &[&str],
 ) -> Result<u64, InfrastructureError> {
+    if build.rule().is_none() && file_inputs.is_empty() && phony_inputs.is_empty() {
+        return Ok(rand::random());
+    }
+
     let mut hasher = DefaultHasher::new();
 
     hash_command(build, &mut hasher);
 
-    join_all(file_inputs.iter().map(read_timestamp))
-        .await
-        .into_iter()
-        .collect::<Result<Vec<SystemTime>, _>>()?
-        .hash(&mut hasher);
+    for input in file_inputs {
+        read_timestamp(input).await?.hash(&mut hasher);
+    }
 
     for &input in phony_inputs {
         context
@@ -272,9 +275,15 @@ async fn hash_build_with_timestamp(
 }
 
 async fn hash_build_with_content(
+    context: &Context,
     build: &Build,
     file_inputs: &[&str],
+    phony_inputs: &[&str],
 ) -> Result<u64, InfrastructureError> {
+    if build.rule().is_none() && file_inputs.is_empty() && phony_inputs.is_empty() {
+        return Ok(rand::random());
+    }
+
     let mut hasher = DefaultHasher::new();
 
     hash_command(build, &mut hasher);
@@ -285,6 +294,22 @@ async fn hash_build_with_content(
         File::open(input).await?.read_to_end(&mut buffer).await?;
         buffer.hash(&mut hasher);
         buffer.clear();
+    }
+
+    for &input in phony_inputs {
+        context
+            .database()
+            .get(
+                context
+                    .configuration()
+                    .outputs()
+                    .get(input)
+                    .expect("phony input build")
+                    .id(),
+            )?
+            .expect("phony input timestamp hash")
+            .content()
+            .hash(&mut hasher);
     }
 
     Ok(hasher.finish())

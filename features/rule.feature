@@ -121,3 +121,23 @@ Feature: Rule statement
     """
     When I successfully run `turtle`
     Then the file named "foo" should exist
+
+  Scenario: Rebuild for a phony dependency
+    Given a file named "build.ninja" with:
+    """
+    rule hello
+      command = echo hello
+
+    build foo: phony 
+    build bar: hello
+
+    default bar
+
+    """
+    When I successfully run `turtle`
+    And I successfully run `turtle`
+    Then the stdout should contain exactly:
+    """
+    hello
+    hello
+    """

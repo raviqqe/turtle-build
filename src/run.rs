@@ -17,7 +17,10 @@ use crate::{
     writeln,
 };
 use async_recursion::async_recursion;
-use futures::future::{try_join_all, FutureExt, Shared};
+use futures::{
+    future::{try_join_all, FutureExt, Shared},
+    TryFuture,
+};
 pub use options::Options;
 use std::{future::Future, path::Path, pin::Pin, sync::Arc};
 use tokio::{
@@ -212,7 +215,7 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
 async fn build_input(
     context: &Arc<Context>,
     input: &str,
-) -> Result<Option<BuildFuture>, InfrastructureError> {
+) -> Result<Option<impl TryFuture<Error = InfrastructureError>>, InfrastructureError> {
     Ok(
         if let Some(build) = context.configuration().outputs().get(input) {
             trigger_build(context, build).await?;

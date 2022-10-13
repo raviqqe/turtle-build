@@ -212,15 +212,16 @@ async fn build_input(
         if let Some(build) = context.configuration().outputs().get(&input) {
             if build.rule().is_none() {
                 let future: RawBuildFuture = Box::pin(ready(Ok(())));
-                return Ok(future.shared());
+                future.shared()
+            } else {
+                trigger_build(&context, build).await?;
+
+                context.build_futures().read().await[build.id()].clone()
             }
-
-            trigger_build(&context, build).await?;
-
-            context.build_futures().read().await[build.id()].clone()
         } else {
-            let raw: RawBuildFuture = Box::pin(async move { check_file_existence(&input).await });
-            raw.shared()
+            let future: RawBuildFuture =
+                Box::pin(async move { check_file_existence(&input).await });
+            future.shared()
         },
     )
 }

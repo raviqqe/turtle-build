@@ -215,13 +215,9 @@ async fn build_input(
 ) -> Result<Option<BuildFuture>, InfrastructureError> {
     Ok(
         if let Some(build) = context.configuration().outputs().get(input) {
-            if build.rule().is_none() {
-                None
-            } else {
-                trigger_build(&context, build).await?;
+            trigger_build(&context, build).await?;
 
-                Some(context.build_futures().read().await[build.id()].clone())
-            }
+            Some(context.build_futures().read().await[build.id()].clone())
         } else {
             let input = input.to_owned();
             let future: RawBuildFuture =

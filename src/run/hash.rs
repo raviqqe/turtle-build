@@ -22,8 +22,8 @@ pub async fn calculate_timestamp_hash(
     file_inputs: &[&str],
     phony_inputs: &[&str],
 ) -> Result<u64, InfrastructureError> {
-    if build.rule().is_none() && file_inputs.is_empty() && phony_inputs.is_empty() {
-        return Ok(rand::random());
+    if let Some(hash) = calculate_fallback_hash(build, file_inputs, phony_inputs) {
+        return Ok(hash);
     }
 
     let mut hasher = DefaultHasher::new();
@@ -59,8 +59,8 @@ pub async fn calculate_content_hash(
     file_inputs: &[&str],
     phony_inputs: &[&str],
 ) -> Result<u64, InfrastructureError> {
-    if build.rule().is_none() && file_inputs.is_empty() && phony_inputs.is_empty() {
-        return Ok(rand::random());
+    if let Some(hash) = calculate_fallback_hash(build, file_inputs, phony_inputs) {
+        return Ok(hash);
     }
 
     let mut hasher = DefaultHasher::new();
@@ -92,6 +92,18 @@ pub async fn calculate_content_hash(
     }
 
     Ok(hasher.finish())
+}
+
+fn calculate_fallback_hash(
+    build: &Build,
+    file_inputs: &[&str],
+    phony_inputs: &[&str],
+) -> Option<u64> {
+    if build.rule().is_none() && file_inputs.is_empty() && phony_inputs.is_empty() {
+        Some(rand::random())
+    } else {
+        None
+    }
 }
 
 fn hash_command(build: &Build, hasher: &mut impl Hasher) {

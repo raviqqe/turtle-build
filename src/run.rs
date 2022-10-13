@@ -160,6 +160,10 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
 
         join_builds(futures).await?;
 
+        if build.rule().is_none() {
+            return Ok(());
+        }
+
         let outputs_exist = try_join_all(
             build
                 .outputs()

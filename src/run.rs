@@ -83,7 +83,7 @@ pub async fn run(
         .collect::<Vec<_>>();
 
     // Start running build futures actually.
-    if let Err(error) = join_builds(futures).await {
+    if let Err(error) = try_join_all(futures).await {
         // Flush explicitly here as flush on drop doesn't work in general
         // because of possible dependency cycles of build jobs.
         context.database().flush().await?;
@@ -121,7 +121,7 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
             futures.push(build_input(context.clone(), input.to_owned()).await?);
         }
 
-        join_builds(futures).await?;
+        try_join_all(futures).await?;
 
         // TODO Consider caching dynamic modules.
         let dynamic_configuration = if let Some(dynamic_module) = build.dynamic_module() {
@@ -156,7 +156,7 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
             futures.push(build_input(context.clone(), input.to_owned()).await?);
         }
 
-        join_builds(futures).await?;
+        try_join_all(futures).await?;
 
         if build.rule().is_none() {
             return Ok(());
@@ -280,16 +280,6 @@ async fn read_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, Infrastruc
         .map_err(|error| InfrastructureError::with_path(error, path))?
         .modified()
         .map_err(|error| InfrastructureError::with_path(error, path))
-}
-
-async fn join_builds(
-    builds: impl IntoIterator<Item = BuildFuture>,
-) -> Result<(), InfrastructureError> {
-    let future: RawBuildFuture = Box::pin(ready(Ok(())));
-
-    try_join_all(builds.into_iter().chain([future.shared()])).await?;
-
-    Ok(())
 }
 
 async fn check_file_existence(path: impl AsRef<Path>) -> Result<(), InfrastructureError> {

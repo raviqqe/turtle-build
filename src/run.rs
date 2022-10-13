@@ -118,18 +118,8 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
         let mut futures = vec![];
 
         for input in build.inputs().iter().chain(build.order_only_inputs()) {
-            futures.push(
-                if let Some(build) = context.configuration().outputs().get(input) {
-                    trigger_build(&context, build).await?;
-
-                    context.build_futures().read().await[build.id()].clone()
-                } else {
-                    let input = input.to_string();
-                    let raw: RawBuildFuture =
-                        Box::pin(async move { check_file_existence(&input).await });
-                    raw.shared()
-                },
-            );
+            let future: RawBuildFuture = Box::pin(build_input(context.clone(), input.to_owned()));
+            futures.push(future.shared());
         }
 
         join_builds(futures).await?;
@@ -164,15 +154,8 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
         let mut futures = vec![];
 
         for input in dynamic_inputs {
-            let build = &context
-                .configuration()
-                .outputs()
-                .get(input)
-                .ok_or_else(|| InfrastructureError::InputNotFound(input.into()))?;
-
-            trigger_build(&context, build).await?;
-
-            futures.push(context.build_futures().read().await[build.id()].clone());
+            let future: RawBuildFuture = Box::pin(build_input(context.clone(), input.to_owned()));
+            futures.push(future.shared());
         }
 
         join_builds(futures).await?;
@@ -217,6 +200,18 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
         Ok(())
     })
     .await?
+}
+
+async fn build_input(context: Arc<Context>, input: String) -> Result<(), InfrastructureError> {
+    if let Some(build) = context.configuration().outputs().get(&input) {
+        trigger_build(&context, build).await?;
+
+        context.build_futures().read().await[build.id()]
+            .clone()
+            .await
+    } else {
+        check_file_existence(&input).await
+    }
 }
 
 async fn hash_build_with_timestamp(

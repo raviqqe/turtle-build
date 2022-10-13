@@ -19,12 +19,7 @@ use crate::{
 use async_recursion::async_recursion;
 use futures::future::{try_join_all, FutureExt, Shared};
 pub use options::Options;
-use std::{
-    future::{ready, Future},
-    path::Path,
-    pin::Pin,
-    sync::Arc,
-};
+use std::{future::Future, path::Path, pin::Pin, sync::Arc};
 use tokio::{
     fs::{create_dir_all, metadata},
     io::AsyncWriteExt,

@@ -73,7 +73,7 @@ pub async fn calculate_content_hash(
 }
 
 fn get_build_hash(context: &Context, input: &str) -> Result<BuildHash, InfrastructureError> {
-    Ok(context
+    context
         .database()
         .get(
             context
@@ -83,7 +83,7 @@ fn get_build_hash(context: &Context, input: &str) -> Result<BuildHash, Infrastru
                 .ok_or_else(|| InfrastructureError::InputNotFound(input.into()))?
                 .id(),
         )?
-        .ok_or_else(|| InfrastructureError::InputNotBuilt(input.into()))?)
+        .ok_or_else(|| InfrastructureError::InputNotBuilt(input.into()))
 }
 
 fn calculate_fallback_hash(

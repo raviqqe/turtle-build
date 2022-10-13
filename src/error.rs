@@ -15,6 +15,7 @@ pub enum InfrastructureError {
     Compile(CompileError),
     DefaultOutputNotFound(String),
     DynamicDependencyNotFound(Arc<Build>),
+    InputNotBuilt(String),
     InputNotFound(String),
     Other(String),
     Parse(ParseError),
@@ -60,6 +61,9 @@ impl Display for InfrastructureError {
                     build.outputs().join(", "),
                     build.dynamic_module().unwrap()
                 )
+            }
+            Self::InputNotBuilt(input) => {
+                write!(formatter, "input \"{}\" not built yet", input)
             }
             Self::InputNotFound(input) => {
                 write!(formatter, "input \"{}\" not found", input)

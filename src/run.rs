@@ -1,6 +1,7 @@
 mod build_database;
 mod build_hash;
 mod context;
+mod hash;
 mod options;
 
 use self::{build_database::BuildDatabase, build_hash::BuildHash, context::Context};
@@ -16,20 +17,12 @@ use crate::{
     writeln,
 };
 use async_recursion::async_recursion;
-use futures::future::{join_all, try_join_all, FutureExt, Shared};
+use futures::future::{try_join_all, FutureExt, Shared};
 pub use options::Options;
-use std::{
-    collections::hash_map::DefaultHasher,
-    future::{ready, Future},
-    hash::{Hash, Hasher},
-    path::Path,
-    pin::Pin,
-    sync::Arc,
-    time::SystemTime,
-};
+use std::{future::Future, path::Path, pin::Pin, sync::Arc};
 use tokio::{
-    fs::{create_dir_all, metadata, File},
-    io::{AsyncReadExt, AsyncWriteExt},
+    fs::{create_dir_all, metadata},
+    io::AsyncWriteExt,
     process::Command,
     spawn,
     sync::{Mutex, Semaphore},
@@ -39,8 +32,6 @@ use tokio::{
 
 type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), InfrastructureError>> + Send>>;
 type BuildFuture = Shared<RawBuildFuture>;
-
-const BUFFER_CAPACITY: usize = 2 << 10;
 
 pub async fn run(
     configuration: Arc<Configuration>,
@@ -83,7 +74,7 @@ pub async fn run(
         .collect::<Vec<_>>();
 
     // Start running build futures actually.
-    if let Err(error) = join_builds(futures).await {
+    if let Err(error) = try_join_all(futures).await {
         // Flush explicitly here as flush on drop doesn't work in general
         // because of possible dependency cycles of build jobs.
         context.database().flush().await?;
@@ -118,21 +109,12 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
         let mut futures = vec![];
 
         for input in build.inputs().iter().chain(build.order_only_inputs()) {
-            futures.push(
-                if let Some(build) = context.configuration().outputs().get(input) {
-                    trigger_build(&context, build).await?;
-
-                    context.build_futures().read().await[build.id()].clone()
-                } else {
-                    let input = input.to_string();
-                    let raw: RawBuildFuture =
-                        Box::pin(async move { check_file_existence(&input).await });
-                    raw.shared()
-                },
-            );
+            if let Some(future) = build_input(&context, input).await? {
+                futures.push(future);
+            }
         }
 
-        join_builds(futures).await?;
+        try_join_all(futures).await?;
 
         // TODO Consider caching dynamic modules.
         let dynamic_configuration = if let Some(dynamic_module) = build.dynamic_module() {
@@ -164,18 +146,12 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
         let mut futures = vec![];
 
         for input in dynamic_inputs {
-            let build = &context
-                .configuration()
-                .outputs()
-                .get(input)
-                .ok_or_else(|| InfrastructureError::InputNotFound(input.into()))?;
-
-            trigger_build(&context, build).await?;
-
-            futures.push(context.build_futures().read().await[build.id()].clone());
+            if let Some(future) = build_input(&context, input).await? {
+                futures.push(future);
+            }
         }
 
-        join_builds(futures).await?;
+        try_join_all(futures).await?;
 
         let outputs_exist = try_join_all(
             build
@@ -187,13 +163,27 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
         .await
         .is_ok();
         let old_hash = context.database().get(build.id())?;
-        let timestamp_hash = hash_build_with_timestamp(&build, dynamic_inputs).await?;
+        let (file_inputs, phony_inputs) = build
+            .inputs()
+            .iter()
+            .chain(dynamic_inputs)
+            .map(|input| input.as_str())
+            .partition::<Vec<_>, _>(|&input| {
+                if let Some(build) = context.configuration().outputs().get(input) {
+                    build.rule().is_some()
+                } else {
+                    true
+                }
+            });
+        let timestamp_hash =
+            hash::calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
         if outputs_exist && Some(timestamp_hash) == old_hash.map(|hash| hash.timestamp()) {
             return Ok(());
         }
 
-        let content_hash = hash_build_with_content(&build, dynamic_inputs).await?;
+        let content_hash =
+            hash::calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
         if outputs_exist && Some(content_hash) == old_hash.map(|hash| hash.content()) {
             return Ok(());
@@ -219,70 +209,22 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
     .await?
 }
 
-async fn hash_build_with_timestamp(
-    build: &Build,
-    dynamic_inputs: &[String],
-) -> Result<u64, InfrastructureError> {
-    let mut hasher = DefaultHasher::new();
+async fn build_input(
+    context: &Arc<Context>,
+    input: &str,
+) -> Result<Option<BuildFuture>, InfrastructureError> {
+    Ok(
+        if let Some(build) = context.configuration().outputs().get(input) {
+            trigger_build(context, build).await?;
 
-    hash_command(build, &mut hasher);
-
-    join_all(
-        build
-            .inputs()
-            .iter()
-            .chain(dynamic_inputs)
-            .map(read_timestamp),
+            Some(context.build_futures().read().await[build.id()].clone())
+        } else {
+            let input = input.to_owned();
+            let future: RawBuildFuture =
+                Box::pin(async move { check_file_existence(&input).await });
+            Some(future.shared())
+        },
     )
-    .await
-    .into_iter()
-    .collect::<Result<Vec<SystemTime>, _>>()?
-    .hash(&mut hasher);
-
-    Ok(hasher.finish())
-}
-
-async fn hash_build_with_content(
-    build: &Build,
-    dynamic_inputs: &[String],
-) -> Result<u64, InfrastructureError> {
-    let mut hasher = DefaultHasher::new();
-
-    hash_command(build, &mut hasher);
-
-    let mut buffer = Vec::with_capacity(BUFFER_CAPACITY);
-
-    for input in build.inputs().iter().chain(dynamic_inputs) {
-        File::open(input).await?.read_to_end(&mut buffer).await?;
-        buffer.hash(&mut hasher);
-        buffer.clear();
-    }
-
-    Ok(hasher.finish())
-}
-
-fn hash_command(build: &Build, hasher: &mut impl Hasher) {
-    build.rule().map(Rule::command).hash(hasher);
-}
-
-async fn read_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, InfrastructureError> {
-    let path = path.as_ref();
-
-    metadata(path)
-        .await
-        .map_err(|error| InfrastructureError::with_path(error, path))?
-        .modified()
-        .map_err(|error| InfrastructureError::with_path(error, path))
-}
-
-async fn join_builds(
-    builds: impl IntoIterator<Item = BuildFuture>,
-) -> Result<(), InfrastructureError> {
-    let future: RawBuildFuture = Box::pin(ready(Ok(())));
-
-    try_join_all(builds.into_iter().chain([future.shared()])).await?;
-
-    Ok(())
 }
 
 async fn check_file_existence(path: impl AsRef<Path>) -> Result<(), InfrastructureError> {

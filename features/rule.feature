@@ -105,3 +105,39 @@ Feature: Rule statement
     """
     When I successfully run `turtle`
     Then the file named "foo" should exist
+
+  Scenario: Use a phony dependency
+    Given a file named "build.ninja" with:
+    """
+    rule touch
+      command = touch $out
+
+    build foo: touch
+    build bar: phony foo
+    build baz: touch bar
+
+    default baz
+
+    """
+    When I successfully run `turtle`
+    Then the file named "foo" should exist
+
+  Scenario: Rebuild for a phony dependency
+    Given a file named "build.ninja" with:
+    """
+    rule hello
+      command = echo hello
+
+    build foo: phony 
+    build bar: hello
+
+    default bar
+
+    """
+    When I successfully run `turtle`
+    And I successfully run `turtle`
+    Then the stdout should contain exactly:
+    """
+    hello
+    hello
+    """

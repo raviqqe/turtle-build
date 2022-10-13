@@ -204,6 +204,10 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
 
 async fn build_input(context: Arc<Context>, input: String) -> Result<(), InfrastructureError> {
     if let Some(build) = context.configuration().outputs().get(&input) {
+        if build.rule().is_none() {
+            return Ok(());
+        }
+
         trigger_build(&context, build).await?;
 
         context.build_futures().read().await[build.id()]

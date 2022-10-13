@@ -107,7 +107,7 @@ mod tests {
         Build::new(
             outputs,
             vec![],
-            Rule::new("", None).into(),
+            Rule::new("", None, false).into(),
             inputs,
             vec![],
             None,
@@ -158,7 +158,7 @@ mod tests {
                     Build::new(
                         vec!["foo".into()],
                         vec![],
-                        Rule::new("", None).into(),
+                        Rule::new("", None, false).into(),
                         vec![],
                         vec!["bar".into()],
                         None
@@ -196,7 +196,7 @@ mod tests {
                     Build::new(
                         vec!["foo".into()],
                         vec![],
-                        Rule::new("", None).into(),
+                        Rule::new("", None, false).into(),
                         vec![],
                         vec!["foo".into()],
                         None

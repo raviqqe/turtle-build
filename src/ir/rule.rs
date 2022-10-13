@@ -2,13 +2,15 @@
 pub struct Rule {
     command: String,
     description: Option<String>,
+    always: bool,
 }
 
 impl Rule {
-    pub fn new(command: impl Into<String>, description: Option<String>) -> Self {
+    pub fn new(command: impl Into<String>, description: Option<String>, always: bool) -> Self {
         Self {
             command: command.into(),
             description,
+            always,
         }
     }
 
@@ -18,5 +20,9 @@ impl Rule {
 
     pub fn description(&self) -> Option<&str> {
         self.description.as_deref()
+    }
+
+    pub fn always(&self) -> bool {
+        self.always
     }
 }

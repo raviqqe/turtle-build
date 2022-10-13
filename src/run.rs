@@ -177,6 +177,8 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
 
         join_builds(futures).await?;
 
+        if build.rule().always() {}
+
         let outputs_exist = try_join_all(
             build
                 .outputs()

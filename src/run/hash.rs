@@ -1,4 +1,4 @@
-use super::context::Context;
+use super::{build_hash::BuildHash, context::Context};
 use crate::{
     error::InfrastructureError,
     ir::{Build, Rule},
@@ -35,17 +35,7 @@ pub async fn calculate_timestamp_hash(
     }
 
     for &input in phony_inputs {
-        context
-            .database()
-            .get(
-                context
-                    .configuration()
-                    .outputs()
-                    .get(input)
-                    .ok_or_else(|| InfrastructureError::InputNotFound(input.into()))?
-                    .id(),
-            )?
-            .ok_or_else(|| InfrastructureError::InputNotBuilt(input.into()))?
+        get_build_hash(context, input)?
             .timestamp()
             .hash(&mut hasher);
     }
@@ -76,22 +66,24 @@ pub async fn calculate_content_hash(
     }
 
     for &input in phony_inputs {
-        context
-            .database()
-            .get(
-                context
-                    .configuration()
-                    .outputs()
-                    .get(input)
-                    .ok_or_else(|| InfrastructureError::InputNotFound(input.into()))?
-                    .id(),
-            )?
-            .ok_or_else(|| InfrastructureError::InputNotBuilt(input.into()))?
-            .content()
-            .hash(&mut hasher);
+        get_build_hash(context, input)?.content().hash(&mut hasher);
     }
 
     Ok(hasher.finish())
+}
+
+fn get_build_hash(context: &Context, input: &str) -> Result<BuildHash, InfrastructureError> {
+    Ok(context
+        .database()
+        .get(
+            context
+                .configuration()
+                .outputs()
+                .get(input)
+                .ok_or_else(|| InfrastructureError::InputNotFound(input.into()))?
+                .id(),
+        )?
+        .ok_or_else(|| InfrastructureError::InputNotBuilt(input.into()))?)
 }
 
 fn calculate_fallback_hash(

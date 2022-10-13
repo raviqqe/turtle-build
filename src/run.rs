@@ -114,7 +114,7 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
         let mut futures = vec![];
 
         for input in build.inputs().iter().chain(build.order_only_inputs()) {
-            futures.push(build_input(context.clone(), input.to_owned()).await?);
+            futures.push(build_input(&context, input.to_owned()).await?);
         }
 
         try_join_all(futures).await?;
@@ -149,7 +149,7 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
         let mut futures = vec![];
 
         for input in dynamic_inputs {
-            futures.push(build_input(context.clone(), input.to_owned()).await?);
+            futures.push(build_input(&context, input.to_owned()).await?);
         }
 
         try_join_all(futures).await?;
@@ -211,7 +211,7 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
 }
 
 async fn build_input(
-    context: Arc<Context>,
+    context: &Arc<Context>,
     input: String,
 ) -> Result<BuildFuture, InfrastructureError> {
     Ok(

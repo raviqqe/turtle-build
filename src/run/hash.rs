@@ -42,10 +42,10 @@ pub async fn calculate_timestamp_hash(
                     .configuration()
                     .outputs()
                     .get(input)
-                    .expect("phony input build")
+                    .ok_or_else(|| InfrastructureError::InputNotFound(input.into()))?
                     .id(),
             )?
-            .expect("phony input timestamp hash")
+            .ok_or_else(|| InfrastructureError::InputNotBuilt(input.into()))?
             .timestamp()
             .hash(&mut hasher);
     }
@@ -83,10 +83,10 @@ pub async fn calculate_content_hash(
                     .configuration()
                     .outputs()
                     .get(input)
-                    .expect("phony input build")
+                    .ok_or_else(|| InfrastructureError::InputNotFound(input.into()))?
                     .id(),
             )?
-            .expect("phony input timestamp hash")
+            .ok_or_else(|| InfrastructureError::InputNotBuilt(input.into()))?
             .content()
             .hash(&mut hasher);
     }

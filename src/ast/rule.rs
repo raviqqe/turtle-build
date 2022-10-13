@@ -3,6 +3,7 @@ pub struct Rule {
     name: String,
     command: String,
     description: Option<String>,
+    always: bool,
 }
 
 impl Rule {
@@ -10,11 +11,13 @@ impl Rule {
         name: impl Into<String>,
         command: impl Into<String>,
         description: Option<String>,
+        always: bool,
     ) -> Self {
         Self {
             name: name.into(),
             command: command.into(),
             description,
+            always,
         }
     }
 
@@ -28,5 +31,9 @@ impl Rule {
 
     pub fn description(&self) -> Option<&str> {
         self.description.as_deref()
+    }
+
+    pub fn always(&self) -> bool {
+        self.always
     }
 }

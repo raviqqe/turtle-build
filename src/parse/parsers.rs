@@ -6,7 +6,7 @@ use crate::ast::{
 use combine::{
     attempt, choice, eof, many, many1, none_of, not_followed_by, one_of, optional,
     parser::char::{alpha_num, char, letter, newline, string},
-    value, Parser,
+    unexpected_any, value, Parser,
 };
 
 const OPERATOR_CHARACTERS: &[char] = &['|', ':'];
@@ -59,16 +59,35 @@ fn rule<'a>() -> impl Parser<Stream<'a>, Output = Rule> {
         keyword("rule"),
         identifier(),
         line_break(),
-        (indent(), keyword("command"), sign("="))
-            .with(string_line())
-            .skip(line_break()),
-        optional(
-            (indent(), keyword("description"), sign("="))
-                .with(string_line())
-                .skip(line_break()),
-        ),
+        many(indent().with(variable_definition())),
     )
-        .map(|(_, name, _, command, description)| Rule::new(name, command, description))
+        .then(|(_, name, _, variable_definitions): (_, _, _, Vec<_>)| {
+            if let Some(command) = variable_definitions.iter().find_map(|definition| {
+                if definition.name() == "command" {
+                    Some(definition.value())
+                } else {
+                    None
+                }
+            }) {
+                value(Rule::new(
+                    name,
+                    command,
+                    variable_definitions.iter().find_map(|definition| {
+                        if definition.name() == "description" {
+                            Some(definition.value().into())
+                        } else {
+                            None
+                        }
+                    }),
+                    variable_definitions
+                        .iter()
+                        .any(|definition| definition.name() == "always"),
+                ))
+                .right()
+            } else {
+                unexpected_any("missing command variable").left()
+            }
+        })
         .expected("rule statement")
 }
 
@@ -258,7 +277,7 @@ mod tests {
                 .parse(stream("rule foo\n command = bar\n"))
                 .unwrap()
                 .0,
-            Module::new(vec![Rule::new("foo", "bar", None).into()])
+            Module::new(vec![Rule::new("foo", "bar", None, false).into()])
         );
         assert_eq!(
             module()
@@ -268,8 +287,8 @@ mod tests {
                 .unwrap()
                 .0,
             Module::new(vec![
-                Rule::new("foo", "bar", None).into(),
-                Rule::new("baz", "blah", None).into(),
+                Rule::new("foo", "bar", None, false).into(),
+                Rule::new("baz", "blah", None, false).into(),
             ],)
         );
         assert_eq!(
@@ -349,14 +368,21 @@ mod tests {
                 .parse(stream("rule foo\n command = bar\n"))
                 .unwrap()
                 .0,
-            Rule::new("foo", "bar", None)
+            Rule::new("foo", "bar", None, false)
         );
         assert_eq!(
             rule()
                 .parse(stream("rule foo\n command = bar\n description = baz\n"))
                 .unwrap()
                 .0,
-            Rule::new("foo", "bar", Some("baz".into()))
+            Rule::new("foo", "bar", Some("baz".into()), false)
+        );
+        assert_eq!(
+            rule()
+                .parse(stream("rule foo\n command = bar\n always = true\n"))
+                .unwrap()
+                .0,
+            Rule::new("foo", "bar", None, true)
         );
     }
 

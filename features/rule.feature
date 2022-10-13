@@ -105,3 +105,22 @@ Feature: Rule statement
     """
     When I successfully run `turtle`
     Then the file named "foo" should exist
+
+  Scenario: Run a rule always
+    Given a file named "build.ninja" with:
+    """
+    rule cp
+      command = echo hello && cp $in $out
+      always = true
+
+    build foo: cp bar
+
+    """
+    And a file named "bar" with ""
+    When I successfully run `turtle`
+    And I successfully run `turtle`
+    Then the stdout should contain exactly:
+    """
+    hello
+    hello
+    """

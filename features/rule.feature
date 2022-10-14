@@ -126,10 +126,10 @@ Feature: Rule statement
     Given a file named "build.ninja" with:
     """
     rule hello
-      command = echo hello
+      command = echo hello && touch $out
 
     build foo: phony 
-    build bar: hello
+    build bar: hello foo
 
     default bar
 

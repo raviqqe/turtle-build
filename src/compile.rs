@@ -28,11 +28,11 @@ const SOURCE_VARIABLE_NAME: &str = "srcdep";
 static VARIABLE_PATTERN: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\$([[:alpha:]_][[:alnum:]_]*)").unwrap());
 
-pub fn compile(
-    modules: &HashMap<PathBuf, ast::Module>,
-    dependencies: &ModuleDependencyMap,
-    root_module_path: &Path,
-) -> Result<Configuration, CompileError> {
+pub fn compile<'a, 'b>(
+    modules: &HashMap<PathBuf, ast::Module<'a>>,
+    dependencies: &'b ModuleDependencyMap,
+    root_module_path: &'b Path,
+) -> Result<Configuration<'a>, CompileError> {
     let context = Context::new(modules.clone(), dependencies.clone());
 
     let mut global_state = GlobalState {
@@ -71,7 +71,7 @@ pub fn compile(
 
 fn compile_module<'a, 'b>(
     context: &Context<'a>,
-    global_state: &mut GlobalState,
+    global_state: &mut GlobalState<'a>,
     module_state: &mut ModuleState<'a, 'b>,
     path: &Path,
 ) -> Result<(), CompileError> {
@@ -125,12 +125,7 @@ fn compile_module<'a, 'b>(
                         .copied()
                         .map(From::from)
                         .collect(),
-                    build
-                        .order_only_inputs()
-                        .iter()
-                        .copied()
-                        .map(From::from)
-                        .collect(),
+                    build.order_only_inputs().to_vec(),
                     variables.get(DYNAMIC_MODULE_VARIABLE).cloned(),
                 ));
 
@@ -138,7 +133,7 @@ fn compile_module<'a, 'b>(
 
                 global_state
                     .outputs
-                    .extend(outputs().map(|&output| (output.into(), ir.clone())));
+                    .extend(outputs().map(|&output| (output.to_owned(), ir.clone())));
 
                 if let Some(source) = variables.get(SOURCE_VARIABLE_NAME) {
                     global_state

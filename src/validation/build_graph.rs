@@ -24,7 +24,12 @@ impl BuildGraph {
         };
 
         for (output, build) in outputs {
-            for input in build.inputs().iter().chain(build.order_only_inputs()) {
+            for input in build
+                .inputs()
+                .iter()
+                .map(|string| string.as_str())
+                .chain(build.order_only_inputs().iter().copied())
+            {
                 this.add_edge(output, input);
             }
 
@@ -103,7 +108,7 @@ mod tests {
         BuildGraph::new(dependencies).validate()
     }
 
-    fn explicit_build(outputs: Vec<String>, inputs: Vec<String>) -> Build {
+    fn explicit_build<'a>(outputs: Vec<String>, inputs: Vec<String>) -> Build<'a> {
         Build::new(
             outputs,
             vec![],

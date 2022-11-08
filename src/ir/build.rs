@@ -5,7 +5,7 @@ use std::{
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Build {
+pub struct Build<'a> {
     // IDs are persistent across different builds so that they can be used for,
     // for example, caching.
     id: String,
@@ -13,17 +13,17 @@ pub struct Build {
     implicit_outputs: Vec<String>,
     rule: Option<Rule>,
     inputs: Vec<String>,
-    order_only_inputs: Vec<String>,
+    order_only_inputs: Vec<&'a str>,
     dynamic_module: Option<String>,
 }
 
-impl Build {
+impl<'a> Build<'a> {
     pub fn new(
         outputs: Vec<String>,
         implicit_outputs: Vec<String>,
         rule: Option<Rule>,
         inputs: Vec<String>,
-        order_only_inputs: Vec<String>,
+        order_only_inputs: Vec<&'a str>,
         dynamic_module: Option<String>,
     ) -> Self {
         Self {
@@ -57,7 +57,7 @@ impl Build {
         &self.inputs
     }
 
-    pub fn order_only_inputs(&self) -> &[String] {
+    pub fn order_only_inputs(&self) -> &[&'a str] {
         &self.order_only_inputs
     }
 

@@ -68,7 +68,7 @@ async fn main() {
 async fn execute(
     arguments: &Arguments,
     console: &Arc<Mutex<Console>>,
-) -> Result<(), InfrastructureError> {
+) -> Result<(), InfrastructureError<'static>> {
     if let Some(directory) = &arguments.directory {
         set_current_dir(directory)?;
     }
@@ -101,9 +101,9 @@ async fn execute(
     Ok(())
 }
 
-async fn read_modules(
+async fn read_modules<'a>(
     path: &Path,
-) -> Result<(HashMap<PathBuf, Module>, ModuleDependencyMap), InfrastructureError> {
+) -> Result<(HashMap<PathBuf, Module<'a>>, ModuleDependencyMap), InfrastructureError<'static>> {
     let mut paths = vec![canonicalize_path(path).await?];
     let mut modules = HashMap::new();
     let mut dependencies = HashMap::new();
@@ -140,7 +140,7 @@ async fn read_modules(
 async fn resolve_submodule_path(
     module_path: &Path,
     submodule_path: &str,
-) -> Result<(String, PathBuf), InfrastructureError> {
+) -> Result<(String, PathBuf), InfrastructureError<'static>> {
     Ok((
         submodule_path.into(),
         canonicalize_path(module_path.parent().unwrap().join(submodule_path)).await?,

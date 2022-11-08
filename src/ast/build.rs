@@ -52,7 +52,7 @@ impl<'a> Build<'a> {
         &self.implicit_inputs
     }
 
-    pub fn order_only_inputs(&self) -> &[&str] {
+    pub fn order_only_inputs(&self) -> &[&'a str] {
         &self.order_only_inputs
     }
 

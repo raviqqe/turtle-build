@@ -5,7 +5,7 @@ use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
 };
 
-pub async fn read_file(path: impl AsRef<Path>) -> Result<String, InfrastructureError> {
+pub async fn read_file(path: impl AsRef<Path>) -> Result<String, InfrastructureError<'static>> {
     let mut source = "".into();
     let path = path.as_ref();
 
@@ -19,7 +19,9 @@ pub async fn read_file(path: impl AsRef<Path>) -> Result<String, InfrastructureE
     Ok(source)
 }
 
-pub async fn canonicalize_path(path: impl AsRef<Path>) -> Result<PathBuf, InfrastructureError> {
+pub async fn canonicalize_path(
+    path: impl AsRef<Path>,
+) -> Result<PathBuf, InfrastructureError<'static>> {
     fs::canonicalize(&path)
         .await
         .map_err(|error| InfrastructureError::with_path(error, path))

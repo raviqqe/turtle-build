@@ -3,16 +3,16 @@ use fnv::{FnvHashMap, FnvHashSet};
 use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Configuration {
-    outputs: FnvHashMap<String, Arc<Build>>,
+pub struct Configuration<'a> {
+    outputs: FnvHashMap<String, Arc<Build<'a>>>,
     default_outputs: FnvHashSet<String>,
     source_map: FnvHashMap<String, String>,
     build_directory: Option<String>,
 }
 
-impl Configuration {
+impl<'a> Configuration<'a> {
     pub fn new(
-        outputs: FnvHashMap<String, Arc<Build>>,
+        outputs: FnvHashMap<String, Arc<Build<'a>>>,
         default_outputs: FnvHashSet<String>,
         source_map: FnvHashMap<String, String>,
         build_directory: Option<String>,
@@ -25,7 +25,7 @@ impl Configuration {
         }
     }
 
-    pub fn outputs(&self) -> &FnvHashMap<String, Arc<Build>> {
+    pub fn outputs(&self) -> &FnvHashMap<String, Arc<Build<'a>>> {
         &self.outputs
     }
 

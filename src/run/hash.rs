@@ -16,12 +16,12 @@ use tokio::{
 
 const BUFFER_CAPACITY: usize = 2 << 10;
 
-pub async fn calculate_timestamp_hash(
-    context: &Context,
-    build: &Build,
+pub async fn calculate_timestamp_hash<'a>(
+    context: &Context<'a>,
+    build: &Build<'a>,
     file_inputs: &[&str],
     phony_inputs: &[&str],
-) -> Result<u64, InfrastructureError> {
+) -> Result<u64, InfrastructureError<'a>> {
     if let Some(hash) = calculate_fallback_hash(build, file_inputs, phony_inputs) {
         return Ok(hash);
     }
@@ -43,12 +43,12 @@ pub async fn calculate_timestamp_hash(
     Ok(hasher.finish())
 }
 
-pub async fn calculate_content_hash(
-    context: &Context,
-    build: &Build,
+pub async fn calculate_content_hash<'a>(
+    context: &Context<'a>,
+    build: &Build<'a>,
     file_inputs: &[&str],
     phony_inputs: &[&str],
-) -> Result<u64, InfrastructureError> {
+) -> Result<u64, InfrastructureError<'a>> {
     if let Some(hash) = calculate_fallback_hash(build, file_inputs, phony_inputs) {
         return Ok(hash);
     }
@@ -72,7 +72,10 @@ pub async fn calculate_content_hash(
     Ok(hasher.finish())
 }
 
-fn get_build_hash(context: &Context, input: &str) -> Result<BuildHash, InfrastructureError> {
+fn get_build_hash<'a>(
+    context: &Context<'a>,
+    input: &str,
+) -> Result<BuildHash, InfrastructureError<'a>> {
     context
         .database()
         .get(
@@ -102,7 +105,9 @@ fn hash_command(build: &Build, hasher: &mut impl Hasher) {
     build.rule().map(Rule::command).hash(hasher);
 }
 
-async fn read_timestamp(path: impl AsRef<Path>) -> Result<SystemTime, InfrastructureError> {
+async fn read_timestamp(
+    path: impl AsRef<Path>,
+) -> Result<SystemTime, InfrastructureError<'static>> {
     let path = path.as_ref();
 
     metadata(path)

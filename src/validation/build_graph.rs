@@ -32,7 +32,7 @@ impl BuildGraph {
             if output == &build.outputs()[0] {
                 this.primary_outputs.insert(output.into(), output.into());
 
-                for secondary in build.outputs().iter().skip(1) {
+                for &secondary in build.outputs().iter().skip(1) {
                     this.add_edge(secondary, output);
                     this.primary_outputs.insert(secondary.into(), output.into());
                 }
@@ -103,7 +103,7 @@ mod tests {
         BuildGraph::new(dependencies).validate()
     }
 
-    fn explicit_build<'a>(outputs: Vec<String>, inputs: Vec<&'a str>) -> Build<'a> {
+    fn explicit_build<'a>(outputs: Vec<&'a str>, inputs: Vec<&'a str>) -> Build<'a> {
         Build::new(
             outputs,
             vec![],

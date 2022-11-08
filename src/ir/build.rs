@@ -9,8 +9,8 @@ pub struct Build<'a> {
     // IDs are persistent across different builds so that they can be used for,
     // for example, caching.
     id: String,
-    outputs: Vec<String>,
-    implicit_outputs: Vec<String>,
+    outputs: Vec<&'a str>,
+    implicit_outputs: Vec<&'a str>,
     rule: Option<Rule>,
     inputs: Vec<&'a str>,
     order_only_inputs: Vec<&'a str>,
@@ -19,8 +19,8 @@ pub struct Build<'a> {
 
 impl<'a> Build<'a> {
     pub fn new(
-        outputs: Vec<String>,
-        implicit_outputs: Vec<String>,
+        outputs: Vec<&'a str>,
+        implicit_outputs: Vec<&'a str>,
         rule: Option<Rule>,
         inputs: Vec<&'a str>,
         order_only_inputs: Vec<&'a str>,
@@ -41,11 +41,11 @@ impl<'a> Build<'a> {
         &self.id
     }
 
-    pub fn outputs(&self) -> &[String] {
+    pub fn outputs(&self) -> &[&'a str] {
         &self.outputs
     }
 
-    pub fn implicit_outputs(&self) -> &[String] {
+    pub fn implicit_outputs(&self) -> &[&'a str] {
         &self.implicit_outputs
     }
 
@@ -65,7 +65,7 @@ impl<'a> Build<'a> {
         self.dynamic_module.as_deref()
     }
 
-    fn calculate_id(outputs: &[String], implicit_outputs: &[String]) -> String {
+    fn calculate_id(outputs: &[&'a str], implicit_outputs: &[&'a str]) -> String {
         let mut hasher = DefaultHasher::new();
 
         outputs.hash(&mut hasher);

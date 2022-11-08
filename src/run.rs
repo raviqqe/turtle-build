@@ -140,7 +140,7 @@ async fn spawn_build(
             build
                 .outputs()
                 .iter()
-                .find_map(|output| configuration.outputs().get(output.as_str()))
+                .find_map(|output| configuration.outputs().get(*output))
                 .map(|build| build.inputs())
                 .ok_or_else(|| InfrastructureError::DynamicDependencyNotFound(build.clone()))?
         } else {

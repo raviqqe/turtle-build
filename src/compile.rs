@@ -97,13 +97,8 @@ fn compile_module<'a, 'b>(
                 );
 
                 let ir = Arc::new(Build::new(
-                    build.outputs().iter().copied().map(From::from).collect(),
-                    build
-                        .implicit_outputs()
-                        .iter()
-                        .copied()
-                        .map(From::from)
-                        .collect(),
+                    build.outputs().to_vec(),
+                    build.implicit_outputs().to_vec(),
                     if build.rule() == PHONY_RULE {
                         None
                     } else {
@@ -123,7 +118,6 @@ fn compile_module<'a, 'b>(
                         .iter()
                         .chain(build.implicit_inputs())
                         .copied()
-                        .map(From::from)
                         .collect(),
                     build.order_only_inputs().to_vec(),
                     variables.get(DYNAMIC_MODULE_VARIABLE).cloned(),
@@ -251,7 +245,7 @@ mod tests {
         )
     }
 
-    fn ir_explicit_build<'a>(outputs: Vec<String>, rule: Rule, inputs: Vec<&'a str>) -> Build<'a> {
+    fn ir_explicit_build<'a>(outputs: Vec<&'a str>, rule: Rule, inputs: Vec<&'a str>) -> Build<'a> {
         Build::new(outputs, vec![], rule.into(), inputs, vec![], None)
     }
 
@@ -417,12 +411,8 @@ mod tests {
             create_simple_configuration(
                 [(
                     "bar".into(),
-                    ir_explicit_build(
-                        vec!["bar".into()],
-                        Rule::new("baz", None),
-                        vec!["baz"]
-                    )
-                    .into()
+                    ir_explicit_build(vec!["bar".into()], Rule::new("baz", None), vec!["baz"])
+                        .into()
                 )]
                 .into_iter()
                 .collect(),
@@ -727,15 +717,7 @@ mod tests {
             create_simple_configuration(
                 [(
                     "foo".into(),
-                    Build::new(
-                        vec!["foo".into()],
-                        vec![],
-                        None,
-                        vec!["bar"],
-                        vec![],
-                        None
-                    )
-                    .into()
+                    Build::new(vec!["foo".into()], vec![], None, vec!["bar"], vec![], None).into()
                 )]
                 .into_iter()
                 .collect(),

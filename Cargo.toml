@@ -16,7 +16,6 @@ path = "src/main.rs"
 async-recursion = "1"
 bincode = "1"
 clap = { version = "4", features = ["derive", "env"] }
-combine = "4"
 fnv = "1"
 futures = "0.3"
 itertools = "0.10"

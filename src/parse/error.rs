@@ -1,4 +1,3 @@
-use combine::easy::Errors;
 use std::{
     error::Error,
     fmt::{self, Display},
@@ -17,9 +16,9 @@ impl ParseError {
     }
 }
 
-impl<P: Display> From<Errors<char, &str, P>> for ParseError {
-    fn from(errors: Errors<char, &str, P>) -> Self {
-        Self::new(format!("{}", errors))
+impl From<nom::Err<nom::error::Error<&str>>> for ParseError {
+    fn from(error: nom::Err<nom::error::Error<&str>>) -> Self {
+        Self::new(format!("{}", error))
     }
 }
 

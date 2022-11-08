@@ -1,222 +1,248 @@
-use super::stream::Stream;
 use crate::ast::{
     Build, DefaultOutput, DynamicBuild, DynamicModule, Include, Module, Rule, Statement, Submodule,
     VariableDefinition,
 };
-use combine::{
-    attempt, choice, eof, many, many1, none_of, not_followed_by, one_of, optional,
-    parser::char::{alpha_num, char, letter, newline, string},
-    value, Parser,
+use nom::{
+    branch::alt,
+    bytes::complete::tag,
+    character::complete::{alpha1, alphanumeric1, newline, none_of, one_of, space1},
+    combinator::{all_consuming, into, map, not, opt, peek, recognize, value},
+    multi::{many0, many0_count, many1, many1_count},
+    sequence::{delimited, preceded, terminated, tuple},
+    IResult, Parser,
 };
 
-const OPERATOR_CHARACTERS: &[char] = &['|', ':'];
+const OPERATOR_CHARACTERS: &str = "|:";
 const DYNAMIC_MODULE_VERSION_VARIABLE: &str = "ninja_dyndep_version";
 
-pub fn module<'a>() -> impl Parser<Stream<'a>, Output = Module> {
-    (optional(line_break()), many(statement()))
-        .skip(eof())
-        .map(|(_, statements)| Module::new(statements))
+pub fn module(input: &str) -> IResult<&str, Module> {
+    map(
+        all_consuming(tuple((opt(line_break), many0(statement), opt(line_break)))),
+        |(_, statements, _)| Module::new(statements),
+    )(input)
 }
 
-pub fn dynamic_module<'a>() -> impl Parser<Stream<'a>, Output = DynamicModule> {
-    (
-        optional(line_break()),
-        dynamic_module_version(),
-        many(dynamic_build()),
-    )
-        .skip(eof())
-        .map(|(_, _, builds)| DynamicModule::new(builds))
+pub fn dynamic_module(input: &str) -> IResult<&str, DynamicModule> {
+    map(
+        all_consuming(tuple((
+            opt(line_break),
+            dynamic_module_version,
+            many0(dynamic_build),
+        ))),
+        |(_, _, builds)| DynamicModule::new(builds),
+    )(input)
 }
 
-fn statement<'a>() -> impl Parser<Stream<'a>, Output = Statement> {
-    choice((
-        build().map(Statement::from),
-        default().map(Statement::from),
-        include().map(Statement::from),
-        rule().map(Statement::from),
-        submodule().map(Statement::from),
-        variable_definition().map(Statement::from),
-    ))
+fn statement(input: &str) -> IResult<&str, Statement> {
+    alt((
+        into(build),
+        into(default),
+        into(include),
+        into(rule),
+        into(submodule),
+        into(variable_definition),
+    ))(input)
 }
 
-fn variable_definition<'a>() -> impl Parser<Stream<'a>, Output = VariableDefinition> {
-    (
-        attempt(identifier().skip(sign("="))),
-        optional(string_line()),
-    )
-        .skip(line_break())
-        .map(|(name, value)| VariableDefinition::new(name, value.unwrap_or_default()))
+fn variable_definition(input: &str) -> IResult<&str, VariableDefinition> {
+    map(
+        tuple((identifier, sign("="), opt(string_line), line_break)),
+        |(name, _, value, _)| VariableDefinition::new(name, value.unwrap_or_default()),
+    )(input)
 }
 
-fn dynamic_module_version<'a>() -> impl Parser<Stream<'a>, Output = String> {
-    attempt((keyword(DYNAMIC_MODULE_VERSION_VARIABLE), sign("=")))
-        .with(string_line())
-        .skip(line_break())
+fn dynamic_module_version(input: &str) -> IResult<&str, &str> {
+    map(
+        tuple((
+            keyword(DYNAMIC_MODULE_VERSION_VARIABLE),
+            sign("="),
+            string_line,
+            line_break,
+        )),
+        |(_, _, version, _)| version,
+    )(input)
 }
 
-fn rule<'a>() -> impl Parser<Stream<'a>, Output = Rule> {
-    (
-        keyword("rule"),
-        identifier(),
-        line_break(),
-        (indent(), keyword("command"), sign("="))
-            .with(string_line())
-            .skip(line_break()),
-        optional(
-            (indent(), keyword("description"), sign("="))
-                .with(string_line())
-                .skip(line_break()),
-        ),
-    )
-        .map(|(_, name, _, command, description)| Rule::new(name, command, description))
-        .expected("rule statement")
+fn rule(input: &str) -> IResult<&str, Rule> {
+    map(
+        tuple((
+            keyword("rule"),
+            identifier,
+            line_break,
+            delimited(
+                tuple((indent, keyword("command"), sign("="))),
+                string_line,
+                line_break,
+            ),
+            opt(delimited(
+                tuple((indent, keyword("description"), sign("="))),
+                string_line,
+                line_break,
+            )),
+        )),
+        |(_, name, _, command, description)| Rule::new(name, command, description.map(From::from)),
+    )(input)
 }
 
-fn build<'a>() -> impl Parser<Stream<'a>, Output = Build> {
-    (
-        keyword("build"),
-        many1(string_literal()),
-        optional(sign("|").with(many1::<Vec<_>, _, _>(string_literal()))),
-        sign(":"),
-        identifier(),
-        many(string_literal()),
-        optional(sign("|").with(many1::<Vec<_>, _, _>(string_literal()))),
-        optional(sign("||").with(many1::<Vec<_>, _, _>(string_literal()))),
-        line_break(),
-        many(indent().with(variable_definition())),
-    )
-        .map(
-            |(
-                _,
-                outputs,
-                implicit_outputs,
-                _,
+fn build(input: &str) -> IResult<&str, Build> {
+    map(
+        tuple((
+            keyword("build"),
+            many1(string_literal),
+            opt(preceded(sign("|"), many1(string_literal))),
+            sign(":"),
+            identifier,
+            many0(string_literal),
+            opt(preceded(sign("|"), many1(string_literal))),
+            opt(preceded(sign("||"), many1(string_literal))),
+            line_break,
+            many0(preceded(indent, variable_definition)),
+        )),
+        |(
+            _,
+            outputs,
+            implicit_outputs,
+            _,
+            rule,
+            inputs,
+            implicit_inputs,
+            order_only_inputs,
+            _,
+            variable_definitions,
+        )| {
+            Build::new(
+                outputs.into_iter().map(From::from).collect(),
+                implicit_outputs
+                    .into_iter()
+                    .flatten()
+                    .map(From::from)
+                    .collect(),
                 rule,
-                inputs,
-                implicit_inputs,
-                order_only_inputs,
-                _,
+                inputs.into_iter().map(From::from).collect(),
+                implicit_inputs
+                    .into_iter()
+                    .flatten()
+                    .map(From::from)
+                    .collect(),
+                order_only_inputs
+                    .into_iter()
+                    .flatten()
+                    .map(From::from)
+                    .collect(),
                 variable_definitions,
-            )| {
-                Build::new(
-                    outputs,
-                    implicit_outputs.into_iter().flatten().collect(),
-                    rule,
-                    inputs,
-                    implicit_inputs.into_iter().flatten().collect(),
-                    order_only_inputs.into_iter().flatten().collect(),
-                    variable_definitions,
-                )
-            },
-        )
-        .expected("build statement")
+            )
+        },
+    )(input)
 }
 
-pub fn dynamic_build<'a>() -> impl Parser<Stream<'a>, Output = DynamicBuild> {
-    (
-        keyword("build"),
-        string_literal(),
-        sign(":"),
-        keyword("dyndep"),
-        optional(sign("|").with(many1::<Vec<_>, _, _>(string_literal()))),
-        line_break(),
-    )
-        .map(|(_, output, _, _, implicit_inputs, _)| {
-            DynamicBuild::new(output, implicit_inputs.into_iter().flatten().collect())
-        })
-        .expected("build statement")
+pub fn dynamic_build(input: &str) -> IResult<&str, DynamicBuild> {
+    map(
+        tuple((
+            keyword("build"),
+            string_literal,
+            sign(":"),
+            keyword("dyndep"),
+            opt(preceded(sign("|"), many1(string_literal))),
+            line_break,
+        )),
+        |(_, output, _, _, implicit_inputs, _)| {
+            DynamicBuild::new(
+                output,
+                implicit_inputs
+                    .into_iter()
+                    .flatten()
+                    .map(From::from)
+                    .collect(),
+            )
+        },
+    )(input)
 }
 
-fn default<'a>() -> impl Parser<Stream<'a>, Output = DefaultOutput> {
-    (keyword("default"), many1(string_literal()))
-        .skip(line_break())
-        .map(|(_, outputs)| DefaultOutput::new(outputs))
-        .expected("default statement")
+fn default(input: &str) -> IResult<&str, DefaultOutput> {
+    map(
+        tuple((keyword("default"), many1(string_literal), line_break)),
+        |(_, outputs, _)| DefaultOutput::new(outputs.into_iter().map(From::from).collect()),
+    )(input)
 }
 
-fn include<'a>() -> impl Parser<Stream<'a>, Output = Include> {
-    (keyword("include"), string_line())
-        .skip(line_break())
-        .map(|(_, path)| Include::new(path))
-        .expected("include statement")
+fn include(input: &str) -> IResult<&str, Include> {
+    map(
+        tuple((keyword("include"), string_line, line_break)),
+        |(_, path, _)| Include::new(path),
+    )(input)
 }
 
-fn submodule<'a>() -> impl Parser<Stream<'a>, Output = Submodule> {
-    (keyword("subninja"), string_line())
-        .skip(line_break())
-        .map(|(_, path)| Submodule::new(path))
-        .expected("subninja statement")
+fn submodule(input: &str) -> IResult<&str, Submodule> {
+    map(
+        tuple((keyword("subninja"), string_line, line_break)),
+        |(_, path, _)| Submodule::new(path),
+    )(input)
 }
 
-fn string_line<'a>() -> impl Parser<Stream<'a>, Output = String> {
-    many1(none_of(['\n'])).map(|string: String| string.trim().into())
+fn string_line(input: &str) -> IResult<&str, &str> {
+    map(recognize(many1_count(none_of("\n"))), |string: &str| {
+        string.trim()
+    })(input)
 }
 
-fn string_literal<'a>() -> impl Parser<Stream<'a>, Output = String> {
-    token(many1(none_of(
-        [' ', '\t', '\r', '\n']
-            .into_iter()
-            .chain(OPERATOR_CHARACTERS.iter().cloned()),
-    )))
+fn string_literal(input: &str) -> IResult<&str, &str> {
+    token(recognize(many1_count(none_of(
+        &*(" \t\r\n".to_owned() + OPERATOR_CHARACTERS),
+    ))))(input)
 }
 
-fn keyword<'a>(name: &'static str) -> impl Parser<Stream<'a>, Output = ()> {
-    token(attempt(string(name).skip(not_followed_by(alpha_num()))))
-        .with(value(()))
-        .expected(name)
+fn keyword(name: &'static str) -> impl Fn(&str) -> IResult<&str, ()> {
+    move |input| value((), token(tuple((tag(name), peek(not(alphanumeric1))))))(input)
 }
 
-fn identifier<'a>() -> impl Parser<Stream<'a>, Output = String> {
-    token(
-        (
-            choice((letter(), char('_'))),
-            many(choice((alpha_num(), char('_')))),
-        )
-            .map(|(head, tail): (_, String)| [head.into(), tail].concat()),
-    )
-    .expected("identifier")
+fn identifier(input: &str) -> IResult<&str, &str> {
+    token(recognize(tuple((
+        alt((alpha1, tag("_"))),
+        many0_count(alt((alphanumeric1, tag("_")))),
+    ))))(input)
 }
 
-fn sign<'a>(sign: &'static str) -> impl Parser<Stream<'a>, Output = ()> {
-    attempt(token(string(sign)).skip(not_followed_by(one_of(OPERATOR_CHARACTERS.iter().cloned()))))
-        .with(value(()))
-        .expected(sign)
+fn sign(sign: &'static str) -> impl Fn(&str) -> IResult<&str, ()> {
+    move |input| {
+        value(
+            (),
+            token(terminated(
+                tag(sign),
+                peek(not(one_of(OPERATOR_CHARACTERS))),
+            )),
+        )(input)
+    }
 }
 
-fn token<'a, O, P: Parser<Stream<'a>, Output = O>>(
-    parser: P,
-) -> impl Parser<Stream<'a>, Output = O> {
-    parser.skip(blank())
+fn token<'a, O>(
+    mut parser: impl Parser<&'a str, O, nom::error::Error<&'a str>>,
+) -> impl FnMut(&'a str) -> IResult<&'a str, O> {
+    move |input| {
+        let (input, _) = blank(input)?;
+
+        parser.parse(input)
+    }
 }
 
-fn indent<'a>() -> impl Parser<Stream<'a>, Output = ()> {
-    many1::<Vec<_>, _, _>(char(' '))
-        .with(value(()))
-        .expected("indent")
+fn indent(input: &str) -> IResult<&str, ()> {
+    value((), space1)(input)
 }
 
-fn blank<'a>() -> impl Parser<Stream<'a>, Output = ()> {
-    many::<Vec<_>, _, _>(choice((space(), comment()))).with(value(()))
+fn blank(input: &str) -> IResult<&str, ()> {
+    value((), many0_count(alt((value((), space1), comment))))(input)
 }
 
-fn space<'a>() -> impl Parser<Stream<'a>, Output = ()> {
-    one_of([' ', '\t', '\r']).with(value(())).expected("space")
+fn comment(input: &str) -> IResult<&str, ()> {
+    value((), tuple((tag("#"), many0_count(none_of("\n")))))(input)
 }
 
-fn comment<'a>() -> impl Parser<Stream<'a>, Output = ()> {
-    (string("#"), many::<Vec<_>, _, _>(none_of("\n".chars())))
-        .with(value(()))
-        .expected("comment")
-}
-
-fn line_break<'a>() -> impl Parser<Stream<'a>, Output = ()> {
-    many1::<Vec<_>, _, _>(attempt((blank(), newline()))).with(value(()))
+fn line_break(input: &str) -> IResult<&str, ()> {
+    value((), many1_count(tuple((blank, newline))))(input)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parse::stream::stream;
 
     fn explicit_build(
         outputs: Vec<String>,

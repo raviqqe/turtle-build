@@ -8,7 +8,7 @@ impl<'a> Include<'a> {
         Self { path }
     }
 
-    pub fn path(&self) -> &str {
+    pub fn path(&self) -> &'a str {
         self.path
     }
 }

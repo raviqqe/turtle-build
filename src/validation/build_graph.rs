@@ -29,10 +29,10 @@ impl BuildGraph {
             }
 
             // Is this output primary?
-            if output == &build.outputs()[0] {
+            if output == build.outputs()[0] {
                 this.primary_outputs.insert(output.into(), output.into());
 
-                for secondary in build.outputs().iter().skip(1) {
+                for &secondary in build.outputs().iter().skip(1) {
                     this.add_edge(secondary, output);
                     this.primary_outputs.insert(secondary.into(), output.into());
                 }
@@ -103,7 +103,7 @@ mod tests {
         BuildGraph::new(dependencies).validate()
     }
 
-    fn explicit_build(outputs: Vec<String>, inputs: Vec<String>) -> Build {
+    fn explicit_build<'a>(outputs: Vec<&'a str>, inputs: Vec<&'a str>) -> Build<'a> {
         Build::new(
             outputs,
             vec![],
@@ -123,12 +123,9 @@ mod tests {
     fn validate_build_without_input() {
         assert_eq!(
             validate_builds(
-                &[(
-                    "foo".into(),
-                    explicit_build(vec!["foo".into()], vec![]).into()
-                )]
-                .into_iter()
-                .collect()
+                &[("foo".into(), explicit_build(vec!["foo"], vec![]).into())]
+                    .into_iter()
+                    .collect()
             ),
             Ok(())
         );
@@ -140,7 +137,7 @@ mod tests {
             validate_builds(
                 &[(
                     "foo".into(),
-                    explicit_build(vec!["foo".into()], vec!["bar".into()]).into()
+                    explicit_build(vec!["foo"], vec!["bar"]).into()
                 )]
                 .into_iter()
                 .collect()
@@ -156,11 +153,11 @@ mod tests {
                 &[(
                     "foo".into(),
                     Build::new(
-                        vec!["foo".into()],
+                        vec!["foo"],
                         vec![],
                         Rule::new("", None).into(),
                         vec![],
-                        vec!["bar".into()],
+                        vec!["bar"],
                         None
                     )
                     .into()
@@ -178,7 +175,7 @@ mod tests {
             validate_builds(
                 &[(
                     "foo".into(),
-                    explicit_build(vec!["foo".into()], vec!["foo".into()]).into()
+                    explicit_build(vec!["foo"], vec!["foo"]).into()
                 )]
                 .into_iter()
                 .collect()
@@ -194,11 +191,11 @@ mod tests {
                 &[(
                     "foo".into(),
                     Build::new(
-                        vec!["foo".into()],
+                        vec!["foo"],
                         vec![],
                         Rule::new("", None).into(),
                         vec![],
-                        vec!["foo".into()],
+                        vec!["foo"],
                         None
                     )
                     .into()
@@ -217,12 +214,9 @@ mod tests {
                 &[
                     (
                         "foo".into(),
-                        explicit_build(vec!["foo".into()], vec!["bar".into()]).into()
+                        explicit_build(vec!["foo"], vec!["bar"]).into()
                     ),
-                    (
-                        "bar".into(),
-                        explicit_build(vec!["bar".into()], vec![]).into()
-                    )
+                    ("bar".into(), explicit_build(vec!["bar"], vec![]).into())
                 ]
                 .into_iter()
                 .collect()
@@ -238,11 +232,11 @@ mod tests {
                 &[
                     (
                         "foo".into(),
-                        explicit_build(vec!["foo".into()], vec!["bar".into()]).into()
+                        explicit_build(vec!["foo"], vec!["bar"]).into()
                     ),
                     (
                         "bar".into(),
-                        explicit_build(vec!["bar".into()], vec!["foo".into()]).into()
+                        explicit_build(vec!["bar"], vec!["foo"]).into()
                     )
                 ]
                 .into_iter()
@@ -261,12 +255,9 @@ mod tests {
             &[
                 (
                     "foo".into(),
-                    explicit_build(vec!["foo".into()], vec!["bar".into()]).into(),
+                    explicit_build(vec!["foo"], vec!["bar"]).into(),
                 ),
-                (
-                    "bar".into(),
-                    explicit_build(vec!["bar".into()], vec![]).into(),
-                ),
+                ("bar".into(), explicit_build(vec!["bar"], vec![]).into()),
             ]
             .into_iter()
             .collect(),
@@ -289,7 +280,7 @@ mod tests {
 
     #[test]
     fn validate_circular_build_with_dependency_from_secondary_to_primary() {
-        let build = Arc::new(explicit_build(vec!["foo".into(), "bar".into()], vec![]));
+        let build = Arc::new(explicit_build(vec!["foo", "bar"], vec![]));
 
         let mut graph = BuildGraph::new(
             &[("foo".into(), build.clone()), ("bar".into(), build)]
@@ -311,7 +302,7 @@ mod tests {
 
     #[test]
     fn validate_circular_build_with_dependency_from_primary_to_secondary() {
-        let build = Arc::new(explicit_build(vec!["foo".into(), "bar".into()], vec![]));
+        let build = Arc::new(explicit_build(vec!["foo", "bar"], vec![]));
 
         let mut graph = BuildGraph::new(
             &[("foo".into(), build.clone()), ("bar".into(), build)]

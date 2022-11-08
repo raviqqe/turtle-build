@@ -12,11 +12,11 @@ impl<'a> DynamicBuild<'a> {
         }
     }
 
-    pub fn output(&self) -> &str {
+    pub fn output(&self) -> &'a str {
         self.output
     }
 
-    pub fn implicit_inputs(&self) -> &[&str] {
+    pub fn implicit_inputs(&self) -> &[&'a str] {
         &self.implicit_inputs
     }
 }

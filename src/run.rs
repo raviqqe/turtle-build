@@ -30,15 +30,16 @@ use tokio::{
     try_join,
 };
 
-type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), InfrastructureError>> + Send>>;
-type BuildFuture = Shared<RawBuildFuture>;
+type RawBuildFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<(), InfrastructureError<'a>>> + Send + 'a>>;
+type BuildFuture<'a> = Shared<RawBuildFuture<'a>>;
 
 pub async fn run(
-    configuration: Arc<Configuration>,
+    configuration: Arc<Configuration<'static>>,
     console: &Arc<Mutex<Console>>,
     build_directory: &Path,
     options: Options,
-) -> Result<(), InfrastructureError> {
+) -> Result<(), InfrastructureError<'static>> {
     let graph = BuildGraph::new(configuration.outputs());
 
     graph.validate()?;
@@ -54,7 +55,7 @@ pub async fn run(
 
     for output in context.configuration().default_outputs() {
         trigger_build(
-            &context,
+            context.clone(),
             context
                 .configuration()
                 .outputs()
@@ -87,29 +88,32 @@ pub async fn run(
 
 #[async_recursion]
 async fn trigger_build(
-    context: &Arc<Context>,
-    build: &Arc<Build>,
-) -> Result<(), InfrastructureError> {
+    context: Arc<Context<'static>>,
+    build: &Arc<Build<'static>>,
+) -> Result<(), InfrastructureError<'static>> {
     // Exclusive lock for atomic addition of a build job.
     let mut builds = context.build_futures().write().await;
 
-    if builds.contains_key(build.id()) {
+    if builds.contains_key(&build.id()) {
         return Ok(());
     }
 
     let future: RawBuildFuture = Box::pin(spawn_build(context.clone(), build.clone()));
 
-    builds.insert(build.id().into(), future.shared());
+    builds.insert(build.id(), future.shared());
 
     Ok(())
 }
 
-async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), InfrastructureError> {
+async fn spawn_build(
+    context: Arc<Context<'static>>,
+    build: Arc<Build<'static>>,
+) -> Result<(), InfrastructureError<'static>> {
     spawn(async move {
         let mut futures = vec![];
 
         for input in build.inputs().iter().chain(build.order_only_inputs()) {
-            if let Some(future) = build_input(&context, input).await? {
+            if let Some(future) = build_input(context.clone(), input).await? {
                 futures.push(future);
             }
         }
@@ -136,7 +140,7 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
             build
                 .outputs()
                 .iter()
-                .find_map(|output| configuration.outputs().get(output.as_str()))
+                .find_map(|output| configuration.outputs().get(*output))
                 .map(|build| build.inputs())
                 .ok_or_else(|| InfrastructureError::DynamicDependencyNotFound(build.clone()))?
         } else {
@@ -146,7 +150,7 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
         let mut futures = vec![];
 
         for input in dynamic_inputs {
-            if let Some(future) = build_input(&context, input).await? {
+            if let Some(future) = build_input(context.clone(), input).await? {
                 futures.push(future);
             }
         }
@@ -166,8 +170,8 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
         let (file_inputs, phony_inputs) = build
             .inputs()
             .iter()
-            .chain(dynamic_inputs)
-            .map(|input| input.as_str())
+            .copied()
+            .chain(dynamic_inputs.iter().map(|input| input.as_str()))
             .partition::<Vec<_>, _>(|&input| {
                 if let Some(build) = context.configuration().outputs().get(input) {
                     build.rule().is_some()
@@ -210,24 +214,24 @@ async fn spawn_build(context: Arc<Context>, build: Arc<Build>) -> Result<(), Inf
 }
 
 async fn build_input(
-    context: &Arc<Context>,
+    context: Arc<Context<'static>>,
     input: &str,
-) -> Result<Option<BuildFuture>, InfrastructureError> {
+) -> Result<Option<BuildFuture<'static>>, InfrastructureError<'static>> {
     Ok(
         if let Some(build) = context.configuration().outputs().get(input) {
-            trigger_build(context, build).await?;
+            trigger_build(context.clone(), build).await?;
 
-            Some(context.build_futures().read().await[build.id()].clone())
+            Some(context.build_futures().read().await[&build.id()].clone())
         } else {
             let input = input.to_owned();
-            let future: RawBuildFuture =
+            let future: RawBuildFuture<'static> =
                 Box::pin(async move { check_file_existence(&input).await });
             Some(future.shared())
         },
     )
 }
 
-async fn check_file_existence(path: impl AsRef<Path>) -> Result<(), InfrastructureError> {
+async fn check_file_existence(path: impl AsRef<Path>) -> Result<(), InfrastructureError<'static>> {
     let path = path.as_ref();
 
     metadata(path)
@@ -237,7 +241,7 @@ async fn check_file_existence(path: impl AsRef<Path>) -> Result<(), Infrastructu
     Ok(())
 }
 
-async fn prepare_directory(path: impl AsRef<Path>) -> Result<(), InfrastructureError> {
+async fn prepare_directory(path: impl AsRef<Path>) -> Result<(), InfrastructureError<'static>> {
     if let Some(directory) = path.as_ref().parent() {
         create_dir_all(directory).await?;
     }
@@ -245,7 +249,10 @@ async fn prepare_directory(path: impl AsRef<Path>) -> Result<(), InfrastructureE
     Ok(())
 }
 
-async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureError> {
+async fn run_rule<'a>(
+    context: &Context<'a>,
+    rule: &Rule,
+) -> Result<(), InfrastructureError<'static>> {
     // Acquire a job semaphore first to guarantee a lock order between a job
     // semaphore and console.
     let permit = context.job_semaphore().acquire().await?;

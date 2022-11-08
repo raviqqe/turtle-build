@@ -4,26 +4,39 @@ use std::{
     hash::{Hash, Hasher},
 };
 
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub struct BuildId(u64);
+
+impl BuildId {
+    pub fn new(id: u64) -> Self {
+        Self(id)
+    }
+
+    pub fn to_bytes(self) -> [u8; 8] {
+        self.0.to_le_bytes()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Build {
+pub struct Build<'a> {
     // IDs are persistent across different builds so that they can be used for,
     // for example, caching.
-    id: String,
-    outputs: Vec<String>,
-    implicit_outputs: Vec<String>,
+    id: BuildId,
+    outputs: Vec<&'a str>,
+    implicit_outputs: Vec<&'a str>,
     rule: Option<Rule>,
-    inputs: Vec<String>,
-    order_only_inputs: Vec<String>,
+    inputs: Vec<&'a str>,
+    order_only_inputs: Vec<&'a str>,
     dynamic_module: Option<String>,
 }
 
-impl Build {
+impl<'a> Build<'a> {
     pub fn new(
-        outputs: Vec<String>,
-        implicit_outputs: Vec<String>,
+        outputs: Vec<&'a str>,
+        implicit_outputs: Vec<&'a str>,
         rule: Option<Rule>,
-        inputs: Vec<String>,
-        order_only_inputs: Vec<String>,
+        inputs: Vec<&'a str>,
+        order_only_inputs: Vec<&'a str>,
         dynamic_module: Option<String>,
     ) -> Self {
         Self {
@@ -37,15 +50,15 @@ impl Build {
         }
     }
 
-    pub fn id(&self) -> &str {
-        &self.id
+    pub fn id(&self) -> BuildId {
+        self.id
     }
 
-    pub fn outputs(&self) -> &[String] {
+    pub fn outputs(&self) -> &[&'a str] {
         &self.outputs
     }
 
-    pub fn implicit_outputs(&self) -> &[String] {
+    pub fn implicit_outputs(&self) -> &[&'a str] {
         &self.implicit_outputs
     }
 
@@ -53,11 +66,11 @@ impl Build {
         self.rule.as_ref()
     }
 
-    pub fn inputs(&self) -> &[String] {
+    pub fn inputs(&self) -> &[&'a str] {
         &self.inputs
     }
 
-    pub fn order_only_inputs(&self) -> &[String] {
+    pub fn order_only_inputs(&self) -> &[&'a str] {
         &self.order_only_inputs
     }
 
@@ -65,12 +78,12 @@ impl Build {
         self.dynamic_module.as_deref()
     }
 
-    fn calculate_id(outputs: &[String], implicit_outputs: &[String]) -> String {
+    fn calculate_id(outputs: &[&'a str], implicit_outputs: &[&'a str]) -> BuildId {
         let mut hasher = DefaultHasher::new();
 
         outputs.hash(&mut hasher);
         implicit_outputs.hash(&mut hasher);
 
-        format!("{:x}", hasher.finish())
+        BuildId::new(hasher.finish())
     }
 }

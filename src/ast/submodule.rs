@@ -1,14 +1,14 @@
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Submodule {
-    path: String,
+pub struct Submodule<'a> {
+    path: &'a str,
 }
 
-impl Submodule {
-    pub fn new(path: impl Into<String>) -> Self {
-        Self { path: path.into() }
+impl<'a> Submodule<'a> {
+    pub fn new(path: &'a str) -> Self {
+        Self { path }
     }
 
-    pub fn path(&self) -> &str {
+    pub fn path(&self) -> &'a str {
         &self.path
     }
 }

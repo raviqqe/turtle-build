@@ -5,9 +5,9 @@ pub struct Rule {
 }
 
 impl Rule {
-    pub fn new(command: impl Into<String>, description: Option<String>) -> Self {
+    pub fn new(command: String, description: Option<String>) -> Self {
         Self {
-            command: command.into(),
+            command,
             description,
         }
     }

@@ -28,11 +28,11 @@ const SOURCE_VARIABLE_NAME: &str = "srcdep";
 static VARIABLE_PATTERN: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\$([[:alpha:]_][[:alnum:]_]*)").unwrap());
 
-pub fn compile(
-    modules: &HashMap<PathBuf, ast::Module>,
+pub fn compile<'a>(
+    modules: &HashMap<PathBuf, ast::Module<'a>>,
     dependencies: &ModuleDependencyMap,
     root_module_path: &Path,
-) -> Result<Configuration, CompileError> {
+) -> Result<Configuration<'a>, CompileError> {
     let context = Context::new(modules.clone(), dependencies.clone());
 
     let mut global_state = GlobalState {
@@ -65,7 +65,7 @@ pub fn compile(
         module_state
             .variables
             .get(BUILD_DIRECTORY_VARIABLE)
-            .cloned(),
+            .map(|string| string.as_str()),
     ))
 }
 
@@ -120,25 +120,25 @@ fn compile_module(
                         .cloned()
                         .collect(),
                     build.order_only_inputs().to_vec(),
-                    variables.get(DYNAMIC_MODULE_VARIABLE).cloned(),
+                    variables
+                        .get(DYNAMIC_MODULE_VARIABLE)
+                        .map(|string| string.as_str()),
                 ));
 
                 let outputs = || build.outputs().iter().chain(build.implicit_outputs());
 
                 global_state
                     .outputs
-                    .extend(outputs().map(|output| (output.into(), ir.clone())));
+                    .extend(outputs().map(|output| (*output, ir.clone())));
 
                 if let Some(source) = variables.get(SOURCE_VARIABLE_NAME) {
                     global_state
                         .source_map
-                        .extend(outputs().map(|output| (output.clone(), source.clone())));
+                        .extend(outputs().map(|output| (output.clone(), source.as_str())));
                 }
             }
             ast::Statement::Default(default) => {
-                global_state
-                    .default_outputs
-                    .extend(default.outputs().iter().cloned());
+                global_state.default_outputs.extend(default.outputs());
             }
             ast::Statement::Include(include) => {
                 compile_module(
@@ -170,7 +170,9 @@ fn compile_module(
     Ok(())
 }
 
-pub fn compile_dynamic(module: &ast::DynamicModule) -> Result<DynamicConfiguration, CompileError> {
+pub fn compile_dynamic<'a>(
+    module: &ast::DynamicModule<'a>,
+) -> Result<DynamicConfiguration<'a>, CompileError> {
     Ok(DynamicConfiguration::new(
         module
             .builds()

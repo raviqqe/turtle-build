@@ -3,8 +3,8 @@ use fnv::{FnvHashMap, FnvHashSet};
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
-pub struct GlobalState {
-    pub outputs: FnvHashMap<String, Arc<Build>>,
-    pub default_outputs: FnvHashSet<String>,
-    pub source_map: FnvHashMap<String, String>,
+pub struct GlobalState<'a> {
+    pub outputs: FnvHashMap<&'a str, Arc<Build<'a>>>,
+    pub default_outputs: FnvHashSet<&'a str>,
+    pub source_map: FnvHashMap<&'a str, &'a str>,
 }

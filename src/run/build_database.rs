@@ -10,27 +10,28 @@ pub struct BuildDatabase {
 }
 
 impl BuildDatabase {
-    pub fn new(build_directory: &Path) -> Result<Self, InfrastructureError> {
+    pub fn new<'a>(build_directory: &Path) -> Result<Self, InfrastructureError<'a>> {
         Ok(Self {
             database: sled::open(build_directory.join(DATABASE_FILENAME))?,
         })
     }
 
-    pub fn get(&self, id: &str) -> Result<Option<BuildHash>, InfrastructureError> {
+    pub fn get<'a>(&self, id: u64) -> Result<Option<BuildHash>, InfrastructureError<'a>> {
         Ok(self
             .database
-            .get(id)?
+            .get(id.to_le_bytes())?
             .map(|value| bincode::deserialize(&value))
             .transpose()?)
     }
 
-    pub fn set(&self, id: &str, hash: BuildHash) -> Result<(), InfrastructureError> {
-        self.database.insert(id, bincode::serialize(&hash)?)?;
+    pub fn set<'a>(&self, id: u64, hash: BuildHash) -> Result<(), InfrastructureError<'a>> {
+        self.database
+            .insert(id.to_le_bytes(), bincode::serialize(&hash)?)?;
 
         Ok(())
     }
 
-    pub async fn flush(&self) -> Result<(), InfrastructureError> {
+    pub async fn flush<'a>(&self) -> Result<(), InfrastructureError<'a>> {
         self.database.flush_async().await?;
 
         Ok(())
@@ -52,7 +53,7 @@ mod tests {
     fn set_hash() {
         let database = BuildDatabase::new(tempdir().unwrap().path()).unwrap();
 
-        database.set("foo", BuildHash::new(0, 0)).unwrap();
+        database.set(0, BuildHash::new(0, 0)).unwrap();
     }
 
     #[test]
@@ -60,7 +61,7 @@ mod tests {
         let database = BuildDatabase::new(tempdir().unwrap().path()).unwrap();
         let hash = BuildHash::new(0, 1);
 
-        database.set("foo", hash).unwrap();
-        assert_eq!(database.get("foo").unwrap(), Some(hash));
+        database.set(0, hash).unwrap();
+        assert_eq!(database.get(0).unwrap(), Some(hash));
     }
 }

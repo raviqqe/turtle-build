@@ -10,25 +10,25 @@ use std::{
 use tokio::{io, sync::AcquireError, task::JoinError};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum InfrastructureError {
+pub enum InfrastructureError<'a> {
     Build,
     Compile(CompileError),
     DefaultOutputNotFound(String),
-    DynamicDependencyNotFound(Arc<Build>),
+    DynamicDependencyNotFound(Arc<Build<'a>>),
     InputNotBuilt(String),
     InputNotFound(String),
     Other(String),
     Parse(ParseError),
     Sled(sled::Error),
-    Validation(ValidationError),
+    Validation(ValidationError<'a>),
 }
 
-impl InfrastructureError {
+impl<'a> InfrastructureError<'a> {
     pub fn with_path(error: io::Error, path: impl AsRef<Path>) -> Self {
         Self::Other(format!("{}: {}", error, path.as_ref().display()))
     }
 
-    pub fn map_outputs(self, source_map: &FnvHashMap<String, String>) -> Self {
+    pub fn map_outputs(self, source_map: &FnvHashMap<&str, &'a str>) -> Self {
         match self {
             Self::Validation(ValidationError::CircularBuildDependency(outputs)) => {
                 Self::Validation(ValidationError::CircularBuildDependency(
@@ -44,9 +44,9 @@ impl InfrastructureError {
     }
 }
 
-impl Error for InfrastructureError {}
+impl<'a> Error for InfrastructureError<'a> {}
 
-impl Display for InfrastructureError {
+impl<'a> Display for InfrastructureError<'a> {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
             Self::Build => write!(formatter, "build failed"),

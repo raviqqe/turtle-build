@@ -5,14 +5,14 @@ use std::{
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ValidationError {
-    CircularBuildDependency(Vec<String>),
+pub enum ValidationError<'a> {
+    CircularBuildDependency(Vec<&'a str>),
     CircularModuleDependency,
 }
 
-impl Error for ValidationError {}
+impl<'a> Error for ValidationError<'a> {}
 
-impl Display for ValidationError {
+impl<'a> Display for ValidationError<'a> {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
             Self::CircularBuildDependency(cycle) => {
@@ -23,7 +23,7 @@ impl Display for ValidationError {
                         .iter()
                         .chain(cycle.first())
                         .dedup()
-                        .map(String::as_str)
+                        .copied()
                         .collect::<Vec<_>>()
                         .join(" -> ")
                 )

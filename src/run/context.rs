@@ -4,18 +4,18 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{Mutex, RwLock, Semaphore};
 
 #[derive(Debug)]
-pub struct Context {
-    configuration: Arc<Configuration>,
+pub struct Context<'a> {
+    configuration: Arc<Configuration<'a>>,
     // TODO Use a concurrent hash map. We only need atomic insertion but not a great lock.
-    build_futures: RwLock<HashMap<String, BuildFuture>>,
-    build_graph: Mutex<BuildGraph>,
+    build_futures: RwLock<HashMap<u64, BuildFuture>>,
+    build_graph: Mutex<BuildGraph<'a>>,
     database: BuildDatabase,
     job_semaphore: Semaphore,
     console: Arc<Mutex<Console>>,
     options: Options,
 }
 
-impl Context {
+impl<'a> Context<'a> {
     pub fn new(
         configuration: Arc<Configuration>,
         build_graph: BuildGraph,
@@ -39,11 +39,11 @@ impl Context {
         &self.configuration
     }
 
-    pub fn build_futures(&self) -> &RwLock<HashMap<String, BuildFuture>> {
+    pub fn build_futures(&self) -> &RwLock<HashMap<u64, BuildFuture>> {
         &self.build_futures
     }
 
-    pub fn build_graph(&self) -> &Mutex<BuildGraph> {
+    pub fn build_graph(&self) -> &Mutex<BuildGraph<'a>> {
         &self.build_graph
     }
 

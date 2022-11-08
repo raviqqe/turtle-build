@@ -5,26 +5,26 @@ use std::{
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Build {
+pub struct Build<'a> {
     // IDs are persistent across different builds so that they can be used for,
     // for example, caching.
-    id: String,
-    outputs: Vec<String>,
-    implicit_outputs: Vec<String>,
+    id: u64,
+    outputs: Vec<&'a str>,
+    implicit_outputs: Vec<&'a str>,
     rule: Option<Rule>,
-    inputs: Vec<String>,
-    order_only_inputs: Vec<String>,
-    dynamic_module: Option<String>,
+    inputs: Vec<&'a str>,
+    order_only_inputs: Vec<&'a str>,
+    dynamic_module: Option<&'a str>,
 }
 
-impl Build {
+impl<'a> Build<'a> {
     pub fn new(
-        outputs: Vec<String>,
-        implicit_outputs: Vec<String>,
+        outputs: Vec<&'a str>,
+        implicit_outputs: Vec<&'a str>,
         rule: Option<Rule>,
-        inputs: Vec<String>,
-        order_only_inputs: Vec<String>,
-        dynamic_module: Option<String>,
+        inputs: Vec<&'a str>,
+        order_only_inputs: Vec<&'a str>,
+        dynamic_module: Option<&'a str>,
     ) -> Self {
         Self {
             id: Self::calculate_id(&outputs, &implicit_outputs),
@@ -37,15 +37,15 @@ impl Build {
         }
     }
 
-    pub fn id(&self) -> &str {
-        &self.id
+    pub fn id(&self) -> u64 {
+        self.id
     }
 
-    pub fn outputs(&self) -> &[String] {
+    pub fn outputs(&self) -> &[&'a str] {
         &self.outputs
     }
 
-    pub fn implicit_outputs(&self) -> &[String] {
+    pub fn implicit_outputs(&self) -> &[&'a str] {
         &self.implicit_outputs
     }
 
@@ -53,24 +53,24 @@ impl Build {
         self.rule.as_ref()
     }
 
-    pub fn inputs(&self) -> &[String] {
+    pub fn inputs(&self) -> &[&'a str] {
         &self.inputs
     }
 
-    pub fn order_only_inputs(&self) -> &[String] {
+    pub fn order_only_inputs(&self) -> &[&'a str] {
         &self.order_only_inputs
     }
 
-    pub fn dynamic_module(&self) -> Option<&str> {
+    pub fn dynamic_module(&self) -> Option<&'a str> {
         self.dynamic_module.as_deref()
     }
 
-    fn calculate_id(outputs: &[String], implicit_outputs: &[String]) -> String {
+    fn calculate_id(outputs: &[&str], implicit_outputs: &[&str]) -> u64 {
         let mut hasher = DefaultHasher::new();
 
         outputs.hash(&mut hasher);
         implicit_outputs.hash(&mut hasher);
 
-        format!("{:x}", hasher.finish())
+        hasher.finish()
     }
 }

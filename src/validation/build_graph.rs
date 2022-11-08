@@ -9,17 +9,17 @@ use petgraph::{
 use std::{collections::HashMap, sync::Arc};
 
 #[derive(Debug)]
-pub struct BuildGraph {
-    graph: Graph<String, ()>,
-    nodes: HashMap<String, NodeIndex<DefaultIx>>,
-    primary_outputs: HashMap<String, String>,
+pub struct BuildGraph<'a> {
+    graph: Graph<&'a str, ()>,
+    nodes: HashMap<&'a str, NodeIndex<DefaultIx>>,
+    primary_outputs: HashMap<&'a str, &'a str>,
 }
 
-impl BuildGraph {
-    pub fn new(outputs: &FnvHashMap<String, Arc<Build>>) -> Self {
+impl<'a> BuildGraph<'a> {
+    pub fn new(outputs: &FnvHashMap<&'a str, Arc<Build<'a>>>) -> Self {
         let mut this = Self {
-            graph: Graph::<String, ()>::new(),
-            nodes: HashMap::<String, NodeIndex<DefaultIx>>::new(),
+            graph: Graph::<&'a str, ()>::new(),
+            nodes: HashMap::<&'a str, NodeIndex<DefaultIx>>::new(),
             primary_outputs: HashMap::new(),
         };
 
@@ -30,11 +30,11 @@ impl BuildGraph {
 
             // Is this output primary?
             if output == &build.outputs()[0] {
-                this.primary_outputs.insert(output.into(), output.into());
+                this.primary_outputs.insert(*output, *output);
 
                 for secondary in build.outputs().iter().skip(1) {
                     this.add_edge(secondary, output);
-                    this.primary_outputs.insert(secondary.into(), output.into());
+                    this.primary_outputs.insert(secondary, *output);
                 }
             }
         }
@@ -42,7 +42,7 @@ impl BuildGraph {
         this
     }
 
-    pub fn validate(&self) -> Result<(), ValidationError> {
+    pub fn validate(&self) -> Result<(), ValidationError<'a>> {
         if let Err(cycle) = toposort(&self.graph, None) {
             let mut components = kosaraju_scc(&self.graph);
 
@@ -66,7 +66,7 @@ impl BuildGraph {
     pub fn validate_dynamic(
         &mut self,
         configuration: &DynamicConfiguration,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), ValidationError<'a>> {
         for (output, build) in configuration.outputs() {
             for input in build.inputs() {
                 self.add_edge(&self.primary_outputs[output].clone(), input);
@@ -97,17 +97,17 @@ mod tests {
     use super::*;
     use crate::ir::{DynamicBuild, Rule};
 
-    fn validate_builds(
-        dependencies: &FnvHashMap<String, Arc<Build>>,
-    ) -> Result<(), ValidationError> {
+    fn validate_builds<'a>(
+        dependencies: &FnvHashMap<&'a str, Arc<Build>>,
+    ) -> Result<(), ValidationError<'a>> {
         BuildGraph::new(dependencies).validate()
     }
 
-    fn explicit_build(outputs: Vec<String>, inputs: Vec<String>) -> Build {
+    fn explicit_build<'a>(outputs: Vec<&'a str>, inputs: Vec<&'a str>) -> Build<'a> {
         Build::new(
             outputs,
             vec![],
-            Rule::new("", None).into(),
+            Rule::new("".into(), None).into(),
             inputs,
             vec![],
             None,

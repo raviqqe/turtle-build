@@ -4,13 +4,13 @@ use std::{collections::HashMap, path::PathBuf};
 pub type ModuleDependencyMap = HashMap<PathBuf, HashMap<String, PathBuf>>;
 
 #[derive(Debug, Default)]
-pub struct Context {
-    modules: HashMap<PathBuf, Module>,
+pub struct Context<'a> {
+    modules: HashMap<PathBuf, Module<'a>>,
     dependencies: ModuleDependencyMap,
 }
 
-impl Context {
-    pub fn new(modules: HashMap<PathBuf, Module>, dependencies: ModuleDependencyMap) -> Self {
+impl<'a> Context<'a> {
+    pub fn new(modules: HashMap<PathBuf, Module<'a>>, dependencies: ModuleDependencyMap) -> Self {
         Self {
             modules,
             dependencies,

@@ -1,21 +1,14 @@
 mod error;
-mod parsers;
-mod stream;
+mod parser;
 
 pub use self::error::ParseError;
-use self::{
-    parsers::{dynamic_module, module},
-    stream::stream,
-};
+use self::parser::{dynamic_module, module};
 use crate::ast::{DynamicModule, Module};
-use combine::Parser;
 
 pub fn parse(source: &str) -> Result<Module, ParseError> {
-    Ok(module().parse(stream(source)).map(|(module, _)| module)?)
+    Ok(module(source).map(|(_, module)| module)?)
 }
 
 pub fn parse_dynamic(source: &str) -> Result<DynamicModule, ParseError> {
-    Ok(dynamic_module()
-        .parse(stream(source))
-        .map(|(module, _)| module)?)
+    Ok(dynamic_module(source).map(|(_, module)| module)?)
 }

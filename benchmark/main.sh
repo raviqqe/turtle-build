@@ -20,6 +20,7 @@ print_default() (
 )
 
 mkdir -p tmp
+cd tmp
 
 for index in $(seq 0 $rule_count); do
   rule=rule$index
@@ -30,12 +31,10 @@ for index in $(seq 0 $rule_count); do
     input=input$index
     output=output$index
 
+    touch $input
     print_build $rule $input $output
     print_default $output
   done
-done >tmp/build.ninja
+done >build.ninja
 
-(
-  cd tmp
-  hyperfine ninja turtle
-)
+hyperfine ninja turtle

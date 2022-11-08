@@ -4,12 +4,12 @@ set -e
 
 print_rule() (
   echo rule $1
-  echo "" command = : $in $out
+  echo "" command = cp $in $out
   echo "" description = hahahaha
 )
 
 print_build() (
-  echo rule foo
+  echo build $2: $1 $3
 )
 
 print_default() (

@@ -5,7 +5,7 @@ use crate::ast::{
 use nom::{
     branch::alt,
     bytes::complete::tag,
-    character::complete::{alpha1, alphanumeric1, newline, none_of, one_of, space1},
+    character::complete::{alpha1, alphanumeric1, line_ending, none_of, one_of, space1},
     combinator::{all_consuming, into, map, not, opt, peek, recognize, value},
     multi::{many0, many0_count, many1, many1_count},
     sequence::{delimited, preceded, terminated, tuple},
@@ -237,7 +237,7 @@ fn comment(input: &str) -> IResult<&str, ()> {
 }
 
 fn line_break(input: &str) -> IResult<&str, ()> {
-    value((), many1_count(tuple((blank, newline))))(input)
+    value((), many1_count(tuple((blank, line_ending))))(input)
 }
 
 #[cfg(test)]
@@ -263,43 +263,34 @@ mod tests {
 
     #[test]
     fn parse_module() {
-        assert_eq!(module().parse(stream("")).unwrap().0, Module::new(vec![]));
+        assert_eq!(module("").unwrap().1, Module::new(vec![]));
+        assert_eq!(module("#foo\n").unwrap().1, Module::new(vec![]));
         assert_eq!(
-            module().parse(stream("#foo\n")).unwrap().0,
-            Module::new(vec![])
-        );
-        assert_eq!(
-            module().parse(stream("x = 42\n")).unwrap().0,
+            module("x = 42\n").unwrap().1,
             Module::new(vec![VariableDefinition::new("x", "42").into()])
         );
         assert_eq!(
-            module().parse(stream("x = 1\ny = 2\n")).unwrap().0,
+            module("x = 1\ny = 2\n").unwrap().1,
             Module::new(vec![
                 VariableDefinition::new("x", "1").into(),
                 VariableDefinition::new("y", "2").into(),
             ],)
         );
         assert_eq!(
-            module()
-                .parse(stream("rule foo\n command = bar\n"))
-                .unwrap()
-                .0,
+            module("rule foo\n command = bar\n").unwrap().1,
             Module::new(vec![Rule::new("foo", "bar", None).into()])
         );
         assert_eq!(
-            module()
-                .parse(stream(
-                    "rule foo\n command = bar\nrule baz\n command = blah\n"
-                ))
+            module("rule foo\n command = bar\nrule baz\n command = blah\n")
                 .unwrap()
-                .0,
+                .1,
             Module::new(vec![
                 Rule::new("foo", "bar", None).into(),
                 Rule::new("baz", "blah", None).into(),
             ],)
         );
         assert_eq!(
-            module().parse(stream("builddir = foo\n")).unwrap().0,
+            module("builddir = foo\n").unwrap().1,
             Module::new(vec![VariableDefinition::new("builddir", "foo").into()])
         );
     }
@@ -307,26 +298,19 @@ mod tests {
     #[test]
     fn parse_dynamic_module() {
         assert_eq!(
-            dynamic_module()
-                .parse(stream("ninja_dyndep_version = 1\n"))
-                .unwrap()
-                .0,
+            dynamic_module("ninja_dyndep_version = 1\n").unwrap().1,
             DynamicModule::new(vec![])
         );
         assert_eq!(
-            dynamic_module()
-                .parse(stream("ninja_dyndep_version = 1\nbuild foo: dyndep\n"))
+            dynamic_module("ninja_dyndep_version = 1\nbuild foo: dyndep\n")
                 .unwrap()
-                .0,
+                .1,
             DynamicModule::new(vec![DynamicBuild::new("foo", vec![])])
         );
         assert_eq!(
-            dynamic_module()
-                .parse(stream(
-                    "ninja_dyndep_version = 1\nbuild foo: dyndep\nbuild bar: dyndep\n"
-                ))
+            dynamic_module("ninja_dyndep_version = 1\nbuild foo: dyndep\nbuild bar: dyndep\n")
                 .unwrap()
-                .0,
+                .1,
             DynamicModule::new(vec![
                 DynamicBuild::new("foo", vec![]),
                 DynamicBuild::new("bar", vec![])
@@ -337,22 +321,19 @@ mod tests {
     #[test]
     fn parse_variable_definition() {
         assert_eq!(
-            variable_definition().parse(stream("x = 42\n")).unwrap().0,
+            variable_definition("x = 42\n").unwrap().1,
             VariableDefinition::new("x", "42")
         );
         assert_eq!(
-            variable_definition()
-                .parse(stream("foo = 1 + 1\n"))
-                .unwrap()
-                .0,
+            variable_definition("foo = 1 + 1\n").unwrap().1,
             VariableDefinition::new("foo", "1 + 1")
         );
         assert_eq!(
-            variable_definition().parse(stream("x =\n")).unwrap().0,
+            variable_definition("x =\n").unwrap().1,
             VariableDefinition::new("x", "")
         );
         assert_eq!(
-            variable_definition().parse(stream("x = \n")).unwrap().0,
+            variable_definition("x = \n").unwrap().1,
             VariableDefinition::new("x", "")
         );
     }
@@ -360,28 +341,23 @@ mod tests {
     #[test]
     fn parse_dynamic_module_version() {
         assert_eq!(
-            dynamic_module_version()
-                .parse(stream("ninja_dyndep_version = 42\n"))
+            dynamic_module_version("ninja_dyndep_version = 42\n")
                 .unwrap()
-                .0,
-            "42".to_string(),
+                .1,
+            "42",
         );
     }
 
     #[test]
     fn parse_rule() {
         assert_eq!(
-            rule()
-                .parse(stream("rule foo\n command = bar\n"))
-                .unwrap()
-                .0,
+            rule("rule foo\n command = bar\n").unwrap().1,
             Rule::new("foo", "bar", None)
         );
         assert_eq!(
-            rule()
-                .parse(stream("rule foo\n command = bar\n description = baz\n"))
+            rule("rule foo\n command = bar\n description = baz\n")
                 .unwrap()
-                .0,
+                .1,
             Rule::new("foo", "bar", Some("baz".into()))
         );
     }
@@ -389,18 +365,15 @@ mod tests {
     #[test]
     fn parse_build() {
         assert_eq!(
-            build().parse(stream("build foo: bar\n")).unwrap().0,
+            build("build foo: bar\n").unwrap().1,
             explicit_build(vec!["foo".into()], "bar", vec![], vec![])
         );
         assert_eq!(
-            build().parse(stream("build foo: bar baz\n")).unwrap().0,
+            build("build foo: bar baz\n").unwrap().1,
             explicit_build(vec!["foo".into()], "bar", vec!["baz".into()], vec![])
         );
         assert_eq!(
-            build()
-                .parse(stream("build foo: bar baz blah\n"))
-                .unwrap()
-                .0,
+            build("build foo: bar baz blah\n").unwrap().1,
             explicit_build(
                 vec!["foo".into()],
                 "bar",
@@ -409,11 +382,11 @@ mod tests {
             )
         );
         assert_eq!(
-            build().parse(stream("build foo bar: baz\n")).unwrap().0,
+            build("build foo bar: baz\n").unwrap().1,
             explicit_build(vec!["foo".into(), "bar".into()], "baz", vec![], vec![])
         );
         assert_eq!(
-            build().parse(stream("build foo: bar\n x = 1\n")).unwrap().0,
+            build("build foo: bar\n x = 1\n").unwrap().1,
             explicit_build(
                 vec!["foo".into()],
                 "bar",
@@ -422,10 +395,7 @@ mod tests {
             )
         );
         assert_eq!(
-            build()
-                .parse(stream("build foo: bar\n x = 1\n y = 2\n"))
-                .unwrap()
-                .0,
+            build("build foo: bar\n x = 1\n y = 2\n").unwrap().1,
             explicit_build(
                 vec!["foo".into()],
                 "bar",
@@ -437,7 +407,7 @@ mod tests {
             )
         );
         assert_eq!(
-            build().parse(stream("build x1 | x2: rule\n")).unwrap().0,
+            build("build x1 | x2: rule\n").unwrap().1,
             Build::new(
                 vec!["x1".into()],
                 vec!["x2".into()],
@@ -449,7 +419,7 @@ mod tests {
             )
         );
         assert_eq!(
-            build().parse(stream("build x1 | x2 x3: rule\n")).unwrap().0,
+            build("build x1 | x2 x3: rule\n").unwrap().1,
             Build::new(
                 vec!["x1".into()],
                 vec!["x2".into(), "x3".into()],
@@ -461,7 +431,7 @@ mod tests {
             )
         );
         assert_eq!(
-            build().parse(stream("build x1: rule | x2\n")).unwrap().0,
+            build("build x1: rule | x2\n").unwrap().1,
             Build::new(
                 vec!["x1".into()],
                 vec![],
@@ -473,7 +443,7 @@ mod tests {
             )
         );
         assert_eq!(
-            build().parse(stream("build x1: rule | x2 x3\n")).unwrap().0,
+            build("build x1: rule | x2 x3\n").unwrap().1,
             Build::new(
                 vec!["x1".into()],
                 vec![],
@@ -485,7 +455,7 @@ mod tests {
             )
         );
         assert_eq!(
-            build().parse(stream("build x1: rule || x2\n")).unwrap().0,
+            build("build x1: rule || x2\n").unwrap().1,
             Build::new(
                 vec!["x1".into()],
                 vec![],
@@ -497,10 +467,7 @@ mod tests {
             )
         );
         assert_eq!(
-            build()
-                .parse(stream("build x1: rule || x2 x3\n"))
-                .unwrap()
-                .0,
+            build("build x1: rule || x2 x3\n").unwrap().1,
             Build::new(
                 vec!["x1".into()],
                 vec![],
@@ -516,140 +483,98 @@ mod tests {
     #[test]
     fn parse_dynamic_build() {
         assert_eq!(
-            dynamic_build()
-                .parse(stream("build foo: dyndep\n"))
-                .unwrap()
-                .0,
+            dynamic_build("build foo: dyndep\n").unwrap().1,
             DynamicBuild::new("foo", vec![])
         );
         assert_eq!(
-            dynamic_build()
-                .parse(stream("build foo: dyndep | bar\n"))
-                .unwrap()
-                .0,
+            dynamic_build("build foo: dyndep | bar\n").unwrap().1,
             DynamicBuild::new("foo", vec!["bar".into()])
         );
         assert_eq!(
-            dynamic_build()
-                .parse(stream("build foo: dyndep | bar baz\n"))
-                .unwrap()
-                .0,
+            dynamic_build("build foo: dyndep | bar baz\n").unwrap().1,
             DynamicBuild::new("foo", vec!["bar".into(), "baz".into()])
         );
     }
 
     #[test]
     fn parse_default() {
-        assert!(default().parse(stream("")).is_err());
-        assert!(default().parse(stream("default\n")).is_err());
+        assert!(default("").is_err());
+        assert!(default("default\n").is_err());
         assert_eq!(
-            default().parse(stream("default foo\n")).unwrap().0,
+            default("default foo\n").unwrap().1,
             DefaultOutput::new(vec!["foo".into()])
         );
         assert_eq!(
-            default().parse(stream("default foo bar\n")).unwrap().0,
+            default("default foo bar\n").unwrap().1,
             DefaultOutput::new(vec!["foo".into(), "bar".into()])
         );
     }
 
     #[test]
     fn parse_include() {
-        assert_eq!(
-            include().parse(stream("include foo\n")).unwrap().0,
-            Include::new("foo")
-        );
+        assert_eq!(include("include foo\n").unwrap().1, Include::new("foo"));
     }
 
     #[test]
     fn parse_submodule() {
         assert_eq!(
-            submodule().parse(stream("subninja foo\n")).unwrap().0,
+            submodule("subninja foo\n").unwrap().1,
             Submodule::new("foo")
         );
     }
 
     #[test]
     fn parse_string_line() {
-        assert!(string_line().parse(stream("")).is_err());
-        assert_eq!(
-            string_line().parse(stream("foo")).unwrap().0,
-            "foo".to_string()
-        );
-        assert_eq!(
-            string_line().parse(stream("foo\n")).unwrap().0,
-            "foo".to_string()
-        );
-        assert_eq!(
-            string_line().parse(stream("foo \n")).unwrap().0,
-            "foo".to_string()
-        );
-        assert_eq!(
-            string_line().parse(stream("foo bar")).unwrap().0,
-            "foo bar".to_string()
-        );
+        assert!(string_line("").is_err());
+        assert_eq!(string_line("foo").unwrap().1, "foo");
+        assert_eq!(string_line("foo\n").unwrap().1, "foo");
+        assert_eq!(string_line("foo \n").unwrap().1, "foo");
+        assert_eq!(string_line("foo bar").unwrap().1, "foo bar");
     }
 
     #[test]
     fn parse_string_literal() {
-        assert!(string_literal().parse(stream("")).is_err());
-        assert_eq!(
-            string_literal().parse(stream("foo")).unwrap().0,
-            "foo".to_string()
-        );
-        assert_eq!(
-            string_literal().parse(stream("foo bar")).unwrap().0,
-            "foo".to_string()
-        );
+        assert!(string_literal("").is_err());
+        assert_eq!(string_literal("foo").unwrap().1, "foo");
+        assert_eq!(string_literal("foo bar").unwrap().1, "foo");
     }
 
     #[test]
     fn parse_keyword() {
-        assert!(keyword("foo").parse(stream("foo")).is_ok());
-        assert!(keyword("fo").parse(stream("foo")).is_err());
+        assert!(keyword("foo")("foo").is_ok());
+        assert!(keyword("fo")("foo").is_err());
     }
 
     #[test]
     fn parse_identifier() {
-        assert_eq!(
-            identifier().parse(stream("foo")).unwrap().0,
-            "foo".to_string()
-        );
-        assert_eq!(
-            identifier().parse(stream("foo bar")).unwrap().0,
-            "foo".to_string()
-        );
-        assert_eq!(
-            identifier().parse(stream("foo_bar")).unwrap().0,
-            "foo_bar".to_string()
-        );
-        assert_eq!(
-            identifier().parse(stream("_foo")).unwrap().0,
-            "_foo".to_string()
-        );
+        assert_eq!(identifier("foo").unwrap().1, "foo");
+        assert_eq!(identifier("foo bar").unwrap().1, "foo");
+        assert_eq!(identifier("foo_bar").unwrap().1, "foo_bar");
+        assert_eq!(identifier("_foo").unwrap().1, "_foo");
     }
 
     #[test]
     fn parse_blank() {
-        assert!(blank().skip(eof()).parse(stream("")).is_ok());
-        assert!(blank().skip(eof()).parse(stream(" ")).is_ok());
-        assert!(blank().skip(eof()).parse(stream("\t")).is_ok());
-        assert!(blank().skip(eof()).parse(stream("\r")).is_ok());
-        assert!(blank().skip(eof()).parse(stream("  ")).is_ok());
-        assert!(blank().skip(eof()).parse(stream(" \t")).is_ok());
-        assert!(blank().skip(eof()).parse(stream("#")).is_ok());
-        assert!(blank().skip(eof()).parse(stream("#foo")).is_ok());
-        assert!(blank().skip(eof()).parse(stream(" #foo")).is_ok());
-        assert!(blank().skip(eof()).parse(stream("\n")).is_err());
-        assert!(blank().skip(eof()).parse(stream(" \n")).is_err());
+        assert!(all_consuming(blank)("").is_ok());
+        assert!(all_consuming(blank)(" ").is_ok());
+        assert!(all_consuming(blank)("\t").is_ok());
+        assert!(all_consuming(blank)("  ").is_ok());
+        assert!(all_consuming(blank)(" \t").is_ok());
+        assert!(all_consuming(blank)("#").is_ok());
+        assert!(all_consuming(blank)("#foo").is_ok());
+        assert!(all_consuming(blank)(" #foo").is_ok());
+        assert!(all_consuming(blank)("\n").is_err());
+        assert!(all_consuming(blank)(" \n").is_err());
     }
 
     #[test]
     fn parse_line_break() {
-        assert!(line_break().skip(eof()).parse(stream("")).is_err());
-        assert!(line_break().skip(eof()).parse(stream("\n")).is_ok());
-        assert!(line_break().skip(eof()).parse(stream(" \n")).is_ok());
-        assert!(line_break().skip(eof()).parse(stream("  \n")).is_ok());
-        assert!(line_break().skip(eof()).parse(stream("\n\n")).is_ok());
-        assert!(line_break().skip(eof()).parse(stream("\n ")).is_err());
+        assert!(all_consuming(line_break)("").is_err());
+        assert!(all_consuming(line_break)("\n").is_ok());
+        assert!(all_consuming(line_break)("\r\n").is_ok());
+        assert!(all_consuming(line_break)(" \n").is_ok());
+        assert!(all_consuming(line_break)("  \n").is_ok());
+        assert!(all_consuming(line_break)("\n\n").is_ok());
+        assert!(all_consuming(line_break)("\n ").is_err());
     }
 }

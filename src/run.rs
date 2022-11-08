@@ -255,7 +255,7 @@ async fn run_rule(context: &Context, rule: &Rule) -> Result<(), InfrastructureEr
             let start_time = Instant::now();
             let output = if cfg!(target_os = "windows") {
                 let components = rule.command().split_whitespace().collect::<Vec<_>>();
-                Command::new(&components[0])
+                Command::new(components[0])
                     .args(&components[1..])
                     .output()
                     .await?

@@ -411,8 +411,7 @@ mod tests {
             create_simple_configuration(
                 [(
                     "bar".into(),
-                    ir_explicit_build(vec!["bar"], Rule::new("baz", None), vec!["baz"])
-                        .into()
+                    ir_explicit_build(vec!["bar"], Rule::new("baz", None), vec!["baz"]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -450,12 +449,8 @@ mod tests {
             create_simple_configuration(
                 [(
                     "bar".into(),
-                    ir_explicit_build(
-                        vec!["bar"],
-                        Rule::new("baz", None),
-                        vec!["baz", "blah"]
-                    )
-                    .into()
+                    ir_explicit_build(vec!["bar"], Rule::new("baz", None), vec!["baz", "blah"])
+                        .into()
                 )]
                 .into_iter()
                 .collect(),

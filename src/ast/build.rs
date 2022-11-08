@@ -32,23 +32,23 @@ impl<'a> Build<'a> {
         }
     }
 
-    pub fn outputs(&self) -> &[&str] {
+    pub fn outputs(&self) -> &[&'a str] {
         &self.outputs
     }
 
-    pub fn implicit_outputs(&self) -> &[&str] {
+    pub fn implicit_outputs(&self) -> &[&'a str] {
         &self.implicit_outputs
     }
 
-    pub fn rule(&self) -> &str {
+    pub fn rule(&self) -> &'a str {
         self.rule
     }
 
-    pub fn inputs(&self) -> &[&str] {
+    pub fn inputs(&self) -> &[&'a str] {
         &self.inputs
     }
 
-    pub fn implicit_inputs(&self) -> &[&str] {
+    pub fn implicit_inputs(&self) -> &[&'a str] {
         &self.implicit_inputs
     }
 

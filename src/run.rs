@@ -112,12 +112,7 @@ async fn spawn_build(
     spawn(async move {
         let mut futures = vec![];
 
-        for input in build
-            .inputs()
-            .iter()
-            .map(|string| string.as_str())
-            .chain(build.order_only_inputs().iter().copied())
-        {
+        for input in build.inputs().iter().chain(build.order_only_inputs()) {
             if let Some(future) = build_input(context.clone(), input).await? {
                 futures.push(future);
             }
@@ -175,8 +170,8 @@ async fn spawn_build(
         let (file_inputs, phony_inputs) = build
             .inputs()
             .iter()
-            .chain(dynamic_inputs)
-            .map(|input| input.as_str())
+            .copied()
+            .chain(dynamic_inputs.iter().map(|input| input.as_str()))
             .partition::<Vec<_>, _>(|&input| {
                 if let Some(build) = context.configuration().outputs().get(input) {
                     build.rule().is_some()

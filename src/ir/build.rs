@@ -12,7 +12,7 @@ pub struct Build<'a> {
     outputs: Vec<String>,
     implicit_outputs: Vec<String>,
     rule: Option<Rule>,
-    inputs: Vec<String>,
+    inputs: Vec<&'a str>,
     order_only_inputs: Vec<&'a str>,
     dynamic_module: Option<String>,
 }
@@ -22,7 +22,7 @@ impl<'a> Build<'a> {
         outputs: Vec<String>,
         implicit_outputs: Vec<String>,
         rule: Option<Rule>,
-        inputs: Vec<String>,
+        inputs: Vec<&'a str>,
         order_only_inputs: Vec<&'a str>,
         dynamic_module: Option<String>,
     ) -> Self {
@@ -53,7 +53,7 @@ impl<'a> Build<'a> {
         self.rule.as_ref()
     }
 
-    pub fn inputs(&self) -> &[String] {
+    pub fn inputs(&self) -> &[&'a str] {
         &self.inputs
     }
 

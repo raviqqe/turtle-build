@@ -251,7 +251,7 @@ mod tests {
         )
     }
 
-    fn ir_explicit_build(outputs: Vec<String>, rule: Rule, inputs: Vec<String>) -> Build<'static> {
+    fn ir_explicit_build<'a>(outputs: Vec<String>, rule: Rule, inputs: Vec<&'a str>) -> Build<'a> {
         Build::new(outputs, vec![], rule.into(), inputs, vec![], None)
     }
 

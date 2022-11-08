@@ -9,11 +9,11 @@ impl<'a> VariableDefinition<'a> {
         Self { name, value }
     }
 
-    pub fn name(&self) -> &str {
+    pub fn name(&self) -> &'a str {
         self.name
     }
 
-    pub fn value(&self) -> &str {
+    pub fn value(&self) -> &'a str {
         self.value
     }
 }

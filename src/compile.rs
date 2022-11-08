@@ -420,7 +420,7 @@ mod tests {
                     ir_explicit_build(
                         vec!["bar".into()],
                         Rule::new("baz", None),
-                        vec!["baz".into()]
+                        vec!["baz"]
                     )
                     .into()
                 )]
@@ -463,7 +463,7 @@ mod tests {
                     ir_explicit_build(
                         vec!["bar".into()],
                         Rule::new("baz", None),
-                        vec!["baz".into(), "blah".into()]
+                        vec!["baz", "blah"]
                     )
                     .into()
                 )]
@@ -581,7 +581,7 @@ mod tests {
                         vec![],
                         Some(Rule::new("", None)),
                         vec![],
-                        vec!["baz".into()],
+                        vec!["baz"],
                         None
                     )
                     .into()
@@ -731,7 +731,7 @@ mod tests {
                         vec!["foo".into()],
                         vec![],
                         None,
-                        vec!["bar".into()],
+                        vec!["bar"],
                         vec![],
                         None
                     )

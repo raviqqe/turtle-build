@@ -140,7 +140,7 @@ mod tests {
             validate_builds(
                 &[(
                     "foo".into(),
-                    explicit_build(vec!["foo".into()], vec!["bar".into()]).into()
+                    explicit_build(vec!["foo".into()], vec!["bar"]).into()
                 )]
                 .into_iter()
                 .collect()
@@ -160,7 +160,7 @@ mod tests {
                         vec![],
                         Rule::new("", None).into(),
                         vec![],
-                        vec!["bar".into()],
+                        vec!["bar"],
                         None
                     )
                     .into()
@@ -178,7 +178,7 @@ mod tests {
             validate_builds(
                 &[(
                     "foo".into(),
-                    explicit_build(vec!["foo".into()], vec!["foo".into()]).into()
+                    explicit_build(vec!["foo".into()], vec!["foo"]).into()
                 )]
                 .into_iter()
                 .collect()
@@ -198,7 +198,7 @@ mod tests {
                         vec![],
                         Rule::new("", None).into(),
                         vec![],
-                        vec!["foo".into()],
+                        vec!["foo"],
                         None
                     )
                     .into()
@@ -217,7 +217,7 @@ mod tests {
                 &[
                     (
                         "foo".into(),
-                        explicit_build(vec!["foo".into()], vec!["bar".into()]).into()
+                        explicit_build(vec!["foo".into()], vec!["bar"]).into()
                     ),
                     (
                         "bar".into(),
@@ -238,11 +238,11 @@ mod tests {
                 &[
                     (
                         "foo".into(),
-                        explicit_build(vec!["foo".into()], vec!["bar".into()]).into()
+                        explicit_build(vec!["foo".into()], vec!["bar"]).into()
                     ),
                     (
                         "bar".into(),
-                        explicit_build(vec!["bar".into()], vec!["foo".into()]).into()
+                        explicit_build(vec!["bar".into()], vec!["foo"]).into()
                     )
                 ]
                 .into_iter()
@@ -261,7 +261,7 @@ mod tests {
             &[
                 (
                     "foo".into(),
-                    explicit_build(vec!["foo".into()], vec!["bar".into()]).into(),
+                    explicit_build(vec!["foo".into()], vec!["bar"]).into(),
                 ),
                 (
                     "bar".into(),

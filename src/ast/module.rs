@@ -1,16 +1,16 @@
 use super::Statement;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Module {
-    statements: Vec<Statement>,
+pub struct Module<'a> {
+    statements: Vec<Statement<'a>>,
 }
 
-impl Module {
-    pub fn new(statements: Vec<Statement>) -> Self {
+impl<'a> Module<'a> {
+    pub fn new(statements: Vec<Statement<'a>>) -> Self {
         Self { statements }
     }
 
-    pub fn statements(&self) -> &[Statement] {
+    pub fn statements(&self) -> &[Statement<'a>] {
         &self.statements
     }
 }

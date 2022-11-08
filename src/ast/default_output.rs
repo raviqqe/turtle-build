@@ -1,14 +1,14 @@
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DefaultOutput {
-    outputs: Vec<String>,
+pub struct DefaultOutput<'a> {
+    outputs: Vec<&'a str>,
 }
 
-impl DefaultOutput {
-    pub fn new(outputs: Vec<String>) -> Self {
+impl<'a> DefaultOutput<'a> {
+    pub fn new(outputs: Vec<&'a str>) -> Self {
         Self { outputs }
     }
 
-    pub fn outputs(&self) -> &[String] {
+    pub fn outputs(&self) -> &[&'a str] {
         &self.outputs
     }
 }

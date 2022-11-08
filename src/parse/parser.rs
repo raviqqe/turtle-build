@@ -111,24 +111,12 @@ fn build(input: &str) -> IResult<&str, Build> {
             variable_definitions,
         )| {
             Build::new(
-                outputs.into_iter().map(From::from).collect(),
-                implicit_outputs
-                    .into_iter()
-                    .flatten()
-                    .map(From::from)
-                    .collect(),
+                outputs,
+                implicit_outputs.unwrap_or_default(),
                 rule,
-                inputs.into_iter().map(From::from).collect(),
-                implicit_inputs
-                    .into_iter()
-                    .flatten()
-                    .map(From::from)
-                    .collect(),
-                order_only_inputs
-                    .into_iter()
-                    .flatten()
-                    .map(From::from)
-                    .collect(),
+                inputs,
+                implicit_inputs.unwrap_or_default(),
+                order_only_inputs.unwrap_or_default(),
                 variable_definitions,
             )
         },
@@ -146,14 +134,7 @@ pub fn dynamic_build(input: &str) -> IResult<&str, DynamicBuild> {
             line_break,
         )),
         |(_, output, _, _, implicit_inputs, _)| {
-            DynamicBuild::new(
-                output,
-                implicit_inputs
-                    .into_iter()
-                    .flatten()
-                    .map(From::from)
-                    .collect(),
-            )
+            DynamicBuild::new(output, implicit_inputs.unwrap_or_default())
         },
     )(input)
 }
@@ -244,12 +225,12 @@ fn line_break(input: &str) -> IResult<&str, ()> {
 mod tests {
     use super::*;
 
-    fn explicit_build(
-        outputs: Vec<String>,
-        rule: impl Into<String>,
-        inputs: Vec<String>,
-        variable_definitions: Vec<VariableDefinition>,
-    ) -> Build {
+    fn explicit_build<'a>(
+        outputs: Vec<&'a str>,
+        rule: &'a str,
+        inputs: Vec<&'a str>,
+        variable_definitions: Vec<VariableDefinition<'a>>,
+    ) -> Build<'a> {
         Build::new(
             outputs,
             vec![],
@@ -358,7 +339,7 @@ mod tests {
             rule("rule foo\n command = bar\n description = baz\n")
                 .unwrap()
                 .1,
-            Rule::new("foo", "bar", Some("baz".into()))
+            Rule::new("foo", "bar", Some("baz"))
         );
     }
 
@@ -366,29 +347,24 @@ mod tests {
     fn parse_build() {
         assert_eq!(
             build("build foo: bar\n").unwrap().1,
-            explicit_build(vec!["foo".into()], "bar", vec![], vec![])
+            explicit_build(vec!["foo"], "bar", vec![], vec![])
         );
         assert_eq!(
             build("build foo: bar baz\n").unwrap().1,
-            explicit_build(vec!["foo".into()], "bar", vec!["baz".into()], vec![])
+            explicit_build(vec!["foo"], "bar", vec!["baz"], vec![])
         );
         assert_eq!(
             build("build foo: bar baz blah\n").unwrap().1,
-            explicit_build(
-                vec!["foo".into()],
-                "bar",
-                vec!["baz".into(), "blah".into()],
-                vec![]
-            )
+            explicit_build(vec!["foo"], "bar", vec!["baz", "blah"], vec![])
         );
         assert_eq!(
             build("build foo bar: baz\n").unwrap().1,
-            explicit_build(vec!["foo".into(), "bar".into()], "baz", vec![], vec![])
+            explicit_build(vec!["foo", "bar"], "baz", vec![], vec![])
         );
         assert_eq!(
             build("build foo: bar\n x = 1\n").unwrap().1,
             explicit_build(
-                vec!["foo".into()],
+                vec!["foo"],
                 "bar",
                 vec![],
                 vec![VariableDefinition::new("x", "1")]
@@ -397,7 +373,7 @@ mod tests {
         assert_eq!(
             build("build foo: bar\n x = 1\n y = 2\n").unwrap().1,
             explicit_build(
-                vec!["foo".into()],
+                vec!["foo"],
                 "bar",
                 vec![],
                 vec![
@@ -409,8 +385,8 @@ mod tests {
         assert_eq!(
             build("build x1 | x2: rule\n").unwrap().1,
             Build::new(
-                vec!["x1".into()],
-                vec!["x2".into()],
+                vec!["x1"],
+                vec!["x2"],
                 "rule",
                 vec![],
                 vec![],
@@ -421,8 +397,8 @@ mod tests {
         assert_eq!(
             build("build x1 | x2 x3: rule\n").unwrap().1,
             Build::new(
-                vec!["x1".into()],
-                vec!["x2".into(), "x3".into()],
+                vec!["x1"],
+                vec!["x2", "x3"],
                 "rule",
                 vec![],
                 vec![],
@@ -433,11 +409,11 @@ mod tests {
         assert_eq!(
             build("build x1: rule | x2\n").unwrap().1,
             Build::new(
-                vec!["x1".into()],
+                vec!["x1"],
                 vec![],
                 "rule",
                 vec![],
-                vec!["x2".into()],
+                vec!["x2"],
                 vec![],
                 vec![]
             )
@@ -445,11 +421,11 @@ mod tests {
         assert_eq!(
             build("build x1: rule | x2 x3\n").unwrap().1,
             Build::new(
-                vec!["x1".into()],
+                vec!["x1"],
                 vec![],
                 "rule",
                 vec![],
-                vec!["x2".into(), "x3".into()],
+                vec!["x2", "x3"],
                 vec![],
                 vec![]
             )
@@ -457,24 +433,24 @@ mod tests {
         assert_eq!(
             build("build x1: rule || x2\n").unwrap().1,
             Build::new(
-                vec!["x1".into()],
+                vec!["x1"],
                 vec![],
                 "rule",
                 vec![],
                 vec![],
-                vec!["x2".into()],
+                vec!["x2"],
                 vec![],
             )
         );
         assert_eq!(
             build("build x1: rule || x2 x3\n").unwrap().1,
             Build::new(
-                vec!["x1".into()],
+                vec!["x1"],
                 vec![],
                 "rule",
                 vec![],
                 vec![],
-                vec!["x2".into(), "x3".into()],
+                vec!["x2", "x3"],
                 vec![]
             )
         );
@@ -488,11 +464,11 @@ mod tests {
         );
         assert_eq!(
             dynamic_build("build foo: dyndep | bar\n").unwrap().1,
-            DynamicBuild::new("foo", vec!["bar".into()])
+            DynamicBuild::new("foo", vec!["bar"])
         );
         assert_eq!(
             dynamic_build("build foo: dyndep | bar baz\n").unwrap().1,
-            DynamicBuild::new("foo", vec!["bar".into(), "baz".into()])
+            DynamicBuild::new("foo", vec!["bar", "baz"])
         );
     }
 
@@ -502,11 +478,11 @@ mod tests {
         assert!(default("default\n").is_err());
         assert_eq!(
             default("default foo\n").unwrap().1,
-            DefaultOutput::new(vec!["foo".into()])
+            DefaultOutput::new(vec!["foo"])
         );
         assert_eq!(
             default("default foo bar\n").unwrap().1,
-            DefaultOutput::new(vec!["foo".into(), "bar".into()])
+            DefaultOutput::new(vec!["foo", "bar"])
         );
     }
 

@@ -109,7 +109,8 @@ async fn read_modules(
     let mut dependencies = HashMap::new();
 
     while let Some(path) = paths.pop() {
-        let module = parse(&read_file(&path).await?)?;
+        // HACK Leak sources.
+        let module = parse(Box::leak(read_file(&path).await?.into_boxed_str()))?;
 
         let submodule_paths = try_join_all(
             module

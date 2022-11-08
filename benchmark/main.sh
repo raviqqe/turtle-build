@@ -7,7 +7,7 @@ build_count=10000
 
 print_rule() (
   echo rule $1
-  echo "" command = cp $in $out
+  echo "" command = cp \$in \$out
   echo "" description = hahahaha
 )
 

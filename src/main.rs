@@ -103,14 +103,15 @@ async fn execute(
 
 async fn read_modules(
     path: &Path,
-) -> Result<(HashMap<PathBuf, Module>, ModuleDependencyMap), InfrastructureError> {
+) -> Result<(HashMap<PathBuf, Module<'static>>, ModuleDependencyMap), InfrastructureError> {
     let mut paths = vec![canonicalize_path(path).await?];
     let mut modules = HashMap::new();
     let mut dependencies = HashMap::new();
 
     while let Some(path) = paths.pop() {
         // TODO Store source files globally.
-        let module = parse(&Box::leak(read_file(&path).await?.into_boxed_str()))?;
+        let source = Box::leak::<'static>(read_file(&path).await?.into_boxed_str());
+        let module = parse(source)?;
 
         let submodule_paths = try_join_all(
             module

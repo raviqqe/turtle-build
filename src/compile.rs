@@ -69,10 +69,10 @@ pub fn compile(
     ))
 }
 
-fn compile_module(
-    context: &Context,
+fn compile_module<'a, 'b>(
+    context: &Context<'a>,
     global_state: &mut GlobalState,
-    module_state: &mut ModuleState,
+    module_state: &mut ModuleState<'a, 'b>,
     path: &Path,
 ) -> Result<(), CompileError> {
     let module = &context
@@ -97,8 +97,13 @@ fn compile_module(
                 );
 
                 let ir = Arc::new(Build::new(
-                    build.outputs().to_vec(),
-                    build.implicit_outputs().to_vec(),
+                    build.outputs().iter().copied().map(From::from).collect(),
+                    build
+                        .implicit_outputs()
+                        .iter()
+                        .copied()
+                        .map(From::from)
+                        .collect(),
                     if build.rule() == PHONY_RULE {
                         None
                     } else {
@@ -117,9 +122,15 @@ fn compile_module(
                         .inputs()
                         .iter()
                         .chain(build.implicit_inputs())
-                        .cloned()
+                        .copied()
+                        .map(From::from)
                         .collect(),
-                    build.order_only_inputs().to_vec(),
+                    build
+                        .order_only_inputs()
+                        .iter()
+                        .copied()
+                        .map(From::from)
+                        .collect(),
                     variables.get(DYNAMIC_MODULE_VARIABLE).cloned(),
                 ));
 
@@ -127,18 +138,18 @@ fn compile_module(
 
                 global_state
                     .outputs
-                    .extend(outputs().map(|output| (output.into(), ir.clone())));
+                    .extend(outputs().map(|&output| (output.into(), ir.clone())));
 
                 if let Some(source) = variables.get(SOURCE_VARIABLE_NAME) {
                     global_state
                         .source_map
-                        .extend(outputs().map(|output| (output.clone(), source.clone())));
+                        .extend(outputs().map(|&output| (output.into(), source.clone())));
                 }
             }
             ast::Statement::Default(default) => {
                 global_state
                     .default_outputs
-                    .extend(default.outputs().iter().cloned());
+                    .extend(default.outputs().iter().copied().map(From::from));
             }
             ast::Statement::Include(include) => {
                 compile_module(
@@ -178,7 +189,14 @@ pub fn compile_dynamic(module: &ast::DynamicModule) -> Result<DynamicConfigurati
             .map(|build| {
                 (
                     build.output().into(),
-                    DynamicBuild::new(build.implicit_inputs().to_vec()),
+                    DynamicBuild::new(
+                        build
+                            .implicit_inputs()
+                            .iter()
+                            .copied()
+                            .map(From::from)
+                            .collect(),
+                    ),
                 )
             })
             .collect(),

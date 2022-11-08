@@ -13,7 +13,7 @@ impl<'a> DynamicBuild<'a> {
     }
 
     pub fn output(&self) -> &str {
-        &self.output
+        self.output
     }
 
     pub fn implicit_inputs(&self) -> &[&str] {

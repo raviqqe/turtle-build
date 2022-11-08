@@ -15,14 +15,14 @@ impl<'a> Rule<'a> {
     }
 
     pub fn name(&self) -> &str {
-        &self.name
+        self.name
     }
 
     pub fn command(&self) -> &str {
-        &self.command
+        self.command
     }
 
     pub fn description(&self) -> Option<&str> {
-        self.description.as_deref()
+        self.description
     }
 }

@@ -9,6 +9,6 @@ impl<'a> Submodule<'a> {
     }
 
     pub fn path(&self) -> &'a str {
-        &self.path
+        self.path
     }
 }

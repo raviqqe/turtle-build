@@ -9,6 +9,6 @@ impl<'a> Include<'a> {
     }
 
     pub fn path(&self) -> &str {
-        &self.path
+        self.path
     }
 }

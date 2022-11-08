@@ -41,7 +41,7 @@ impl<'a> Build<'a> {
     }
 
     pub fn rule(&self) -> &str {
-        &self.rule
+        self.rule
     }
 
     pub fn inputs(&self) -> &[&str] {

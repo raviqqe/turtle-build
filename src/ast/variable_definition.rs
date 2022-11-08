@@ -10,10 +10,10 @@ impl<'a> VariableDefinition<'a> {
     }
 
     pub fn name(&self) -> &str {
-        &self.name
+        self.name
     }
 
     pub fn value(&self) -> &str {
-        &self.value
+        self.value
     }
 }

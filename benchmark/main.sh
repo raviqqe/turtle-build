@@ -28,8 +28,8 @@ for index in $(seq 0 $rule_count); do
   print_rule $rule
 
   for index in $(seq 0 $build_count); do
-    input=input$index
-    output=output$index
+    input=${rule}_input$index
+    output=${rule}_output$index
 
     touch $input
     print_build $rule $input $output

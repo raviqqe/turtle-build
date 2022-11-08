@@ -100,7 +100,7 @@ async fn trigger_build(
 
     let future: RawBuildFuture = Box::pin(spawn_build(context.clone(), build.clone()));
 
-    builds.insert(build.id().into(), future.shared());
+    builds.insert(build.id(), future.shared());
 
     Ok(())
 }

@@ -12,7 +12,7 @@ impl BuildId {
         Self(id)
     }
 
-    pub fn to_bytes(&self) -> [u8; 8] {
+    pub fn to_bytes(self) -> [u8; 8] {
         self.0.to_le_bytes()
     }
 }
@@ -84,6 +84,6 @@ impl<'a> Build<'a> {
         outputs.hash(&mut hasher);
         implicit_outputs.hash(&mut hasher);
 
-        BuildId(hasher.finish())
+        BuildId::new(hasher.finish())
     }
 }

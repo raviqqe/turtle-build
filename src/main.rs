@@ -109,7 +109,7 @@ async fn read_modules(
     let mut dependencies = HashMap::new();
 
     while let Some(path) = paths.pop() {
-        // TODO Store source files globally.
+        // HACK Leak sources.
         let source = Box::leak::<'static>(read_file(&path).await?.into_boxed_str());
         let module = parse(source)?;
 

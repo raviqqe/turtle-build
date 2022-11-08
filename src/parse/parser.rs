@@ -111,24 +111,12 @@ fn build(input: &str) -> IResult<&str, Build> {
             variable_definitions,
         )| {
             Build::new(
-                outputs.into_iter().map(From::from).collect(),
-                implicit_outputs
-                    .into_iter()
-                    .flatten()
-                    .map(From::from)
-                    .collect(),
+                outputs,
+                implicit_outputs.unwrap_or_default(),
                 rule,
-                inputs.into_iter().map(From::from).collect(),
-                implicit_inputs
-                    .into_iter()
-                    .flatten()
-                    .map(From::from)
-                    .collect(),
-                order_only_inputs
-                    .into_iter()
-                    .flatten()
-                    .map(From::from)
-                    .collect(),
+                inputs,
+                implicit_inputs.unwrap_or_default(),
+                order_only_inputs.unwrap_or_default(),
                 variable_definitions,
             )
         },
@@ -146,14 +134,7 @@ pub fn dynamic_build(input: &str) -> IResult<&str, DynamicBuild> {
             line_break,
         )),
         |(_, output, _, _, implicit_inputs, _)| {
-            DynamicBuild::new(
-                output,
-                implicit_inputs
-                    .into_iter()
-                    .flatten()
-                    .map(From::from)
-                    .collect(),
-            )
+            DynamicBuild::new(output, implicit_inputs.unwrap_or_default())
         },
     )(input)
 }

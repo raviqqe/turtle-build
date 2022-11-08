@@ -355,12 +355,7 @@ mod tests {
         );
         assert_eq!(
             build("build foo: bar baz blah\n").unwrap().1,
-            explicit_build(
-                vec!["foo"],
-                "bar",
-                vec!["baz", "blah"],
-                vec![]
-            )
+            explicit_build(vec!["foo"], "bar", vec!["baz", "blah"], vec![])
         );
         assert_eq!(
             build("build foo bar: baz\n").unwrap().1,

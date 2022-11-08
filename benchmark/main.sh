@@ -19,6 +19,7 @@ print_default() (
   echo default $1
 )
 
+cd $(dirname $0)
 mkdir -p tmp
 cd tmp
 

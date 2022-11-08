@@ -94,7 +94,7 @@ async fn trigger_build(
     // Exclusive lock for atomic addition of a build job.
     let mut builds = context.build_futures().write().await;
 
-    if builds.contains_key(build.id()) {
+    if builds.contains_key(&build.id()) {
         return Ok(());
     }
 
@@ -221,7 +221,7 @@ async fn build_input(
         if let Some(build) = context.configuration().outputs().get(input) {
             trigger_build(context.clone(), build).await?;
 
-            Some(context.build_futures().read().await[build.id()].clone())
+            Some(context.build_futures().read().await[&build.id()].clone())
         } else {
             let input = input.to_owned();
             let future: RawBuildFuture<'static> =

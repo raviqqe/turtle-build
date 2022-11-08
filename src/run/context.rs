@@ -1,5 +1,9 @@
 use super::{build_database::BuildDatabase, options::Options, BuildFuture};
-use crate::{console::Console, ir::Configuration, validation::BuildGraph};
+use crate::{
+    console::Console,
+    ir::{BuildId, Configuration},
+    validation::BuildGraph,
+};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{Mutex, RwLock, Semaphore};
 
@@ -7,7 +11,7 @@ use tokio::sync::{Mutex, RwLock, Semaphore};
 pub struct Context<'a> {
     configuration: Arc<Configuration<'a>>,
     // TODO Use a concurrent hash map. We only need atomic insertion but not a great lock.
-    build_futures: RwLock<HashMap<String, BuildFuture<'a>>>,
+    build_futures: RwLock<HashMap<BuildId, BuildFuture<'a>>>,
     build_graph: Mutex<BuildGraph>,
     database: BuildDatabase,
     job_semaphore: Semaphore,
@@ -39,7 +43,7 @@ impl<'a> Context<'a> {
         &self.configuration
     }
 
-    pub fn build_futures(&self) -> &RwLock<HashMap<String, BuildFuture<'a>>> {
+    pub fn build_futures(&self) -> &RwLock<HashMap<BuildId, BuildFuture<'a>>> {
         &self.build_futures
     }
 

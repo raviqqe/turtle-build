@@ -1,13 +1,13 @@
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DynamicBuild {
-    output: String,
-    implicit_inputs: Vec<String>,
+pub struct DynamicBuild<'a> {
+    output: &'a str,
+    implicit_inputs: Vec<&'a str>,
 }
 
-impl DynamicBuild {
-    pub fn new(output: impl Into<String>, implicit_inputs: Vec<String>) -> Self {
+impl<'a> DynamicBuild<'a> {
+    pub fn new(output: &'a str, implicit_inputs: Vec<&'a str>) -> Self {
         Self {
-            output: output.into(),
+            output,
             implicit_inputs,
         }
     }
@@ -16,7 +16,7 @@ impl DynamicBuild {
         &self.output
     }
 
-    pub fn implicit_inputs(&self) -> &[String] {
+    pub fn implicit_inputs(&self) -> &[&str] {
         &self.implicit_inputs
     }
 }

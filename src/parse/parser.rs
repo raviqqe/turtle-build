@@ -225,12 +225,12 @@ fn line_break(input: &str) -> IResult<&str, ()> {
 mod tests {
     use super::*;
 
-    fn explicit_build(
-        outputs: Vec<String>,
-        rule: impl Into<String>,
-        inputs: Vec<String>,
-        variable_definitions: Vec<VariableDefinition>,
-    ) -> Build {
+    fn explicit_build<'a>(
+        outputs: Vec<&'a str>,
+        rule: &'a str,
+        inputs: Vec<&'a str>,
+        variable_definitions: Vec<VariableDefinition<'a>>,
+    ) -> Build<'a> {
         Build::new(
             outputs,
             vec![],

@@ -127,7 +127,7 @@ fn compile_module(
 
                 global_state
                     .outputs
-                    .extend(outputs().map(|output| (output.clone(), ir.clone())));
+                    .extend(outputs().map(|output| (output.into(), ir.clone())));
 
                 if let Some(source) = variables.get(SOURCE_VARIABLE_NAME) {
                     global_state
@@ -221,12 +221,12 @@ mod tests {
             .collect()
     });
 
-    fn ast_explicit_build(
-        outputs: Vec<String>,
-        rule: impl Into<String>,
-        inputs: Vec<String>,
-        variable_definitions: Vec<ast::VariableDefinition>,
-    ) -> ast::Build {
+    fn ast_explicit_build<'a>(
+        outputs: Vec<&'a str>,
+        rule: &'a str,
+        inputs: Vec<&'a str>,
+        variable_definitions: Vec<ast::VariableDefinition<'a>>,
+    ) -> ast::Build<'a> {
         ast::Build::new(
             outputs,
             vec![],

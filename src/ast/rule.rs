@@ -1,19 +1,15 @@
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Rule {
-    name: String,
-    command: String,
-    description: Option<String>,
+pub struct Rule<'a> {
+    name: &'a str,
+    command: &'a str,
+    description: Option<&'a str>,
 }
 
-impl Rule {
-    pub fn new(
-        name: impl Into<String>,
-        command: impl Into<String>,
-        description: Option<String>,
-    ) -> Self {
+impl<'a> Rule<'a> {
+    pub fn new(name: &'a str, command: &'a str, description: Option<&'a str>) -> Self {
         Self {
-            name: name.into(),
-            command: command.into(),
+            name,
+            command,
             description,
         }
     }

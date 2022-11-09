@@ -10,7 +10,7 @@ use self::{
 pub use self::{context::ModuleDependencyMap, error::CompileError};
 use crate::{
     ast,
-    ir::{Build, Configuration, DynamicBuild, DynamicConfiguration, Rule},
+    ir::{Build, Configuration, DynamicBuild, DynamicConfiguration, PathSet, Rule},
 };
 use once_cell::sync::Lazy;
 use regex::{Captures, Regex};
@@ -34,6 +34,7 @@ pub fn compile<'a>(
     root_module_path: &Path,
 ) -> Result<Configuration<'a>, CompileError> {
     let context = Context::new(modules.clone(), dependencies.clone());
+    let mut paths = PathSet::new();
 
     let mut global_state = GlobalState {
         outputs: Default::default(),
@@ -49,6 +50,7 @@ pub fn compile<'a>(
         &context,
         &mut global_state,
         &mut module_state,
+        &mut paths,
         root_module_path,
     )?;
 
@@ -66,6 +68,7 @@ pub fn compile<'a>(
             .variables
             .get(BUILD_DIRECTORY_VARIABLE)
             .cloned(),
+        paths,
     ))
 }
 
@@ -73,6 +76,7 @@ fn compile_module<'a>(
     context: &Context<'a>,
     global_state: &mut GlobalState<'a>,
     module_state: &mut ModuleState<'a, '_>,
+    paths: &mut PathSet<'a>,
     path: &Path,
 ) -> Result<(), CompileError> {
     let module = &context
@@ -145,6 +149,7 @@ fn compile_module<'a>(
                     context,
                     global_state,
                     module_state,
+                    paths,
                     resolve_dependency(context, path, include.path())?,
                 )?;
             }
@@ -156,6 +161,7 @@ fn compile_module<'a>(
                     context,
                     global_state,
                     &mut module_state.fork(),
+                    paths,
                     resolve_dependency(context, path, submodule.path())?,
                 )?;
             }
@@ -253,7 +259,13 @@ mod tests {
         outputs: FnvHashMap<String, Arc<Build>>,
         default_outputs: FnvHashSet<String>,
     ) -> Configuration {
-        Configuration::new(outputs, default_outputs, Default::default(), None)
+        Configuration::new(
+            outputs,
+            default_outputs,
+            Default::default(),
+            None,
+            Default::default(),
+        )
     }
 
     #[test]

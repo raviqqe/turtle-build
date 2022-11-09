@@ -1,4 +1,4 @@
-use super::Build;
+use super::{Build, PathSet};
 use fnv::{FnvHashMap, FnvHashSet};
 use std::sync::Arc;
 
@@ -8,6 +8,7 @@ pub struct Configuration<'a> {
     default_outputs: FnvHashSet<String>,
     source_map: FnvHashMap<String, String>,
     build_directory: Option<String>,
+    paths: PathSet<'a>,
 }
 
 impl<'a> Configuration<'a> {
@@ -16,12 +17,14 @@ impl<'a> Configuration<'a> {
         default_outputs: FnvHashSet<String>,
         source_map: FnvHashMap<String, String>,
         build_directory: Option<String>,
+        paths: PathSet<'a>,
     ) -> Self {
         Self {
             outputs,
             default_outputs,
             source_map,
             build_directory,
+            paths,
         }
     }
 
@@ -39,5 +42,9 @@ impl<'a> Configuration<'a> {
 
     pub fn build_directory(&self) -> Option<&str> {
         self.build_directory.as_deref()
+    }
+
+    pub fn paths(&self) -> &PathSet<'a> {
+        &self.paths
     }
 }

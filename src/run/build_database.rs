@@ -10,13 +10,13 @@ pub struct BuildDatabase {
 }
 
 impl BuildDatabase {
-    pub fn new(build_directory: &Path) -> Result<Self, InfrastructureError<'static>> {
+    pub fn new(build_directory: &Path) -> Result<Self, InfrastructureError> {
         Ok(Self {
             database: sled::open(build_directory.join(DATABASE_FILENAME))?,
         })
     }
 
-    pub fn get(&self, id: BuildId) -> Result<Option<BuildHash>, InfrastructureError<'static>> {
+    pub fn get(&self, id: BuildId) -> Result<Option<BuildHash>, InfrastructureError> {
         Ok(self
             .database
             .get(id.to_bytes())?
@@ -24,14 +24,14 @@ impl BuildDatabase {
             .transpose()?)
     }
 
-    pub fn set(&self, id: BuildId, hash: BuildHash) -> Result<(), InfrastructureError<'static>> {
+    pub fn set(&self, id: BuildId, hash: BuildHash) -> Result<(), InfrastructureError> {
         self.database
             .insert(id.to_bytes(), bincode::serialize(&hash)?)?;
 
         Ok(())
     }
 
-    pub async fn flush(&self) -> Result<(), InfrastructureError<'static>> {
+    pub async fn flush(&self) -> Result<(), InfrastructureError> {
         self.database.flush_async().await?;
 
         Ok(())

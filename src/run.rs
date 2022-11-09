@@ -31,7 +31,7 @@ use tokio::{
 };
 
 type RawBuildFuture<'a> =
-    Pin<Box<dyn Future<Output = Result<(), InfrastructureError<'a>>> + Send + 'a>>;
+    Pin<Box<dyn Future<Output = Result<(), InfrastructureError>> + Send + 'a>>;
 type BuildFuture<'a> = Shared<RawBuildFuture<'a>>;
 
 pub async fn run(
@@ -89,8 +89,8 @@ pub async fn run(
 #[async_recursion]
 async fn trigger_build(
     context: Arc<Context<'static>>,
-    build: &Arc<Build<'static>>,
-) -> Result<(), InfrastructureError<'static>> {
+    build: &Arc<Build>,
+) -> Result<(), InfrastructureError> {
     // Exclusive lock for atomic addition of a build job.
     let mut builds = context.build_futures().write().await;
 
@@ -107,8 +107,8 @@ async fn trigger_build(
 
 async fn spawn_build(
     context: Arc<Context<'static>>,
-    build: Arc<Build<'static>>,
-) -> Result<(), InfrastructureError<'static>> {
+    build: Arc<Build>,
+) -> Result<(), InfrastructureError> {
     spawn(async move {
         let mut futures = vec![];
 
@@ -140,7 +140,7 @@ async fn spawn_build(
             build
                 .outputs()
                 .iter()
-                .find_map(|output| configuration.outputs().get(*output))
+                .find_map(|output| configuration.outputs().get(output))
                 .map(|build| build.inputs())
                 .ok_or_else(|| InfrastructureError::DynamicDependencyNotFound(build.clone()))?
         } else {

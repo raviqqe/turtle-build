@@ -10,11 +10,11 @@ use std::{
 use tokio::{io, sync::AcquireError, task::JoinError};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum InfrastructureError<'a> {
+pub enum InfrastructureError {
     Build,
     Compile(CompileError),
     DefaultOutputNotFound(String),
-    DynamicDependencyNotFound(Arc<Build<'a>>),
+    DynamicDependencyNotFound(Arc<Build>),
     InputNotBuilt(String),
     InputNotFound(String),
     Other(String),
@@ -23,7 +23,7 @@ pub enum InfrastructureError<'a> {
     Validation(ValidationError),
 }
 
-impl<'a> InfrastructureError<'a> {
+impl InfrastructureError {
     pub fn with_path(error: io::Error, path: impl AsRef<Path>) -> Self {
         Self::Other(format!("{}: {}", error, path.as_ref().display()))
     }
@@ -44,9 +44,9 @@ impl<'a> InfrastructureError<'a> {
     }
 }
 
-impl<'a> Error for InfrastructureError<'a> {}
+impl Error for InfrastructureError {}
 
-impl<'a> Display for InfrastructureError<'a> {
+impl Display for InfrastructureError {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
             Self::Build => write!(formatter, "build failed"),
@@ -76,49 +76,49 @@ impl<'a> Display for InfrastructureError<'a> {
     }
 }
 
-impl From<AcquireError> for InfrastructureError<'static> {
+impl From<AcquireError> for InfrastructureError {
     fn from(error: AcquireError) -> Self {
         Self::Other(format!("{}", &error))
     }
 }
 
-impl From<bincode::Error> for InfrastructureError<'static> {
+impl From<bincode::Error> for InfrastructureError {
     fn from(error: bincode::Error) -> Self {
         Self::Other(format!("{}", &error))
     }
 }
 
-impl From<CompileError> for InfrastructureError<'static> {
+impl From<CompileError> for InfrastructureError {
     fn from(error: CompileError) -> Self {
         Self::Compile(error)
     }
 }
 
-impl From<io::Error> for InfrastructureError<'static> {
+impl From<io::Error> for InfrastructureError {
     fn from(error: io::Error) -> Self {
         Self::Other(format!("{}", &error))
     }
 }
 
-impl From<JoinError> for InfrastructureError<'static> {
+impl From<JoinError> for InfrastructureError {
     fn from(error: JoinError) -> Self {
         Self::Other(format!("{}", &error))
     }
 }
 
-impl From<ParseError> for InfrastructureError<'static> {
+impl From<ParseError> for InfrastructureError {
     fn from(error: ParseError) -> Self {
         Self::Parse(error)
     }
 }
 
-impl From<sled::Error> for InfrastructureError<'static> {
+impl From<sled::Error> for InfrastructureError {
     fn from(error: sled::Error) -> Self {
         Self::Sled(error)
     }
 }
 
-impl From<ValidationError> for InfrastructureError<'static> {
+impl From<ValidationError> for InfrastructureError {
     fn from(error: ValidationError) -> Self {
         Self::Validation(error)
     }

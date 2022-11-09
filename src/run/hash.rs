@@ -18,10 +18,10 @@ const BUFFER_CAPACITY: usize = 2 << 10;
 
 pub async fn calculate_timestamp_hash<'a>(
     context: &Context<'a>,
-    build: &Build<'a>,
+    build: &Build,
     file_inputs: &[&str],
     phony_inputs: &[&str],
-) -> Result<u64, InfrastructureError<'a>> {
+) -> Result<u64, InfrastructureError> {
     if let Some(hash) = calculate_fallback_hash(build, file_inputs, phony_inputs) {
         return Ok(hash);
     }
@@ -45,10 +45,10 @@ pub async fn calculate_timestamp_hash<'a>(
 
 pub async fn calculate_content_hash<'a>(
     context: &Context<'a>,
-    build: &Build<'a>,
+    build: &Build,
     file_inputs: &[&str],
     phony_inputs: &[&str],
-) -> Result<u64, InfrastructureError<'a>> {
+) -> Result<u64, InfrastructureError> {
     if let Some(hash) = calculate_fallback_hash(build, file_inputs, phony_inputs) {
         return Ok(hash);
     }
@@ -75,7 +75,7 @@ pub async fn calculate_content_hash<'a>(
 fn get_build_hash<'a>(
     context: &Context<'a>,
     input: &str,
-) -> Result<BuildHash, InfrastructureError<'a>> {
+) -> Result<BuildHash, InfrastructureError> {
     context
         .database()
         .get(

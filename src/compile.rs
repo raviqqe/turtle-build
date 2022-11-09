@@ -74,7 +74,7 @@ pub fn compile<'a>(
 
 fn compile_module<'a>(
     context: &Context<'a>,
-    global_state: &mut GlobalState<'a>,
+    global_state: &mut GlobalState,
     module_state: &mut ModuleState<'a, '_>,
     paths: &mut PathSet<'a>,
     path: &Path,

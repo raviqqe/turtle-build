@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Configuration<'a> {
-    outputs: FnvHashMap<String, Arc<Build<'a>>>,
+    outputs: FnvHashMap<String, Arc<Build>>,
     default_outputs: FnvHashSet<String>,
     source_map: FnvHashMap<String, String>,
     build_directory: Option<String>,
@@ -13,7 +13,7 @@ pub struct Configuration<'a> {
 
 impl<'a> Configuration<'a> {
     pub fn new(
-        outputs: FnvHashMap<String, Arc<Build<'a>>>,
+        outputs: FnvHashMap<String, Arc<Build>>,
         default_outputs: FnvHashSet<String>,
         source_map: FnvHashMap<String, String>,
         build_directory: Option<String>,
@@ -28,7 +28,7 @@ impl<'a> Configuration<'a> {
         }
     }
 
-    pub fn outputs(&self) -> &FnvHashMap<String, Arc<Build<'a>>> {
+    pub fn outputs(&self) -> &FnvHashMap<String, Arc<Build>> {
         &self.outputs
     }
 

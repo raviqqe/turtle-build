@@ -18,25 +18,25 @@ impl BuildId {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Build<'a> {
+pub struct Build {
     // IDs are persistent across different builds so that they can be used for,
     // for example, caching.
     id: BuildId,
     outputs: Vec<PathId>,
-    implicit_outputs: Vec<&'a str>,
+    implicit_outputs: Vec<PathId>,
     rule: Option<Rule>,
-    inputs: Vec<&'a str>,
-    order_only_inputs: Vec<&'a str>,
+    inputs: Vec<PathId>,
+    order_only_inputs: Vec<PathId>,
     dynamic_module: Option<String>,
 }
 
-impl<'a> Build<'a> {
+impl Build {
     pub fn new(
         outputs: Vec<PathId>,
-        implicit_outputs: Vec<&'a str>,
+        implicit_outputs: Vec<PathId>,
         rule: Option<Rule>,
-        inputs: Vec<&'a str>,
-        order_only_inputs: Vec<&'a str>,
+        inputs: Vec<PathId>,
+        order_only_inputs: Vec<PathId>,
         dynamic_module: Option<String>,
     ) -> Self {
         Self {
@@ -58,7 +58,7 @@ impl<'a> Build<'a> {
         &self.outputs
     }
 
-    pub fn implicit_outputs(&self) -> &[&'a str] {
+    pub fn implicit_outputs(&self) -> &[PathId] {
         &self.implicit_outputs
     }
 
@@ -66,11 +66,11 @@ impl<'a> Build<'a> {
         self.rule.as_ref()
     }
 
-    pub fn inputs(&self) -> &[&'a str] {
+    pub fn inputs(&self) -> &[PathId] {
         &self.inputs
     }
 
-    pub fn order_only_inputs(&self) -> &[&'a str] {
+    pub fn order_only_inputs(&self) -> &[PathId] {
         &self.order_only_inputs
     }
 
@@ -78,7 +78,7 @@ impl<'a> Build<'a> {
         self.dynamic_module.as_deref()
     }
 
-    fn calculate_id(outputs: &[PathId], implicit_outputs: &[&'a str]) -> BuildId {
+    fn calculate_id(outputs: &[PathId], implicit_outputs: &[PathId]) -> BuildId {
         let mut hasher = DefaultHasher::new();
 
         outputs.hash(&mut hasher);

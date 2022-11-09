@@ -38,4 +38,5 @@ for index in $(seq 0 $rule_count); do
   done
 done >build.ninja
 
+cargo install hyperfine
 hyperfine ninja turtle

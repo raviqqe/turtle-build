@@ -1,0 +1,15 @@
+name: benchmark
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: raviqqe/enable-homebrew@main
+      - run: brew install ninja
+      - run: cargo install --path . --locked
+      - run: benchmark/main.sh

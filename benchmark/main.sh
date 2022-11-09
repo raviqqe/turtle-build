@@ -3,7 +3,7 @@
 set -e
 
 rule_count=10
-build_count=1000
+build_count=100
 
 print_rule() (
   echo rule $1

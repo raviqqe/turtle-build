@@ -39,4 +39,4 @@ for index in $(seq 0 $rule_count); do
 done >build.ninja
 
 cargo install hyperfine
-hyperfine -w 10 ninja turtle
+hyperfine -p ../clean.sh ninja turtle

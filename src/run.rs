@@ -8,6 +8,7 @@ use self::{build_database::BuildDatabase, build_hash::BuildHash, context::Contex
 use crate::{
     compile::compile_dynamic,
     console::Console,
+    context::Context,
     debug,
     error::InfrastructureError,
     ir::{Build, Configuration, Rule},
@@ -35,6 +36,7 @@ type RawBuildFuture<'a> =
 type BuildFuture<'a> = Shared<RawBuildFuture<'a>>;
 
 pub async fn run(
+    context: &Arc<Context>,
     configuration: Arc<Configuration<'static>>,
     console: &Arc<Mutex<Console>>,
     build_directory: &Path,
@@ -45,6 +47,7 @@ pub async fn run(
     graph.validate()?;
 
     let context = Arc::new(RunContext::new(
+        context.clone(),
         configuration,
         graph,
         BuildDatabase::new(build_directory)?,

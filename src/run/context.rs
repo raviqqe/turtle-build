@@ -1,6 +1,7 @@
 use super::{build_database::BuildDatabase, options::Options, BuildFuture};
 use crate::{
     console::Console,
+    context::Context as GlobalContext,
     ir::{BuildId, Configuration},
     validation::BuildGraph,
 };
@@ -21,6 +22,7 @@ pub struct Context<'a> {
 
 impl<'a> Context<'a> {
     pub fn new(
+        context: Arc<GlobalContext>,
         configuration: Arc<Configuration<'a>>,
         build_graph: BuildGraph,
         database: BuildDatabase,

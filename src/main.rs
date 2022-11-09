@@ -16,8 +16,10 @@ use ast::{Module, Statement};
 use clap::Parser;
 use compile::{compile, ModuleDependencyMap};
 use console::Console;
+use context::Context;
 use error::InfrastructureError;
 use futures::future::try_join_all;
+use infrastructure::OsFileSystem;
 use parse::parse;
 use std::{
     collections::HashMap,
@@ -36,9 +38,10 @@ const DEFAULT_BUILD_FILE: &str = "build.ninja";
 #[tokio::main]
 async fn main() {
     let arguments = Arguments::parse();
-    let console = Arc::new(Mutex::new(Console::new()));
+    let context = Context::new(OsFileSystem).into();
+    let console = Mutex::new(Console::new()).into();
 
-    if let Err(error) = execute(&arguments, &console).await {
+    if let Err(error) = execute(&context, &arguments, &console).await {
         if !(arguments.quiet && matches!(error, InfrastructureError::Build)) {
             console
                 .lock()
@@ -68,6 +71,7 @@ async fn main() {
 }
 
 async fn execute(
+    context: &Arc<Context>,
     arguments: &Arguments,
     console: &Arc<Mutex<Console>>,
 ) -> Result<(), InfrastructureError<'static>> {
@@ -88,6 +92,7 @@ async fn execute(
         .unwrap_or_else(|| root_module_path.parent().unwrap().into());
 
     run::run(
+        context,
         configuration.clone(),
         console,
         &build_directory,

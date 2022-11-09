@@ -2,8 +2,8 @@
 
 set -e
 
-rule_count=100
-build_count=10000
+rule_count=10
+build_count=1000
 
 print_rule() (
   echo rule $1
@@ -39,4 +39,4 @@ for index in $(seq 0 $rule_count); do
 done >build.ninja
 
 cargo install hyperfine
-hyperfine ninja turtle
+hyperfine -w 10 ninja turtle

@@ -1,4 +1,4 @@
-use super::Rule;
+use super::{PathId, Rule};
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
@@ -22,7 +22,7 @@ pub struct Build<'a> {
     // IDs are persistent across different builds so that they can be used for,
     // for example, caching.
     id: BuildId,
-    outputs: Vec<&'a str>,
+    outputs: Vec<PathId>,
     implicit_outputs: Vec<&'a str>,
     rule: Option<Rule>,
     inputs: Vec<&'a str>,
@@ -32,7 +32,7 @@ pub struct Build<'a> {
 
 impl<'a> Build<'a> {
     pub fn new(
-        outputs: Vec<&'a str>,
+        outputs: Vec<PathId>,
         implicit_outputs: Vec<&'a str>,
         rule: Option<Rule>,
         inputs: Vec<&'a str>,
@@ -54,7 +54,7 @@ impl<'a> Build<'a> {
         self.id
     }
 
-    pub fn outputs(&self) -> &[&'a str] {
+    pub fn outputs(&self) -> &[PathId] {
         &self.outputs
     }
 
@@ -78,7 +78,7 @@ impl<'a> Build<'a> {
         self.dynamic_module.as_deref()
     }
 
-    fn calculate_id(outputs: &[&'a str], implicit_outputs: &[&'a str]) -> BuildId {
+    fn calculate_id(outputs: &[PathId], implicit_outputs: &[&'a str]) -> BuildId {
         let mut hasher = DefaultHasher::new();
 
         outputs.hash(&mut hasher);

@@ -1,5 +1,5 @@
 use super::error::ValidationError;
-use crate::ir::{Build, DynamicConfiguration};
+use crate::ir::{Build, DynamicConfiguration, PathId};
 use fnv::FnvHashMap;
 use petgraph::{
     algo::{kosaraju_scc, toposort},
@@ -10,16 +10,16 @@ use std::{collections::HashMap, sync::Arc};
 
 #[derive(Debug)]
 pub struct BuildGraph {
-    graph: Graph<String, ()>,
-    nodes: HashMap<String, NodeIndex<DefaultIx>>,
-    primary_outputs: HashMap<String, String>,
+    graph: Graph<PathId, ()>,
+    nodes: HashMap<PathId, NodeIndex<DefaultIx>>,
+    primary_outputs: HashMap<PathId, PathId>,
 }
 
 impl BuildGraph {
-    pub fn new(outputs: &FnvHashMap<String, Arc<Build>>) -> Self {
+    pub fn new(outputs: &FnvHashMap<PathId, Arc<Build>>) -> Self {
         let mut this = Self {
-            graph: Graph::<String, ()>::new(),
-            nodes: HashMap::<String, NodeIndex<DefaultIx>>::new(),
+            graph: Graph::<PathId, ()>::new(),
+            nodes: HashMap::<PathId, NodeIndex<DefaultIx>>::new(),
             primary_outputs: HashMap::new(),
         };
 
@@ -69,23 +69,23 @@ impl BuildGraph {
     ) -> Result<(), ValidationError> {
         for (output, build) in configuration.outputs() {
             for input in build.inputs() {
-                self.add_edge(&self.primary_outputs[output].clone(), input);
+                self.add_edge(self.primary_outputs[&output].clone(), input);
             }
         }
 
         self.validate()
     }
 
-    fn add_edge(&mut self, output: &str, input: &str) {
+    fn add_edge(&mut self, output: PathId, input: PathId) {
         self.add_node(output);
         self.add_node(input);
 
         self.graph
-            .add_edge(self.nodes[output], self.nodes[input], ());
+            .add_edge(self.nodes[&output], self.nodes[&input], ());
     }
 
-    fn add_node(&mut self, output: &str) {
-        if !self.nodes.contains_key(output) {
+    fn add_node(&mut self, output: PathId) {
+        if !self.nodes.contains_key(&output) {
             self.nodes
                 .insert(output.into(), self.graph.add_node(output.into()));
         }

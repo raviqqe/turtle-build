@@ -28,10 +28,10 @@ const SOURCE_VARIABLE_NAME: &str = "srcdep";
 static VARIABLE_PATTERN: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\$([[:alpha:]_][[:alnum:]_]*)").unwrap());
 
-pub fn compile<'a, 'b>(
+pub fn compile<'a>(
     modules: &HashMap<PathBuf, ast::Module<'a>>,
-    dependencies: &'b ModuleDependencyMap,
-    root_module_path: &'b Path,
+    dependencies: &ModuleDependencyMap,
+    root_module_path: &Path,
 ) -> Result<Configuration<'a>, CompileError> {
     let context = Context::new(modules.clone(), dependencies.clone());
 
@@ -69,10 +69,10 @@ pub fn compile<'a, 'b>(
     ))
 }
 
-fn compile_module<'a, 'b>(
+fn compile_module<'a>(
     context: &Context<'a>,
     global_state: &mut GlobalState<'a>,
-    module_state: &mut ModuleState<'a, 'b>,
+    module_state: &mut ModuleState<'a, '_>,
     path: &Path,
 ) -> Result<(), CompileError> {
     let module = &context

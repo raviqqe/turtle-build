@@ -20,6 +20,7 @@ print_default() (
 )
 
 cd $(dirname $0)
+rm -rf tmp
 mkdir -p tmp
 cd tmp
 
@@ -29,8 +30,8 @@ for index in $(seq 0 $rule_count); do
   print_rule $rule
 
   for index in $(seq 0 $build_count); do
-    input=${rule}_input$index
-    output=${rule}_output$index
+    input=${rule}_$index.in
+    output=${rule}_$index.out
 
     touch $input
     print_build $rule $input $output

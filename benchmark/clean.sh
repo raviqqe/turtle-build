@@ -2,6 +2,6 @@
 
 set -e
 
-rm *output*
+rm *.out
 rm -rf .ninja*
 rm -rf .turtle*

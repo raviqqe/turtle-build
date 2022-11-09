@@ -4,7 +4,7 @@ mod context;
 mod hash;
 mod options;
 
-use self::{build_database::BuildDatabase, build_hash::BuildHash, context::Context};
+use self::{build_database::BuildDatabase, build_hash::BuildHash, context::Context as RunContext};
 use crate::{
     compile::compile_dynamic,
     console::Console,
@@ -44,7 +44,7 @@ pub async fn run(
 
     graph.validate()?;
 
-    let context = Arc::new(Context::new(
+    let context = Arc::new(RunContext::new(
         configuration,
         graph,
         BuildDatabase::new(build_directory)?,
@@ -88,7 +88,7 @@ pub async fn run(
 
 #[async_recursion]
 async fn trigger_build(
-    context: Arc<Context<'static>>,
+    context: Arc<RunContext<'static>>,
     build: &Arc<Build<'static>>,
 ) -> Result<(), InfrastructureError<'static>> {
     // Exclusive lock for atomic addition of a build job.
@@ -106,7 +106,7 @@ async fn trigger_build(
 }
 
 async fn spawn_build(
-    context: Arc<Context<'static>>,
+    context: Arc<RunContext<'static>>,
     build: Arc<Build<'static>>,
 ) -> Result<(), InfrastructureError<'static>> {
     spawn(async move {
@@ -214,7 +214,7 @@ async fn spawn_build(
 }
 
 async fn build_input(
-    context: Arc<Context<'static>>,
+    context: Arc<RunContext<'static>>,
     input: &str,
 ) -> Result<Option<BuildFuture<'static>>, InfrastructureError<'static>> {
     Ok(
@@ -250,7 +250,7 @@ async fn prepare_directory(path: impl AsRef<Path>) -> Result<(), InfrastructureE
 }
 
 async fn run_rule<'a>(
-    context: &Context<'a>,
+    context: &RunContext<'a>,
     rule: &Rule,
 ) -> Result<(), InfrastructureError<'static>> {
     // Acquire a job semaphore first to guarantee a lock order between a job

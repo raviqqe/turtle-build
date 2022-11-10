@@ -1,5 +1,6 @@
 mod arguments;
 mod ast;
+mod build_hash;
 mod compile;
 mod context;
 mod error;
@@ -17,7 +18,7 @@ use compile::{compile, ModuleDependencyMap};
 use context::Context;
 use error::ApplicationError;
 use futures::future::try_join_all;
-use infrastructure::{OsConsole, OsFileSystem};
+use infrastructure::{OsConsole, OsDatabase, OsFileSystem};
 use parse::parse;
 use std::{
     collections::HashMap,
@@ -31,11 +32,12 @@ use tokio::time::sleep;
 use validation::validate_modules;
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
+const DATABASE_FILENAME: &str = ".turtle.db";
 
 #[tokio::main]
 async fn main() {
     let arguments = Arguments::parse();
-    let context = Context::new(OsConsole::new(), OsFileSystem::new()).into();
+    let context = Context::new(OsConsole::new(), OsFileSystem::new(), OsDatabase::new()).into();
 
     if let Err(error) = execute(&context, &arguments).await {
         if !(arguments.quiet && matches!(error, ApplicationError::Build)) {
@@ -89,15 +91,18 @@ async fn execute(
     validate_modules(&dependencies)?;
 
     let configuration = Arc::new(compile(&modules, &dependencies, &root_module_path)?);
-    let build_directory = configuration
-        .build_directory()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| root_module_path.parent().unwrap().into());
+
+    context.database().initialize(
+        &configuration
+            .build_directory()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| root_module_path.parent().unwrap().into())
+            .join(DATABASE_FILENAME),
+    )?;
 
     run::run(
         context,
         configuration.clone(),
-        &build_directory,
         run::Options {
             debug: arguments.debug,
             job_limit: arguments.job_limit,

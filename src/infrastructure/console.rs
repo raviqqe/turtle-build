@@ -3,7 +3,7 @@ use std::{error::Error, fmt::Debug};
 use tokio::io::{stderr, stdout, AsyncWriteExt, Stderr, Stdout};
 
 #[async_trait]
-pub trait Console: Debug {
+pub trait Console {
     async fn write_stdout(&mut self, buffer: &[u8]) -> Result<(), Box<dyn Error>>;
     async fn write_stderr(&mut self, buffer: &[u8]) -> Result<(), Box<dyn Error>>;
 }

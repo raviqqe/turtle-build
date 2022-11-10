@@ -1,11 +1,10 @@
-mod build_database;
-mod build_hash;
 mod context;
 mod hash;
 mod options;
 
-use self::{build_database::BuildDatabase, build_hash::BuildHash, context::Context as RunContext};
+use self::context::Context as RunContext;
 use crate::{
+    build_hash::BuildHash,
     compile::compile_dynamic,
     context::Context,
     debug,
@@ -28,7 +27,6 @@ type BuildFuture<'a> = Shared<RawBuildFuture<'a>>;
 pub async fn run(
     context: &Arc<Context>,
     configuration: Arc<Configuration<'static>>,
-    build_directory: &Path,
     options: Options,
 ) -> Result<(), ApplicationError<'static>> {
     let graph = BuildGraph::new(configuration.outputs());
@@ -39,7 +37,6 @@ pub async fn run(
         context.clone(),
         configuration,
         graph,
-        BuildDatabase::new(build_directory)?,
         Semaphore::new(options.job_limit.unwrap_or_else(num_cpus::get)),
         options,
     ));
@@ -69,7 +66,7 @@ pub async fn run(
     if let Err(error) = try_join_all(futures).await {
         // Flush explicitly here as flush on drop doesn't work in general
         // because of possible dependency cycles of build jobs.
-        context.database().flush().await?;
+        context.application().database().flush().await?;
 
         return Err(error);
     }
@@ -158,7 +155,7 @@ async fn spawn_build(
         )
         .await
         .is_ok();
-        let old_hash = context.database().get(build.id())?;
+        let old_hash = context.application().database().get(build.id())?;
         let (file_inputs, phony_inputs) = build
             .inputs()
             .iter()
@@ -197,6 +194,7 @@ async fn spawn_build(
         }
 
         context
+            .application()
             .database()
             .set(build.id(), BuildHash::new(timestamp_hash, content_hash))?;
 

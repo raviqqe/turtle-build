@@ -1,6 +1,7 @@
 use async_trait::async_trait;
-use std::{error::Error, fmt::Debug};
 use std::{
+    error::Error,
+    fmt::Debug,
     io,
     path::{Path, PathBuf},
     time::SystemTime,
@@ -11,7 +12,7 @@ use tokio::{
 };
 
 #[async_trait]
-pub trait FileSystem: Debug {
+pub trait FileSystem {
     async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), Box<dyn Error>>;
     async fn read_file_to_string(
         &self,

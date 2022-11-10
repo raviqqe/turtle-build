@@ -4,7 +4,7 @@ use itertools::Itertools;
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
-    sync::{Arc, PoisonError},
+    sync::Arc,
 };
 use tokio::{io, sync::AcquireError, task::JoinError};
 
@@ -110,12 +110,6 @@ impl From<JoinError> for ApplicationError<'static> {
 impl From<ParseError> for ApplicationError<'static> {
     fn from(error: ParseError) -> Self {
         Self::Parse(error)
-    }
-}
-
-impl<T> From<PoisonError<T>> for ApplicationError<'static> {
-    fn from(error: PoisonError<T>) -> Self {
-        Self::Other(error.to_string())
     }
 }
 

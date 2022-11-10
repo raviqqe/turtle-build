@@ -1,6 +1,7 @@
 use crate::build_hash::BuildHash;
 use crate::ir::BuildId;
 use async_trait::async_trait;
+use once_cell::sync::OnceCell;
 use std::error::Error;
 use std::path::Path;
 
@@ -14,18 +15,20 @@ pub trait Database {
 
 #[derive(Clone, Debug)]
 pub struct OsDatabase {
-    database: Option<sled::Db>,
+    database: OnceCell<sled::Db>,
 }
 
 impl OsDatabase {
     pub fn new() -> Self {
-        Self { database: None }
+        Self {
+            database: Default::default(),
+        }
     }
 
     fn database(&self) -> Result<&sled::Db, Box<dyn Error>> {
         Ok(self
             .database
-            .as_ref()
+            .get()
             .ok_or_else(|| "database not initialized")?)
     }
 }
@@ -33,7 +36,9 @@ impl OsDatabase {
 #[async_trait]
 impl Database for OsDatabase {
     fn initialize(&self, path: &Path) -> Result<(), Box<dyn Error>> {
-        self.database = Some(sled::open(path)?);
+        self.database
+            .set(sled::open(path)?)
+            .map_err(|_| "database already initialized")?;
 
         Ok(())
     }

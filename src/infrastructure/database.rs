@@ -63,9 +63,8 @@ impl Database for OsDatabase {
 
 #[cfg(test)]
 mod tests {
-    use tempfile::tempdir;
-
     use super::*;
+    use tempfile::tempdir;
 
     #[test]
     fn initialize() {

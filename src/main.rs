@@ -17,7 +17,7 @@ use compile::{compile, ModuleDependencyMap};
 use context::Context;
 use error::ApplicationError;
 use futures::future::try_join_all;
-use infrastructure::{OsConsole, OsDatabase, OsFileSystem};
+use infrastructure::{OsCommandRunner, OsConsole, OsDatabase, OsFileSystem};
 use parse::parse;
 use std::{
     collections::HashMap,
@@ -36,7 +36,13 @@ const DATABASE_DIRECTORY: &str = ".turtle";
 #[tokio::main]
 async fn main() {
     let arguments = Arguments::parse();
-    let context = Context::new(OsConsole::new(), OsFileSystem::new(), OsDatabase::new()).into();
+    let context = Context::new(
+        OsCommandRunner::new(),
+        OsConsole::new(),
+        OsDatabase::new(),
+        OsFileSystem::new(),
+    )
+    .into();
 
     if let Err(error) = execute(&context, &arguments).await {
         if !(arguments.quiet && matches!(error, ApplicationError::Build)) {

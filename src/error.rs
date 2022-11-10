@@ -4,7 +4,6 @@ use itertools::Itertools;
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
-    path::Path,
     sync::Arc,
 };
 use tokio::{io, sync::AcquireError, task::JoinError};
@@ -24,10 +23,6 @@ pub enum ApplicationError<'a> {
 }
 
 impl<'a> ApplicationError<'a> {
-    pub fn with_path(error: io::Error, path: impl AsRef<Path>) -> Self {
-        Self::Other(format!("{}: {}", error, path.as_ref().display()))
-    }
-
     pub fn map_outputs(self, source_map: &FnvHashMap<String, String>) -> Self {
         match self {
             Self::Validation(ValidationError::CircularBuildDependency(outputs)) => {

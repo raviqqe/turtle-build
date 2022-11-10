@@ -13,7 +13,6 @@ use crate::{
     error::ApplicationError,
     ir::{Build, Configuration, Rule},
     parse::parse_dynamic,
-    utilities::read_file,
     validation::BuildGraph,
     writeln,
 };
@@ -122,8 +121,13 @@ async fn spawn_build(
 
         // TODO Consider caching dynamic modules.
         let dynamic_configuration = if let Some(dynamic_module) = build.dynamic_module() {
-            let configuration =
-                compile_dynamic(&parse_dynamic(&read_file(&dynamic_module).await?)?)?;
+            let mut source = String::new();
+            context
+                .application()
+                .file_system()
+                .read_file_to_string(dynamic_module.as_ref(), &mut source)
+                .await?;
+            let configuration = compile_dynamic(&parse_dynamic(&source)?)?;
 
             context
                 .build_graph()

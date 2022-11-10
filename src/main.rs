@@ -30,7 +30,6 @@ use std::{
     time::Duration,
 };
 use tokio::{io::AsyncWriteExt, sync::Mutex, time::sleep};
-use utilities::read_file;
 use validation::validate_modules;
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
@@ -125,8 +124,15 @@ async fn read_modules<'a>(
     let mut dependencies = HashMap::new();
 
     while let Some(path) = paths.pop() {
+        let mut source = String::new();
+
+        context
+            .file_system()
+            .read_file_to_string(&path, &mut source)
+            .await?;
+
         // HACK Leak sources.
-        let module = parse(Box::leak(read_file(&path).await?.into_boxed_str()))?;
+        let module = parse(Box::leak(source.into_boxed_str()))?;
 
         let submodule_paths = try_join_all(
             module

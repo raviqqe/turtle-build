@@ -1,23 +1,4 @@
-use crate::error::ApplicationError;
-use std::path::Path;
-use tokio::{
-    fs::File,
-    io::{self, AsyncReadExt, AsyncWriteExt},
-};
-
-pub async fn read_file(path: impl AsRef<Path>) -> Result<String, ApplicationError<'static>> {
-    let mut source = "".into();
-    let path = path.as_ref();
-
-    File::open(path)
-        .await
-        .map_err(|error| ApplicationError::with_path(error, path))?
-        .read_to_string(&mut source)
-        .await
-        .map_err(|error| ApplicationError::with_path(error, path))?;
-
-    Ok(source)
-}
+use tokio::io::{self, AsyncWriteExt};
 
 #[macro_export]
 macro_rules! writeln {

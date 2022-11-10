@@ -30,7 +30,7 @@ use std::{
     time::Duration,
 };
 use tokio::{io::AsyncWriteExt, sync::Mutex, time::sleep};
-use utilities::{canonicalize_path, read_file};
+use utilities::read_file;
 use validation::validate_modules;
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
@@ -79,9 +79,17 @@ async fn execute(
         set_current_dir(directory)?;
     }
 
-    let root_module_path =
-        canonicalize_path(&arguments.file.as_deref().unwrap_or(DEFAULT_BUILD_FILE)).await?;
-    let (modules, dependencies) = read_modules(&root_module_path).await?;
+    let root_module_path = context
+        .file_system()
+        .canonicalize_path(
+            arguments
+                .file
+                .as_deref()
+                .unwrap_or(DEFAULT_BUILD_FILE)
+                .as_ref(),
+        )
+        .await?;
+    let (modules, dependencies) = read_modules(context, &root_module_path).await?;
 
     validate_modules(&dependencies)?;
 
@@ -109,9 +117,10 @@ async fn execute(
 }
 
 async fn read_modules<'a>(
+    context: &Context,
     path: &Path,
 ) -> Result<(HashMap<PathBuf, Module<'a>>, ModuleDependencyMap), ApplicationError<'static>> {
-    let mut paths = vec![canonicalize_path(path).await?];
+    let mut paths = vec![context.file_system().canonicalize_path(path).await?];
     let mut modules = HashMap::new();
     let mut dependencies = HashMap::new();
 
@@ -128,7 +137,7 @@ async fn read_modules<'a>(
                     Statement::Submodule(submodule) => Some(submodule.path()),
                     _ => None,
                 })
-                .map(|submodule_path| resolve_submodule_path(&path, submodule_path))
+                .map(|submodule_path| resolve_submodule_path(context, &path, submodule_path))
                 .collect::<Vec<_>>(),
         )
         .await?
@@ -145,11 +154,15 @@ async fn read_modules<'a>(
 }
 
 async fn resolve_submodule_path(
+    context: &Context,
     module_path: &Path,
     submodule_path: &str,
 ) -> Result<(String, PathBuf), ApplicationError<'static>> {
     Ok((
         submodule_path.into(),
-        canonicalize_path(module_path.parent().unwrap().join(submodule_path)).await?,
+        context
+            .file_system()
+            .canonicalize_path(&module_path.parent().unwrap().join(submodule_path))
+            .await?,
     ))
 }

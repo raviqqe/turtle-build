@@ -1,7 +1,7 @@
 use crate::error::ApplicationError;
-use std::path::{Path, PathBuf};
+use std::path::{Path};
 use tokio::{
-    fs::{self, File},
+    fs::{File},
     io::{self, AsyncReadExt, AsyncWriteExt},
 };
 
@@ -17,14 +17,6 @@ pub async fn read_file(path: impl AsRef<Path>) -> Result<String, ApplicationErro
         .map_err(|error| ApplicationError::with_path(error, path))?;
 
     Ok(source)
-}
-
-pub async fn canonicalize_path(
-    path: impl AsRef<Path>,
-) -> Result<PathBuf, ApplicationError<'static>> {
-    fs::canonicalize(&path)
-        .await
-        .map_err(|error| ApplicationError::with_path(error, path))
 }
 
 #[macro_export]

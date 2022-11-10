@@ -259,7 +259,7 @@ async fn run_rule<'a>(
     // semaphore and console.
     let permit = context.job_semaphore().acquire().await?;
 
-    let ((output, duration), console) = try_join!(
+    let ((output, duration), mut console) = try_join!(
         async {
             let start_time = Instant::now();
             let output = if cfg!(target_os = "windows") {
@@ -282,7 +282,7 @@ async fn run_rule<'a>(
             Ok::<_, ApplicationError>((output, duration))
         },
         async {
-            let console = context.application().console().lock().await;
+            let mut console = context.application().console().lock().await;
 
             if let Some(description) = rule.description() {
                 console.write_stderr(description.as_bytes()).await?;

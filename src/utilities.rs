@@ -1,7 +1,7 @@
 use crate::error::ApplicationError;
-use std::path::{Path};
+use std::path::Path;
 use tokio::{
-    fs::{File},
+    fs::File,
     io::{self, AsyncReadExt, AsyncWriteExt},
 };
 

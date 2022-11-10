@@ -1,4 +1,4 @@
-use super::{build_database::BuildDatabase, options::Options, BuildFuture};
+use super::{options::Options, BuildFuture};
 use crate::{
     context::Context as ApplicationContext,
     ir::{BuildId, Configuration},
@@ -7,14 +7,12 @@ use crate::{
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{Mutex, RwLock, Semaphore};
 
-#[derive(Debug)]
 pub struct Context<'a> {
     application: Arc<ApplicationContext>,
     configuration: Arc<Configuration<'a>>,
     // TODO Use a concurrent hash map. We only need atomic insertion but not a great lock.
     build_futures: RwLock<HashMap<BuildId, BuildFuture<'a>>>,
     build_graph: Mutex<BuildGraph>,
-    database: BuildDatabase,
     job_semaphore: Semaphore,
     options: Options,
 }
@@ -24,7 +22,6 @@ impl<'a> Context<'a> {
         application: Arc<ApplicationContext>,
         configuration: Arc<Configuration<'a>>,
         build_graph: BuildGraph,
-        database: BuildDatabase,
         job_semaphore: Semaphore,
         options: Options,
     ) -> Self {
@@ -33,7 +30,6 @@ impl<'a> Context<'a> {
             build_graph: build_graph.into(),
             configuration,
             build_futures: RwLock::new(HashMap::new()),
-            database,
             job_semaphore,
             options,
         }
@@ -53,10 +49,6 @@ impl<'a> Context<'a> {
 
     pub fn build_graph(&self) -> &Mutex<BuildGraph> {
         &self.build_graph
-    }
-
-    pub fn database(&self) -> &BuildDatabase {
-        &self.database
     }
 
     pub fn job_semaphore(&self) -> &Semaphore {

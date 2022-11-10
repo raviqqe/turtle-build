@@ -11,7 +11,7 @@ use tokio::{
 };
 
 #[async_trait]
-pub trait FileSystem: Debug {
+pub trait FileSystem {
     async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), Box<dyn Error>>;
     async fn read_file_to_string(
         &self,

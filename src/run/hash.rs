@@ -1,5 +1,6 @@
-use super::{build_hash::BuildHash, context::Context};
+use super::context::Context;
 use crate::{
+    build_hash::BuildHash,
     error::ApplicationError,
     ir::{Build, Rule},
 };
@@ -80,6 +81,7 @@ fn get_build_hash<'a>(
     input: &str,
 ) -> Result<BuildHash, ApplicationError<'a>> {
     context
+        .application()
         .database()
         .get(
             context

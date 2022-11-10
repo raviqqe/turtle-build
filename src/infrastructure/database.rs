@@ -11,7 +11,7 @@ pub trait Database {
     async fn flush(&self) -> Result<(), Box<dyn Error>>;
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct OsDatabase {
     database: OnceCell<sled::Db>,
 }

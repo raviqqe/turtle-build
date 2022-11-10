@@ -22,7 +22,6 @@ use futures::future::{try_join_all, FutureExt, Shared};
 pub use options::Options;
 use std::{future::Future, path::Path, pin::Pin, sync::Arc};
 use tokio::{
-    fs::metadata,
     io::AsyncWriteExt,
     process::Command,
     spawn,
@@ -165,7 +164,7 @@ async fn spawn_build(
                 .outputs()
                 .iter()
                 .chain(build.implicit_outputs())
-                .map(check_file_existence),
+                .map(|path| check_file_existence(&context, path)),
         )
         .await
         .is_ok();
@@ -228,18 +227,21 @@ async fn build_input(
         } else {
             let input = input.to_owned();
             let future: RawBuildFuture<'static> =
-                Box::pin(async move { check_file_existence(&input).await });
+                Box::pin(async move { check_file_existence(&context, &input).await });
             Some(future.shared())
         },
     )
 }
 
-async fn check_file_existence(path: impl AsRef<Path>) -> Result<(), InfrastructureError<'static>> {
-    let path = path.as_ref();
-
-    metadata(path)
-        .await
-        .map_err(|error| InfrastructureError::with_path(error, path))?;
+async fn check_file_existence(
+    context: &RunContext<'static>,
+    path: impl AsRef<Path>,
+) -> Result<(), InfrastructureError<'static>> {
+    context
+        .global()
+        .file_system()
+        .metadata(path.as_ref())
+        .await?;
 
     Ok(())
 }

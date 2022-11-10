@@ -29,7 +29,7 @@ impl OsDatabase {
         Ok(self
             .database
             .get()
-            .ok_or_else(|| "database not initialized")?)
+            .ok_or("database not initialized")?)
     }
 }
 
@@ -74,13 +74,13 @@ mod tests {
 
     #[test]
     fn open_database() {
-        let mut database = OsDatabase::new();
+        let database = OsDatabase::new();
         database.initialize(tempdir().unwrap().path()).unwrap();
     }
 
     #[test]
     fn set_hash() {
-        let mut database = OsDatabase::new();
+        let database = OsDatabase::new();
         database.initialize(tempdir().unwrap().path()).unwrap();
 
         database.set(BuildId::new(0), BuildHash::new(0, 0)).unwrap();
@@ -88,7 +88,7 @@ mod tests {
 
     #[test]
     fn get_hash() {
-        let mut database = OsDatabase::new();
+        let database = OsDatabase::new();
         database.initialize(tempdir().unwrap().path()).unwrap();
         let hash = BuildHash::new(0, 1);
 

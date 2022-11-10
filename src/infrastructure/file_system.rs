@@ -1,13 +1,18 @@
 use async_trait::async_trait;
-use std::error::Error;
-use std::fmt::{self, Display};
-use std::fmt::{Debug, Formatter};
+use std::{
+    error::Error,
+    fmt::{self, Debug, Display, Formatter},
+};
 
-use std::io;
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime};
-use tokio::fs::{self, File};
-use tokio::io::AsyncReadExt;
+use std::{
+    io,
+    path::{Path, PathBuf},
+    time::SystemTime,
+};
+use tokio::{
+    fs::{self, File},
+    io::AsyncReadExt,
+};
 
 #[async_trait]
 pub trait FileSystem: Debug {

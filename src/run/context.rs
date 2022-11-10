@@ -1,7 +1,7 @@
 use super::{build_database::BuildDatabase, options::Options, BuildFuture};
-use crate::context::Context as ApplicationContext;
 use crate::{
     console::Console,
+    context::Context as ApplicationContext,
     ir::{BuildId, Configuration},
     validation::BuildGraph,
 };

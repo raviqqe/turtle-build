@@ -234,7 +234,7 @@ async fn check_file_existence(
     path: impl AsRef<Path>,
 ) -> Result<(), ApplicationError<'static>> {
     context
-        .application()
+        .global()
         .file_system()
         .modified_time(path.as_ref())
         .await?;
@@ -248,7 +248,7 @@ async fn prepare_directory(
 ) -> Result<(), ApplicationError<'static>> {
     if let Some(directory) = path.as_ref().parent() {
         context
-            .application()
+            .global()
             .file_system()
             .create_directory(directory)
             .await?;

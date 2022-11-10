@@ -2,10 +2,10 @@ use async_trait::async_trait;
 use std::error::Error;
 use std::fmt::{self, Display};
 use std::fmt::{Debug, Formatter};
-use std::fs::Metadata;
+
 use std::io;
 use std::path::{Path, PathBuf};
-use std::time::{Instant, SystemTime};
+use std::time::{SystemTime};
 use tokio::fs::{self, File};
 use tokio::io::AsyncReadExt;
 

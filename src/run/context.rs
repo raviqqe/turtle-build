@@ -10,7 +10,7 @@ use tokio::sync::{Mutex, RwLock, Semaphore};
 
 #[derive(Debug)]
 pub struct Context<'a> {
-    global: Arc<ApplicationContext>,
+    application: Arc<ApplicationContext>,
     configuration: Arc<Configuration<'a>>,
     // TODO Use a concurrent hash map. We only need atomic insertion but not a great lock.
     build_futures: RwLock<HashMap<BuildId, BuildFuture<'a>>>,
@@ -23,7 +23,7 @@ pub struct Context<'a> {
 
 impl<'a> Context<'a> {
     pub fn new(
-        global: Arc<ApplicationContext>,
+        application: Arc<ApplicationContext>,
         configuration: Arc<Configuration<'a>>,
         build_graph: BuildGraph,
         database: BuildDatabase,
@@ -32,7 +32,7 @@ impl<'a> Context<'a> {
         options: Options,
     ) -> Self {
         Self {
-            global,
+            application,
             build_graph: build_graph.into(),
             configuration,
             build_futures: RwLock::new(HashMap::new()),
@@ -43,8 +43,8 @@ impl<'a> Context<'a> {
         }
     }
 
-    pub fn global(&self) -> &ApplicationContext {
-        &self.global
+    pub fn application(&self) -> &ApplicationContext {
+        &self.application
     }
 
     pub fn configuration(&self) -> &Configuration<'a> {

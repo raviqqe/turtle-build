@@ -26,7 +26,7 @@ pub async fn calculate_timestamp_hash<'a>(
 
     for input in file_inputs {
         context
-            .application()
+            .global()
             .file_system()
             .modified_time(input.as_ref())
             .await?
@@ -60,7 +60,7 @@ pub async fn calculate_content_hash<'a>(
 
     for input in file_inputs {
         context
-            .application()
+            .global()
             .file_system()
             .read_file(input.as_ref(), &mut buffer)
             .await?;

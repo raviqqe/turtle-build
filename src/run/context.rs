@@ -1,6 +1,5 @@
 use super::{build_database::BuildDatabase, options::Options, BuildFuture};
 use crate::{
-    console::Console,
     context::Context as ApplicationContext,
     ir::{BuildId, Configuration},
     validation::BuildGraph,
@@ -17,7 +16,6 @@ pub struct Context<'a> {
     build_graph: Mutex<BuildGraph>,
     database: BuildDatabase,
     job_semaphore: Semaphore,
-    console: Arc<Mutex<Console>>,
     options: Options,
 }
 
@@ -28,7 +26,6 @@ impl<'a> Context<'a> {
         build_graph: BuildGraph,
         database: BuildDatabase,
         job_semaphore: Semaphore,
-        console: Arc<Mutex<Console>>,
         options: Options,
     ) -> Self {
         Self {
@@ -38,7 +35,6 @@ impl<'a> Context<'a> {
             build_futures: RwLock::new(HashMap::new()),
             database,
             job_semaphore,
-            console,
             options,
         }
     }
@@ -65,10 +61,6 @@ impl<'a> Context<'a> {
 
     pub fn job_semaphore(&self) -> &Semaphore {
         &self.job_semaphore
-    }
-
-    pub fn console(&self) -> &Mutex<Console> {
-        &self.console
     }
 
     pub fn options(&self) -> &Options {

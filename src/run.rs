@@ -7,27 +7,19 @@ mod options;
 use self::{build_database::BuildDatabase, build_hash::BuildHash, context::Context as RunContext};
 use crate::{
     compile::compile_dynamic,
-    console::Console,
     context::Context,
     debug,
     error::ApplicationError,
     ir::{Build, Configuration, Rule},
     parse::parse_dynamic,
+    profile,
     validation::BuildGraph,
-    writeln,
 };
 use async_recursion::async_recursion;
 use futures::future::{try_join_all, FutureExt, Shared};
 pub use options::Options;
 use std::{future::Future, path::Path, pin::Pin, sync::Arc};
-use tokio::{
-    io::AsyncWriteExt,
-    process::Command,
-    spawn,
-    sync::{Mutex, Semaphore},
-    time::Instant,
-    try_join,
-};
+use tokio::{process::Command, spawn, sync::Semaphore, time::Instant, try_join};
 
 type RawBuildFuture<'a> =
     Pin<Box<dyn Future<Output = Result<(), ApplicationError<'a>>> + Send + 'a>>;
@@ -36,7 +28,6 @@ type BuildFuture<'a> = Shared<RawBuildFuture<'a>>;
 pub async fn run(
     context: &Arc<Context>,
     configuration: Arc<Configuration<'static>>,
-    console: &Arc<Mutex<Console>>,
     build_directory: &Path,
     options: Options,
 ) -> Result<(), ApplicationError<'static>> {
@@ -50,7 +41,6 @@ pub async fn run(
         graph,
         BuildDatabase::new(build_directory)?,
         Semaphore::new(options.job_limit.unwrap_or_else(num_cpus::get)),
-        console.clone(),
         options,
     ));
 
@@ -269,7 +259,7 @@ async fn run_rule<'a>(
     // semaphore and console.
     let permit = context.job_semaphore().acquire().await?;
 
-    let ((output, duration), mut console) = try_join!(
+    let ((output, duration), console) = try_join!(
         async {
             let start_time = Instant::now();
             let output = if cfg!(target_os = "windows") {
@@ -292,44 +282,35 @@ async fn run_rule<'a>(
             Ok::<_, ApplicationError>((output, duration))
         },
         async {
-            let mut console = context.console().lock().await;
+            let console = context.application().console().lock().await;
 
             if let Some(description) = rule.description() {
-                writeln!(console.stderr(), "{}", description);
+                console.write_stderr(description.as_bytes()).await?;
             }
 
-            debug!(
-                context.options().debug,
-                console.stderr(),
-                "command: {}",
-                rule.command()
-            );
+            debug!(context, console, "command: {}", rule.command());
 
             Ok(console)
         }
     )?;
 
-    debug!(
-        context.options().profile,
-        console.stderr(),
-        "duration: {}ms",
-        duration.as_millis()
-    );
+    profile!(context, console, "duration: {}ms", duration.as_millis());
 
-    console.stdout().write_all(&output.stdout).await?;
-    console.stderr().write_all(&output.stderr).await?;
+    console.write_stdout(&output.stdout).await?;
+    console.write_stderr(&output.stderr).await?;
 
     if !output.status.success() {
-        debug!(
-            context.options().debug,
-            console.stderr(),
-            "exit status: {}",
-            output
-                .status
-                .code()
-                .map(|code| code.to_string())
-                .unwrap_or_else(|| "-".into())
-        );
+        // TODO
+        // debug!(
+        //     context.options().debug,
+        //     console.stderr(),
+        //     "exit status: {}",
+        //     output
+        //         .status
+        //         .code()
+        //         .map(|code| code.to_string())
+        //         .unwrap_or_else(|| "-".into())
+        // );
 
         return Err(ApplicationError::Build);
     }

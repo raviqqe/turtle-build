@@ -1,7 +1,6 @@
 mod arguments;
 mod ast;
 mod compile;
-mod console;
 mod context;
 mod error;
 mod infrastructure;
@@ -15,11 +14,10 @@ use arguments::Arguments;
 use ast::{Module, Statement};
 use clap::Parser;
 use compile::{compile, ModuleDependencyMap};
-use console::Console;
 use context::Context;
 use error::ApplicationError;
 use futures::future::try_join_all;
-use infrastructure::OsFileSystem;
+use infrastructure::{OsConsole, OsFileSystem};
 use parse::parse;
 use std::{
     collections::HashMap,
@@ -29,7 +27,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tokio::{io::AsyncWriteExt, sync::Mutex, time::sleep};
+use tokio::time::sleep;
 use validation::validate_modules;
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
@@ -37,16 +35,15 @@ const DEFAULT_BUILD_FILE: &str = "build.ninja";
 #[tokio::main]
 async fn main() {
     let arguments = Arguments::parse();
-    let context = Context::new(OsFileSystem::new()).into();
-    let console = Mutex::new(Console::new()).into();
+    let context = Context::new(OsConsole::new(), OsFileSystem::new()).into();
 
-    if let Err(error) = execute(&context, &arguments, &console).await {
+    if let Err(error) = execute(&context, &arguments).await {
         if !(arguments.quiet && matches!(error, ApplicationError::Build)) {
-            console
+            context
+                .console()
                 .lock()
                 .await
-                .stderr()
-                .write_all(
+                .write_stderr(
                     format!(
                         "{}{}\n",
                         if let Some(prefix) = &arguments.log_prefix {
@@ -72,7 +69,6 @@ async fn main() {
 async fn execute(
     context: &Arc<Context>,
     arguments: &Arguments,
-    console: &Arc<Mutex<Console>>,
 ) -> Result<(), ApplicationError<'static>> {
     if let Some(directory) = &arguments.directory {
         set_current_dir(directory)?;
@@ -101,7 +97,6 @@ async fn execute(
     run::run(
         context,
         configuration.clone(),
-        console,
         &build_directory,
         run::Options {
             debug: arguments.debug,

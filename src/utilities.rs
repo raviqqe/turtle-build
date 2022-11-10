@@ -1,30 +1,27 @@
-use tokio::io::{self, AsyncWriteExt};
-
-#[macro_export]
-macro_rules! writeln {
-    ($writer:expr, $template:literal, $($value:expr),+) => {
-        $crate::utilities::writeln($writer, format!($template, $($value),+)).await?
-    };
-}
-
 #[macro_export]
 macro_rules! debug {
-    ($debug:expr, $writer:expr, $template:literal, $($value:expr),+) => {
-        if $debug {
-            $crate::utilities::writeln(
-                $writer,
-                "turtle: ".to_owned() + &format!($template, $($value),+),
-            ).await?;
+    ($context:expr, $console:expr, $template:literal, $($value:expr),+) => {
+        if $context.options().debug {
+            $crate::log!($console, $template, $($value),+);
         }
     };
 }
 
-pub async fn writeln(
-    writer: &mut (impl AsyncWriteExt + Unpin),
-    message: impl AsRef<str>,
-) -> Result<(), io::Error> {
-    writer.write_all(message.as_ref().as_bytes()).await?;
-    writer.write_all("\n".as_bytes()).await?;
+#[macro_export]
+macro_rules! profile {
+    ($context:expr, $console:expr, $template:literal, $($value:expr),+) => {
+        if $context.options().profile {
+            $crate::log!($console, $template, $($value),+);
+        }
+    };
+}
 
-    Ok(())
+#[macro_export]
+macro_rules! log {
+    ($console:expr, $template:literal, $($value:expr),+) => {
+        $console.write_stderr(
+            ("turtle: ".to_owned() + &format!($template, $($value),+)).as_bytes(),
+        ).await?;
+        $console.write_stderr("\n".as_bytes()).await?;
+    };
 }

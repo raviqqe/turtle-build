@@ -22,7 +22,7 @@ use futures::future::{try_join_all, FutureExt, Shared};
 pub use options::Options;
 use std::{future::Future, path::Path, pin::Pin, sync::Arc};
 use tokio::{
-    fs::{create_dir_all, metadata},
+    fs::metadata,
     io::AsyncWriteExt,
     process::Command,
     spawn,
@@ -200,7 +200,7 @@ async fn spawn_build(
                     .outputs()
                     .iter()
                     .chain(build.implicit_outputs())
-                    .map(prepare_directory),
+                    .map(|path| prepare_directory(&context, path)),
             )
             .await?;
 
@@ -244,9 +244,16 @@ async fn check_file_existence(path: impl AsRef<Path>) -> Result<(), Infrastructu
     Ok(())
 }
 
-async fn prepare_directory(path: impl AsRef<Path>) -> Result<(), InfrastructureError<'static>> {
+async fn prepare_directory(
+    context: &RunContext<'_>,
+    path: impl AsRef<Path>,
+) -> Result<(), InfrastructureError<'static>> {
     if let Some(directory) = path.as_ref().parent() {
-        create_dir_all(directory).await?;
+        context
+            .global()
+            .file_system()
+            .create_directory(directory)
+            .await?;
     }
 
     Ok(())

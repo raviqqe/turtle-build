@@ -1,21 +1,21 @@
 use async_trait::async_trait;
 use std::error::Error;
-use std::fmt::Formatter;
 use std::fmt::{self, Display};
+use std::fmt::{Debug, Formatter};
 use std::io;
 use std::path::{Path, PathBuf};
 use tokio::fs::{self, File};
 use tokio::io::AsyncReadExt;
 
 #[async_trait]
-pub trait FileSystem {
+pub trait FileSystem: Debug {
     async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), Box<dyn Error>>;
     async fn create_directory(&self, path: &Path) -> Result<(), Box<dyn Error>>;
     async fn canonicalize_path(&self, path: &Path) -> Result<PathBuf, Box<dyn Error>>;
 }
 
 #[derive(Debug, Default)]
-pub struct OsFileSystem;
+pub struct OsFileSystem {}
 
 impl OsFileSystem {
     pub fn new() -> Self {

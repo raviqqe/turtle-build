@@ -38,7 +38,7 @@ const DEFAULT_BUILD_FILE: &str = "build.ninja";
 #[tokio::main]
 async fn main() {
     let arguments = Arguments::parse();
-    let context = Context::new(OsFileSystem).into();
+    let context = Context::new(OsFileSystem::new()).into();
     let console = Mutex::new(Console::new()).into();
 
     if let Err(error) = execute(&context, &arguments, &console).await {

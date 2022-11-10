@@ -88,6 +88,12 @@ impl From<bincode::Error> for InfrastructureError<'static> {
     }
 }
 
+impl From<Box<dyn Error>> for InfrastructureError<'static> {
+    fn from(error: Box<dyn Error>) -> Self {
+        Self::Other(error.to_string())
+    }
+}
+
 impl From<CompileError> for InfrastructureError<'static> {
     fn from(error: CompileError) -> Self {
         Self::Compile(error)

@@ -286,6 +286,7 @@ async fn run_rule<'a>(
 
             if let Some(description) = rule.description() {
                 console.write_stderr(description.as_bytes()).await?;
+                console.write_stderr(b"\n").await?;
             }
 
             debug!(context, console, "command: {}", rule.command());

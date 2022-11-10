@@ -1,5 +1,5 @@
 use super::{build_database::BuildDatabase, options::Options, BuildFuture};
-use crate::context::Context as GlobalContext;
+use crate::context::Context as ApplicationContext;
 use crate::{
     console::Console,
     ir::{BuildId, Configuration},
@@ -10,7 +10,7 @@ use tokio::sync::{Mutex, RwLock, Semaphore};
 
 #[derive(Debug)]
 pub struct Context<'a> {
-    global: Arc<GlobalContext>,
+    global: Arc<ApplicationContext>,
     configuration: Arc<Configuration<'a>>,
     // TODO Use a concurrent hash map. We only need atomic insertion but not a great lock.
     build_futures: RwLock<HashMap<BuildId, BuildFuture<'a>>>,
@@ -23,7 +23,7 @@ pub struct Context<'a> {
 
 impl<'a> Context<'a> {
     pub fn new(
-        global: Arc<GlobalContext>,
+        global: Arc<ApplicationContext>,
         configuration: Arc<Configuration<'a>>,
         build_graph: BuildGraph,
         database: BuildDatabase,
@@ -43,7 +43,7 @@ impl<'a> Context<'a> {
         }
     }
 
-    pub fn global(&self) -> &GlobalContext {
+    pub fn global(&self) -> &ApplicationContext {
         &self.global
     }
 

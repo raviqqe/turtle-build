@@ -1,6 +1,7 @@
 use async_trait::async_trait;
-use std::{error::Error, fmt::Debug};
 use std::{
+    error::Error,
+    fmt::Debug,
     io,
     path::{Path, PathBuf},
     time::SystemTime,

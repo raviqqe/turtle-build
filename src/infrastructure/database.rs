@@ -1,9 +1,7 @@
-use crate::build_hash::BuildHash;
-use crate::ir::BuildId;
+use crate::{build_hash::BuildHash, ir::BuildId};
 use async_trait::async_trait;
 use once_cell::sync::OnceCell;
-use std::error::Error;
-use std::path::Path;
+use std::{error::Error, path::Path};
 
 #[async_trait]
 pub trait Database {
@@ -26,10 +24,7 @@ impl OsDatabase {
     }
 
     fn database(&self) -> Result<&sled::Db, Box<dyn Error>> {
-        Ok(self
-            .database
-            .get()
-            .ok_or("database not initialized")?)
+        Ok(self.database.get().ok_or("database not initialized")?)
     }
 }
 

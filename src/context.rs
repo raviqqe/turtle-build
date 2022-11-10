@@ -23,15 +23,19 @@ impl Context {
         }
     }
 
+    pub fn command_runner(&self) -> &(dyn CommandRunner + Send + Sync) {
+        &*self.command_runner
+    }
+
     pub fn console(&self) -> &Mutex<Box<dyn Console + Send + Sync>> {
         &self.console
     }
 
-    pub fn file_system(&self) -> &(dyn FileSystem + Send + Sync) {
-        &*self.file_system
-    }
-
     pub fn database(&self) -> &(dyn Database + Send + Sync) {
         &*self.database
+    }
+
+    pub fn file_system(&self) -> &(dyn FileSystem + Send + Sync) {
+        &*self.file_system
     }
 }

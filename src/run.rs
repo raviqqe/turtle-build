@@ -19,7 +19,7 @@ use async_recursion::async_recursion;
 use futures::future::{try_join_all, FutureExt, Shared};
 pub use options::Options;
 use std::{future::Future, path::Path, pin::Pin, sync::Arc};
-use tokio::{process::Command, spawn, sync::Semaphore, time::Instant, try_join};
+use tokio::{spawn, sync::Semaphore, time::Instant, try_join};
 
 type RawBuildFuture<'a> =
     Pin<Box<dyn Future<Output = Result<(), ApplicationError<'a>>> + Send + 'a>>;
@@ -261,19 +261,11 @@ async fn run_rule<'a>(
     let ((output, duration), mut console) = try_join!(
         async {
             let start_time = Instant::now();
-            let output = if cfg!(target_os = "windows") {
-                let components = rule.command().split_whitespace().collect::<Vec<_>>();
-                Command::new(components[0])
-                    .args(&components[1..])
-                    .output()
-                    .await?
-            } else {
-                Command::new("sh")
-                    .arg("-ec")
-                    .arg(rule.command())
-                    .output()
-                    .await?
-            };
+            let output = context
+                .application()
+                .command_runner()
+                .run(rule.command())
+                .await?;
             let duration = Instant::now() - start_time;
 
             drop(permit);

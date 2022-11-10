@@ -6,7 +6,6 @@ mod context;
 mod error;
 mod infrastructure;
 mod ir;
-mod log;
 mod parse;
 mod run;
 mod validation;

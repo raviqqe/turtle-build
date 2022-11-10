@@ -1,5 +1,6 @@
 mod context;
 mod hash;
+mod log;
 mod options;
 
 use self::context::Context as RunContext;

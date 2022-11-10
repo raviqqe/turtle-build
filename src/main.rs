@@ -32,7 +32,7 @@ use tokio::time::sleep;
 use validation::validate_modules;
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
-const DATABASE_FILENAME: &str = ".turtle.db";
+const DATABASE_DIRECTORY: &str = ".turtle";
 
 #[tokio::main]
 async fn main() {
@@ -97,7 +97,8 @@ async fn execute(
             .build_directory()
             .map(PathBuf::from)
             .unwrap_or_else(|| root_module_path.parent().unwrap().into())
-            .join(DATABASE_FILENAME),
+            .join(env!("CARGO_PKG_VERSION").replace(".", "_"))
+            .join(DATABASE_DIRECTORY),
     )?;
 
     run::run(

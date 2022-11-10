@@ -21,7 +21,6 @@ pub trait FileSystem: Debug {
         path: &Path,
         buffer: &mut String,
     ) -> Result<(), Box<dyn Error>>;
-    async fn exists(&self, path: &Path) -> Result<(), Box<dyn Error>>;
     async fn modified_time(&self, path: &Path) -> Result<SystemTime, Box<dyn Error>>;
     async fn create_directory(&self, path: &Path) -> Result<(), Box<dyn Error>>;
     async fn canonicalize_path(&self, path: &Path) -> Result<PathBuf, Box<dyn Error>>;
@@ -58,14 +57,6 @@ impl FileSystem for OsFileSystem {
             .await
             .map_err(|error| OsFileSystemError::new(error, path))?
             .read_to_string(buffer)
-            .await
-            .map_err(|error| OsFileSystemError::new(error, path))?;
-
-        Ok(())
-    }
-
-    async fn exists(&self, path: &Path) -> Result<(), Box<dyn Error>> {
-        fs::metadata(path)
             .await
             .map_err(|error| OsFileSystemError::new(error, path))?;
 

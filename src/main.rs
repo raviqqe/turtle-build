@@ -1,21 +1,23 @@
 mod arguments;
 mod ast;
 mod compile;
-mod console;
+mod context;
 mod error;
+mod infrastructure;
 mod ir;
+mod log;
 mod parse;
 mod run;
-mod utilities;
 mod validation;
 
 use arguments::Arguments;
 use ast::{Module, Statement};
 use clap::Parser;
 use compile::{compile, ModuleDependencyMap};
-use console::Console;
-use error::InfrastructureError;
+use context::Context;
+use error::ApplicationError;
 use futures::future::try_join_all;
+use infrastructure::{OsConsole, OsFileSystem};
 use parse::parse;
 use std::{
     collections::HashMap,
@@ -25,8 +27,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tokio::{io::AsyncWriteExt, sync::Mutex, time::sleep};
-use utilities::{canonicalize_path, read_file};
+use tokio::time::sleep;
 use validation::validate_modules;
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
@@ -34,15 +35,15 @@ const DEFAULT_BUILD_FILE: &str = "build.ninja";
 #[tokio::main]
 async fn main() {
     let arguments = Arguments::parse();
-    let console = Arc::new(Mutex::new(Console::new()));
+    let context = Context::new(OsConsole::new(), OsFileSystem::new()).into();
 
-    if let Err(error) = execute(&arguments, &console).await {
-        if !(arguments.quiet && matches!(error, InfrastructureError::Build)) {
-            console
+    if let Err(error) = execute(&context, &arguments).await {
+        if !(arguments.quiet && matches!(error, ApplicationError::Build)) {
+            context
+                .console()
                 .lock()
                 .await
-                .stderr()
-                .write_all(
+                .write_stderr(
                     format!(
                         "{}{}\n",
                         if let Some(prefix) = &arguments.log_prefix {
@@ -66,16 +67,24 @@ async fn main() {
 }
 
 async fn execute(
+    context: &Arc<Context>,
     arguments: &Arguments,
-    console: &Arc<Mutex<Console>>,
-) -> Result<(), InfrastructureError<'static>> {
+) -> Result<(), ApplicationError<'static>> {
     if let Some(directory) = &arguments.directory {
         set_current_dir(directory)?;
     }
 
-    let root_module_path =
-        canonicalize_path(&arguments.file.as_deref().unwrap_or(DEFAULT_BUILD_FILE)).await?;
-    let (modules, dependencies) = read_modules(&root_module_path).await?;
+    let root_module_path = context
+        .file_system()
+        .canonicalize_path(
+            arguments
+                .file
+                .as_deref()
+                .unwrap_or(DEFAULT_BUILD_FILE)
+                .as_ref(),
+        )
+        .await?;
+    let (modules, dependencies) = read_modules(context, &root_module_path).await?;
 
     validate_modules(&dependencies)?;
 
@@ -86,8 +95,8 @@ async fn execute(
         .unwrap_or_else(|| root_module_path.parent().unwrap().into());
 
     run::run(
+        context,
         configuration.clone(),
-        console,
         &build_directory,
         run::Options {
             debug: arguments.debug,
@@ -102,15 +111,23 @@ async fn execute(
 }
 
 async fn read_modules<'a>(
+    context: &Context,
     path: &Path,
-) -> Result<(HashMap<PathBuf, Module<'a>>, ModuleDependencyMap), InfrastructureError<'static>> {
-    let mut paths = vec![canonicalize_path(path).await?];
+) -> Result<(HashMap<PathBuf, Module<'a>>, ModuleDependencyMap), ApplicationError<'static>> {
+    let mut paths = vec![context.file_system().canonicalize_path(path).await?];
     let mut modules = HashMap::new();
     let mut dependencies = HashMap::new();
 
     while let Some(path) = paths.pop() {
+        let mut source = String::new();
+
+        context
+            .file_system()
+            .read_file_to_string(&path, &mut source)
+            .await?;
+
         // HACK Leak sources.
-        let module = parse(Box::leak(read_file(&path).await?.into_boxed_str()))?;
+        let module = parse(Box::leak(source.into_boxed_str()))?;
 
         let submodule_paths = try_join_all(
             module
@@ -121,7 +138,7 @@ async fn read_modules<'a>(
                     Statement::Submodule(submodule) => Some(submodule.path()),
                     _ => None,
                 })
-                .map(|submodule_path| resolve_submodule_path(&path, submodule_path))
+                .map(|submodule_path| resolve_submodule_path(context, &path, submodule_path))
                 .collect::<Vec<_>>(),
         )
         .await?
@@ -138,11 +155,15 @@ async fn read_modules<'a>(
 }
 
 async fn resolve_submodule_path(
+    context: &Context,
     module_path: &Path,
     submodule_path: &str,
-) -> Result<(String, PathBuf), InfrastructureError<'static>> {
+) -> Result<(String, PathBuf), ApplicationError<'static>> {
     Ok((
         submodule_path.into(),
-        canonicalize_path(module_path.parent().unwrap().join(submodule_path)).await?,
+        context
+            .file_system()
+            .canonicalize_path(&module_path.parent().unwrap().join(submodule_path))
+            .await?,
     ))
 }

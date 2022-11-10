@@ -4,13 +4,12 @@ use itertools::Itertools;
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
-    path::Path,
     sync::Arc,
 };
 use tokio::{io, sync::AcquireError, task::JoinError};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum InfrastructureError<'a> {
+pub enum ApplicationError<'a> {
     Build,
     Compile(CompileError),
     DefaultOutputNotFound(String),
@@ -23,11 +22,7 @@ pub enum InfrastructureError<'a> {
     Validation(ValidationError),
 }
 
-impl<'a> InfrastructureError<'a> {
-    pub fn with_path(error: io::Error, path: impl AsRef<Path>) -> Self {
-        Self::Other(format!("{}: {}", error, path.as_ref().display()))
-    }
-
+impl<'a> ApplicationError<'a> {
     pub fn map_outputs(self, source_map: &FnvHashMap<String, String>) -> Self {
         match self {
             Self::Validation(ValidationError::CircularBuildDependency(outputs)) => {
@@ -44,9 +39,9 @@ impl<'a> InfrastructureError<'a> {
     }
 }
 
-impl<'a> Error for InfrastructureError<'a> {}
+impl<'a> Error for ApplicationError<'a> {}
 
-impl<'a> Display for InfrastructureError<'a> {
+impl<'a> Display for ApplicationError<'a> {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
             Self::Build => write!(formatter, "build failed"),
@@ -76,49 +71,55 @@ impl<'a> Display for InfrastructureError<'a> {
     }
 }
 
-impl From<AcquireError> for InfrastructureError<'static> {
+impl From<AcquireError> for ApplicationError<'static> {
     fn from(error: AcquireError) -> Self {
         Self::Other(format!("{}", &error))
     }
 }
 
-impl From<bincode::Error> for InfrastructureError<'static> {
+impl From<bincode::Error> for ApplicationError<'static> {
     fn from(error: bincode::Error) -> Self {
         Self::Other(format!("{}", &error))
     }
 }
 
-impl From<CompileError> for InfrastructureError<'static> {
+impl From<Box<dyn Error>> for ApplicationError<'static> {
+    fn from(error: Box<dyn Error>) -> Self {
+        Self::Other(error.to_string())
+    }
+}
+
+impl From<CompileError> for ApplicationError<'static> {
     fn from(error: CompileError) -> Self {
         Self::Compile(error)
     }
 }
 
-impl From<io::Error> for InfrastructureError<'static> {
+impl From<io::Error> for ApplicationError<'static> {
     fn from(error: io::Error) -> Self {
         Self::Other(format!("{}", &error))
     }
 }
 
-impl From<JoinError> for InfrastructureError<'static> {
+impl From<JoinError> for ApplicationError<'static> {
     fn from(error: JoinError) -> Self {
         Self::Other(format!("{}", &error))
     }
 }
 
-impl From<ParseError> for InfrastructureError<'static> {
+impl From<ParseError> for ApplicationError<'static> {
     fn from(error: ParseError) -> Self {
         Self::Parse(error)
     }
 }
 
-impl From<sled::Error> for InfrastructureError<'static> {
+impl From<sled::Error> for ApplicationError<'static> {
     fn from(error: sled::Error) -> Self {
         Self::Sled(error)
     }
 }
 
-impl From<ValidationError> for InfrastructureError<'static> {
+impl From<ValidationError> for ApplicationError<'static> {
     fn from(error: ValidationError) -> Self {
         Self::Validation(error)
     }
@@ -131,7 +132,7 @@ mod tests {
     #[test]
     fn map_dependency_cycle_error() {
         assert_eq!(
-            InfrastructureError::from(ValidationError::CircularBuildDependency(vec![
+            ApplicationError::from(ValidationError::CircularBuildDependency(vec![
                 "foo.o".into(),
                 "bar.o".into()
             ]))
@@ -143,7 +144,7 @@ mod tests {
                 .into_iter()
                 .collect()
             ),
-            InfrastructureError::from(ValidationError::CircularBuildDependency(vec![
+            ApplicationError::from(ValidationError::CircularBuildDependency(vec![
                 "foo.c".into(),
                 "bar.c".into()
             ]))
@@ -153,7 +154,7 @@ mod tests {
     #[test]
     fn map_dependency_cycle_error_with_duplicate_sources() {
         assert_eq!(
-            InfrastructureError::from(ValidationError::CircularBuildDependency(vec![
+            ApplicationError::from(ValidationError::CircularBuildDependency(vec![
                 "foo.o".into(),
                 "foo.h".into()
             ]))
@@ -165,7 +166,7 @@ mod tests {
                 .into_iter()
                 .collect()
             ),
-            InfrastructureError::from(ValidationError::CircularBuildDependency(vec![
+            ApplicationError::from(ValidationError::CircularBuildDependency(vec![
                 "foo.c".into()
             ]))
         );

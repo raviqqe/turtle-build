@@ -1,5 +1,5 @@
 use super::build_hash::BuildHash;
-use crate::{error::InfrastructureError, ir::BuildId};
+use crate::{error::ApplicationError, ir::BuildId};
 use std::path::Path;
 
 const DATABASE_FILENAME: &str = ".turtle-sled-db";
@@ -10,13 +10,13 @@ pub struct BuildDatabase {
 }
 
 impl BuildDatabase {
-    pub fn new(build_directory: &Path) -> Result<Self, InfrastructureError<'static>> {
+    pub fn new(build_directory: &Path) -> Result<Self, ApplicationError<'static>> {
         Ok(Self {
             database: sled::open(build_directory.join(DATABASE_FILENAME))?,
         })
     }
 
-    pub fn get(&self, id: BuildId) -> Result<Option<BuildHash>, InfrastructureError<'static>> {
+    pub fn get(&self, id: BuildId) -> Result<Option<BuildHash>, ApplicationError<'static>> {
         Ok(self
             .database
             .get(id.to_bytes())?
@@ -24,14 +24,14 @@ impl BuildDatabase {
             .transpose()?)
     }
 
-    pub fn set(&self, id: BuildId, hash: BuildHash) -> Result<(), InfrastructureError<'static>> {
+    pub fn set(&self, id: BuildId, hash: BuildHash) -> Result<(), ApplicationError<'static>> {
         self.database
             .insert(id.to_bytes(), bincode::serialize(&hash)?)?;
 
         Ok(())
     }
 
-    pub async fn flush(&self) -> Result<(), InfrastructureError<'static>> {
+    pub async fn flush(&self) -> Result<(), ApplicationError<'static>> {
         self.database.flush_async().await?;
 
         Ok(())

@@ -300,17 +300,16 @@ async fn run_rule<'a>(
     console.write_stderr(&output.stderr).await?;
 
     if !output.status.success() {
-        // TODO
-        // debug!(
-        //     context.options().debug,
-        //     console.stderr(),
-        //     "exit status: {}",
-        //     output
-        //         .status
-        //         .code()
-        //         .map(|code| code.to_string())
-        //         .unwrap_or_else(|| "-".into())
-        // );
+        debug!(
+            context,
+            console,
+            "exit status: {}",
+            output
+                .status
+                .code()
+                .map(|code| code.to_string())
+                .unwrap_or_else(|| "-".into())
+        );
 
         return Err(ApplicationError::Build);
     }

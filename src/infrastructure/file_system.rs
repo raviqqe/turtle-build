@@ -1,8 +1,5 @@
 use async_trait::async_trait;
-use std::{
-    error::Error,
-    fmt::{self, Debug, Display, Formatter},
-};
+use std::{error::Error, fmt::Debug};
 use std::{
     io,
     path::{Path, PathBuf},
@@ -31,7 +28,11 @@ pub struct OsFileSystem {}
 
 impl OsFileSystem {
     pub fn new() -> Self {
-        Self::default()
+        Self {}
+    }
+
+    fn error(error: io::Error, path: &Path) -> String {
+        format!("{}: {}", error, path.display())
     }
 }
 
@@ -40,10 +41,10 @@ impl FileSystem for OsFileSystem {
     async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
         File::open(path)
             .await
-            .map_err(|error| OsFileSystemError::new(error, path))?
+            .map_err(|error| Self::error(error, path))?
             .read_to_end(buffer)
             .await
-            .map_err(|error| OsFileSystemError::new(error, path))?;
+            .map_err(|error| Self::error(error, path))?;
 
         Ok(())
     }
@@ -55,10 +56,10 @@ impl FileSystem for OsFileSystem {
     ) -> Result<(), Box<dyn Error>> {
         File::open(path)
             .await
-            .map_err(|error| OsFileSystemError::new(error, path))?
+            .map_err(|error| Self::error(error, path))?
             .read_to_string(buffer)
             .await
-            .map_err(|error| OsFileSystemError::new(error, path))?;
+            .map_err(|error| Self::error(error, path))?;
 
         Ok(())
     }
@@ -66,15 +67,15 @@ impl FileSystem for OsFileSystem {
     async fn modified_time(&self, path: &Path) -> Result<SystemTime, Box<dyn Error>> {
         Ok(fs::metadata(path)
             .await
-            .map_err(|error| OsFileSystemError::new(error, path))?
+            .map_err(|error| Self::error(error, path))?
             .modified()
-            .map_err(|error| OsFileSystemError::new(error, path))?)
+            .map_err(|error| Self::error(error, path))?)
     }
 
     async fn create_directory(&self, path: &Path) -> Result<(), Box<dyn Error>> {
         fs::create_dir_all(path)
             .await
-            .map_err(|error| OsFileSystemError::new(error, path))?;
+            .map_err(|error| Self::error(error, path))?;
 
         Ok(())
     }
@@ -82,29 +83,6 @@ impl FileSystem for OsFileSystem {
     async fn canonicalize_path(&self, path: &Path) -> Result<PathBuf, Box<dyn Error>> {
         Ok(fs::canonicalize(path)
             .await
-            .map_err(|error| OsFileSystemError::new(error, path))?)
-    }
-}
-
-#[derive(Debug)]
-pub struct OsFileSystemError {
-    error: io::Error,
-    path: String,
-}
-
-impl OsFileSystemError {
-    pub fn new(error: io::Error, path: &Path) -> Self {
-        Self {
-            error,
-            path: path.display().to_string(),
-        }
-    }
-}
-
-impl Error for OsFileSystemError {}
-
-impl Display for OsFileSystemError {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "{}: {}", &self.error, &self.path)
+            .map_err(|error| Self::error(error, path))?)
     }
 }

@@ -68,7 +68,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn open_database() {
+    fn initialize() {
         let database = OsDatabase::new();
         database.initialize(tempdir().unwrap().path()).unwrap();
     }
@@ -89,5 +89,12 @@ mod tests {
 
         database.set(BuildId::new(0), hash).unwrap();
         assert_eq!(database.get(BuildId::new(0)).unwrap(), Some(hash));
+    }
+
+    #[tokio::test]
+    async fn flush() {
+        let database = OsDatabase::new();
+        database.initialize(tempdir().unwrap().path()).unwrap();
+        database.flush().await.unwrap();
     }
 }

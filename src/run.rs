@@ -115,9 +115,7 @@ async fn spawn_build(
         let mut futures = vec![];
 
         for input in build.inputs().iter().chain(build.order_only_inputs()) {
-            if let Some(future) = build_input(context.clone(), input).await? {
-                futures.push(future);
-            }
+            futures.push(build_input(context.clone(), input).await?);
         }
 
         try_join_all(futures).await?;
@@ -152,9 +150,7 @@ async fn spawn_build(
         let mut futures = vec![];
 
         for input in dynamic_inputs {
-            if let Some(future) = build_input(context.clone(), input).await? {
-                futures.push(future);
-            }
+            futures.push(build_input(context.clone(), input).await?);
         }
 
         try_join_all(futures).await?;
@@ -218,17 +214,17 @@ async fn spawn_build(
 async fn build_input(
     context: Arc<RunContext<'static>>,
     input: &str,
-) -> Result<Option<BuildFuture<'static>>, InfrastructureError<'static>> {
+) -> Result<BuildFuture<'static>, InfrastructureError<'static>> {
     Ok(
         if let Some(build) = context.configuration().outputs().get(input) {
             trigger_build(context.clone(), build).await?;
 
-            Some(context.build_futures().read().await[&build.id()].clone())
+            context.build_futures().read().await[&build.id()].clone()
         } else {
             let input = input.to_owned();
             let future: RawBuildFuture<'static> =
                 Box::pin(async move { check_file_existence(&context, &input).await });
-            Some(future.shared())
+            future.shared()
         },
     )
 }

@@ -1,11 +1,10 @@
 use crate::infrastructure::{Console, Database, FileSystem};
-use std::sync::RwLock;
 use tokio::sync::Mutex;
 
 pub struct Context {
     console: Mutex<Box<dyn Console + Send + Sync + 'static>>,
     file_system: Box<dyn FileSystem + Send + Sync + 'static>,
-    database: RwLock<Box<dyn Database + Send + Sync + 'static>>,
+    database: Box<dyn Database + Send + Sync + 'static>,
 }
 
 impl Context {
@@ -17,7 +16,7 @@ impl Context {
         Self {
             console: Mutex::new(Box::new(console)),
             file_system: Box::new(file_system),
-            database: RwLock::new(Box::new(database)),
+            database: Box::new(database),
         }
     }
 
@@ -29,7 +28,7 @@ impl Context {
         &*self.file_system
     }
 
-    pub fn database(&self) -> &RwLock<Box<dyn Database + Send + Sync>> {
-        &self.database
+    pub fn database(&self) -> &(dyn Database + Send + Sync) {
+        &*self.database
     }
 }

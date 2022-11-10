@@ -92,7 +92,7 @@ async fn execute(
 
     let configuration = Arc::new(compile(&modules, &dependencies, &root_module_path)?);
 
-    context.database().write().unwrap().initialize(
+    context.database().write()?.initialize(
         &configuration
             .build_directory()
             .map(PathBuf::from)

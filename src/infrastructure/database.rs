@@ -6,7 +6,7 @@ use std::path::Path;
 
 #[async_trait]
 pub trait Database {
-    fn initialize(&mut self, path: &Path) -> Result<(), Box<dyn Error>>;
+    fn initialize(&self, path: &Path) -> Result<(), Box<dyn Error>>;
     fn get(&self, id: BuildId) -> Result<Option<BuildHash>, Box<dyn Error>>;
     fn set(&self, id: BuildId, hash: BuildHash) -> Result<(), Box<dyn Error>>;
     async fn flush(&self) -> Result<(), Box<dyn Error>>;
@@ -32,7 +32,7 @@ impl OsDatabase {
 
 #[async_trait]
 impl Database for OsDatabase {
-    fn initialize(&mut self, path: &Path) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self, path: &Path) -> Result<(), Box<dyn Error>> {
         self.database = Some(sled::open(path)?);
 
         Ok(())

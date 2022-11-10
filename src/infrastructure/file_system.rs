@@ -5,13 +5,15 @@ use std::fmt::{Debug, Formatter};
 use std::fs::Metadata;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::{Instant, SystemTime};
 use tokio::fs::{self, File};
 use tokio::io::AsyncReadExt;
 
 #[async_trait]
 pub trait FileSystem: Debug {
     async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), Box<dyn Error>>;
-    async fn metadata(&self, path: &Path) -> Result<Metadata, Box<dyn Error>>;
+    async fn exists(&self, path: &Path) -> Result<(), Box<dyn Error>>;
+    async fn modified_time(&self, path: &Path) -> Result<SystemTime, Box<dyn Error>>;
     async fn create_directory(&self, path: &Path) -> Result<(), Box<dyn Error>>;
     async fn canonicalize_path(&self, path: &Path) -> Result<PathBuf, Box<dyn Error>>;
 }
@@ -38,9 +40,19 @@ impl FileSystem for OsFileSystem {
         Ok(())
     }
 
-    async fn metadata(&self, path: &Path) -> Result<Metadata, Box<dyn Error>> {
+    async fn exists(&self, path: &Path) -> Result<(), Box<dyn Error>> {
+        fs::metadata(path)
+            .await
+            .map_err(|error| OsFileSystemError::new(error, path))?;
+
+        Ok(())
+    }
+
+    async fn modified_time(&self, path: &Path) -> Result<SystemTime, Box<dyn Error>> {
         Ok(fs::metadata(path)
             .await
+            .map_err(|error| OsFileSystemError::new(error, path))?
+            .modified()
             .map_err(|error| OsFileSystemError::new(error, path))?)
     }
 

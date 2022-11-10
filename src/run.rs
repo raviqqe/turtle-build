@@ -236,7 +236,7 @@ async fn check_file_existence(
     context
         .global()
         .file_system()
-        .metadata(path.as_ref())
+        .modified_time(path.as_ref())
         .await?;
 
     Ok(())

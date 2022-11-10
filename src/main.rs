@@ -97,7 +97,7 @@ async fn execute(
             .build_directory()
             .map(PathBuf::from)
             .unwrap_or_else(|| root_module_path.parent().unwrap().into())
-            .join(env!("CARGO_PKG_VERSION").replace(".", "_"))
+            .join(env!("CARGO_PKG_VERSION").replace('.', "_"))
             .join(DATABASE_DIRECTORY),
     )?;
 

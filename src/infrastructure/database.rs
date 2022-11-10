@@ -1,22 +1,34 @@
-use super::build_hash::BuildHash;
-use crate::{error::ApplicationError, ir::BuildId};
+use crate::build_hash::BuildHash;
+use crate::ir::BuildId;
+use async_trait::async_trait;
+use std::error::Error;
 use std::path::Path;
 
 const DATABASE_FILENAME: &str = ".turtle-sled-db";
 
+#[async_trait]
+pub trait Database {
+    fn get(&self, id: BuildId) -> Result<Option<BuildHash>, Box<dyn Error>>;
+    fn set(&self, id: BuildId, hash: BuildHash) -> Result<(), Box<dyn Error>>;
+    async fn flush(&self) -> Result<(), Box<dyn Error>>;
+}
+
 #[derive(Clone, Debug)]
-pub struct BuildDatabase {
+pub struct OsDatabase {
     database: sled::Db,
 }
 
-impl BuildDatabase {
-    pub fn new(build_directory: &Path) -> Result<Self, ApplicationError<'static>> {
+impl OsDatabase {
+    pub fn new(build_directory: &Path) -> Result<Self, Box<dyn Error>> {
         Ok(Self {
             database: sled::open(build_directory.join(DATABASE_FILENAME))?,
         })
     }
+}
 
-    pub fn get(&self, id: BuildId) -> Result<Option<BuildHash>, ApplicationError<'static>> {
+#[async_trait]
+impl Database for OsDatabase {
+    fn get(&self, id: BuildId) -> Result<Option<BuildHash>, Box<dyn Error>> {
         Ok(self
             .database
             .get(id.to_bytes())?
@@ -24,14 +36,14 @@ impl BuildDatabase {
             .transpose()?)
     }
 
-    pub fn set(&self, id: BuildId, hash: BuildHash) -> Result<(), ApplicationError<'static>> {
+    fn set(&self, id: BuildId, hash: BuildHash) -> Result<(), Box<dyn Error>> {
         self.database
             .insert(id.to_bytes(), bincode::serialize(&hash)?)?;
 
         Ok(())
     }
 
-    pub async fn flush(&self) -> Result<(), ApplicationError<'static>> {
+    async fn flush(&self) -> Result<(), Box<dyn Error>> {
         self.database.flush_async().await?;
 
         Ok(())
@@ -46,19 +58,19 @@ mod tests {
 
     #[test]
     fn open_database() {
-        BuildDatabase::new(tempdir().unwrap().path()).unwrap();
+        OsDatabase::new(tempdir().unwrap().path()).unwrap();
     }
 
     #[test]
     fn set_hash() {
-        let database = BuildDatabase::new(tempdir().unwrap().path()).unwrap();
+        let database = OsDatabase::new(tempdir().unwrap().path()).unwrap();
 
         database.set(BuildId::new(0), BuildHash::new(0, 0)).unwrap();
     }
 
     #[test]
     fn get_hash() {
-        let database = BuildDatabase::new(tempdir().unwrap().path()).unwrap();
+        let database = OsDatabase::new(tempdir().unwrap().path()).unwrap();
         let hash = BuildHash::new(0, 1);
 
         database.set(BuildId::new(0), hash).unwrap();

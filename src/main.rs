@@ -33,7 +33,6 @@ use validation::validate_modules;
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
 const DATABASE_DIRECTORY: &str = ".turtle";
 const OPEN_FILE_LIMIT: usize = if cfg!(target_os = "macos") { 256 } else { 1024 };
-const MIN_OPEN_FILE_LIMIT: usize = 1;
 const DEFAULT_FILE_COUNT_PER_PROCESS: usize = 3; // stdin, stdout, and stderr
 
 #[tokio::main]
@@ -47,7 +46,7 @@ async fn main() {
         OsFileSystem::new(
             OPEN_FILE_LIMIT
                 .saturating_sub(DEFAULT_FILE_COUNT_PER_PROCESS * (job_limit + 1))
-                .max(MIN_OPEN_FILE_LIMIT),
+                .max(1),
         ),
     )
     .into();

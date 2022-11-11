@@ -4,14 +4,14 @@ use crate::{
     ir::{BuildId, Configuration},
     validation::BuildGraph,
 };
-use std::{collections::HashMap, sync::Arc};
-use tokio::sync::{Mutex, RwLock, Semaphore};
+use dashmap::DashMap;
+use std::sync::Arc;
+use tokio::sync::{Mutex, Semaphore};
 
 pub struct Context {
     application: Arc<ApplicationContext>,
     configuration: Arc<Configuration>,
-    // TODO Use a concurrent hash map. We only need atomic insertion but not a great lock.
-    build_futures: RwLock<HashMap<BuildId, BuildFuture>>,
+    build_futures: DashMap<BuildId, BuildFuture>,
     build_graph: Mutex<BuildGraph>,
     job_semaphore: Semaphore,
     options: Options,
@@ -29,7 +29,7 @@ impl Context {
             application,
             build_graph: build_graph.into(),
             configuration,
-            build_futures: RwLock::new(HashMap::new()),
+            build_futures: DashMap::new(),
             job_semaphore,
             options,
         }
@@ -43,7 +43,7 @@ impl Context {
         &self.configuration
     }
 
-    pub fn build_futures(&self) -> &RwLock<HashMap<BuildId, BuildFuture>> {
+    pub fn build_futures(&self) -> &DashMap<BuildId, BuildFuture> {
         &self.build_futures
     }
 

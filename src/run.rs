@@ -56,10 +56,8 @@ pub async fn run(
     // Do not inline this to avoid borrowing a lock of builds.
     let futures = context
         .build_futures()
-        .read()
-        .await
-        .values()
-        .cloned()
+        .iter()
+        .map(|r#ref| r#ref.value().clone())
         .collect::<Vec<_>>();
 
     // Start running build futures actually.
@@ -79,16 +77,14 @@ async fn trigger_build(
     context: Arc<RunContext>,
     build: &Arc<Build>,
 ) -> Result<(), ApplicationError> {
-    // Exclusive lock for atomic addition of a build job.
-    let mut builds = context.build_futures().write().await;
+    context
+        .build_futures()
+        .entry(build.id())
+        .or_insert_with(|| {
+            let future: RawBuildFuture = Box::pin(spawn_build(context.clone(), build.clone()));
 
-    if builds.contains_key(&build.id()) {
-        return Ok(());
-    }
-
-    let future: RawBuildFuture = Box::pin(spawn_build(context.clone(), build.clone()));
-
-    builds.insert(build.id(), future.shared());
+            future.shared()
+        });
 
     Ok(())
 }
@@ -208,7 +204,7 @@ async fn build_input(
         if let Some(build) = context.configuration().outputs().get(input) {
             trigger_build(context.clone(), build).await?;
 
-            context.build_futures().read().await[&build.id()].clone()
+            context.build_futures().get(&build.id()).unwrap().clone()
         } else {
             let input = input.to_owned();
             let future: RawBuildFuture =

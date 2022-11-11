@@ -28,11 +28,11 @@ const SOURCE_VARIABLE_NAME: &str = "srcdep";
 static VARIABLE_PATTERN: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\$([[:alpha:]_][[:alnum:]_]*)").unwrap());
 
-pub fn compile<'a>(
-    modules: &HashMap<PathBuf, ast::Module<'a>>,
+pub fn compile(
+    modules: &HashMap<PathBuf, ast::Module>,
     dependencies: &ModuleDependencyMap,
     root_module_path: &Path,
-) -> Result<Configuration<'a>, CompileError> {
+) -> Result<Configuration, CompileError> {
     let context = Context::new(modules.clone(), dependencies.clone());
 
     let mut global_state = GlobalState {
@@ -70,8 +70,8 @@ pub fn compile<'a>(
 }
 
 fn compile_module<'a>(
-    context: &Context<'a>,
-    global_state: &mut GlobalState<'a>,
+    context: &'a Context,
+    global_state: &mut GlobalState,
     module_state: &mut ModuleState<'a, '_>,
     path: &Path,
 ) -> Result<(), CompileError> {
@@ -91,14 +91,22 @@ fn compile_module<'a>(
                         .iter()
                         .map(|definition| (definition.name().into(), definition.value().into()))
                         .chain([
-                            ("in".into(), build.inputs().join(" ")),
-                            ("out".into(), build.outputs().join(" ")),
+                            ("in".into(), build.inputs().join(" ").into()),
+                            ("out".into(), build.outputs().join(" ").into()),
                         ]),
                 );
 
                 let ir = Arc::new(Build::new(
-                    build.outputs().to_vec(),
-                    build.implicit_outputs().to_vec(),
+                    build
+                        .outputs()
+                        .iter()
+                        .map(|&string| string.into())
+                        .collect(),
+                    build
+                        .implicit_outputs()
+                        .iter()
+                        .map(|&string| string.into())
+                        .collect(),
                     if build.rule() == PHONY_RULE {
                         None
                     } else {
@@ -117,9 +125,13 @@ fn compile_module<'a>(
                         .inputs()
                         .iter()
                         .chain(build.implicit_inputs())
-                        .copied()
+                        .map(|&string| string.into())
                         .collect(),
-                    build.order_only_inputs().to_vec(),
+                    build
+                        .order_only_inputs()
+                        .iter()
+                        .map(|&string| string.into())
+                        .collect(),
                     variables.get(DYNAMIC_MODULE_VARIABLE).cloned(),
                 ));
 
@@ -127,7 +139,7 @@ fn compile_module<'a>(
 
                 global_state
                     .outputs
-                    .extend(outputs().map(|&output| (output.to_owned(), ir.clone())));
+                    .extend(outputs().map(|&output| (output.into(), ir.clone())));
 
                 if let Some(source) = variables.get(SOURCE_VARIABLE_NAME) {
                     global_state
@@ -205,10 +217,13 @@ fn resolve_dependency<'a>(
         .ok_or_else(|| CompileError::ModuleNotFound(submodule_path.into()))?)
 }
 
-fn interpolate_variables(template: &str, variables: &ChainMap<String, String>) -> String {
+fn interpolate_variables(template: &str, variables: &ChainMap<String, Arc<str>>) -> String {
     VARIABLE_PATTERN
         .replace_all(template, |captures: &Captures| {
-            variables.get(&captures[1]).cloned().unwrap_or_default()
+            variables
+                .get(&captures[1])
+                .map(|string| string.as_ref())
+                .unwrap_or_default()
         })
         .replace("$$", "$")
 }
@@ -245,13 +260,13 @@ mod tests {
         )
     }
 
-    fn ir_explicit_build<'a>(outputs: Vec<&'a str>, rule: Rule, inputs: Vec<&'a str>) -> Build<'a> {
+    fn ir_explicit_build(outputs: Vec<Arc<str>>, rule: Rule, inputs: Vec<Arc<str>>) -> Build {
         Build::new(outputs, vec![], rule.into(), inputs, vec![], None)
     }
 
     fn create_simple_configuration(
-        outputs: FnvHashMap<String, Arc<Build>>,
-        default_outputs: FnvHashSet<String>,
+        outputs: FnvHashMap<Arc<str>, Arc<Build>>,
+        default_outputs: FnvHashSet<Arc<str>>,
     ) -> Configuration {
         Configuration::new(outputs, default_outputs, Default::default(), None)
     }
@@ -292,7 +307,7 @@ mod tests {
             create_simple_configuration(
                 [(
                     "bar".into(),
-                    ir_explicit_build(vec!["bar"], Rule::new("42", None), vec![]).into()
+                    ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -323,7 +338,7 @@ mod tests {
             create_simple_configuration(
                 [(
                     "bar".into(),
-                    ir_explicit_build(vec!["bar"], Rule::new("1 2", None), vec![]).into()
+                    ir_explicit_build(vec!["bar".into()], Rule::new("1 2", None), vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -353,7 +368,7 @@ mod tests {
             create_simple_configuration(
                 [(
                     "bar".into(),
-                    ir_explicit_build(vec!["bar"], Rule::new("42", None), vec![]).into()
+                    ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -382,7 +397,7 @@ mod tests {
             create_simple_configuration(
                 [(
                     "bar".into(),
-                    ir_explicit_build(vec!["bar"], Rule::new("$", None), vec![]).into()
+                    ir_explicit_build(vec!["bar".into()], Rule::new("$", None), vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -411,7 +426,12 @@ mod tests {
             create_simple_configuration(
                 [(
                     "bar".into(),
-                    ir_explicit_build(vec!["bar"], Rule::new("baz", None), vec!["baz"]).into()
+                    ir_explicit_build(
+                        vec!["bar".into()],
+                        Rule::new("baz", None),
+                        vec!["baz".into()]
+                    )
+                    .into()
                 )]
                 .into_iter()
                 .collect(),
@@ -449,8 +469,12 @@ mod tests {
             create_simple_configuration(
                 [(
                     "bar".into(),
-                    ir_explicit_build(vec!["bar"], Rule::new("baz", None), vec!["baz", "blah"])
-                        .into()
+                    ir_explicit_build(
+                        vec!["bar".into()],
+                        Rule::new("baz", None),
+                        vec!["baz".into(), "blah".into()]
+                    )
+                    .into()
                 )]
                 .into_iter()
                 .collect(),
@@ -479,7 +503,7 @@ mod tests {
             create_simple_configuration(
                 [(
                     "bar".into(),
-                    ir_explicit_build(vec!["bar"], Rule::new("bar", None), vec![]).into()
+                    ir_explicit_build(vec!["bar".into()], Rule::new("bar", None), vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -491,8 +515,8 @@ mod tests {
     #[test]
     fn interpolate_out_variable_with_implicit_output() {
         let build = Arc::new(Build::new(
-            vec!["bar"],
-            vec!["baz"],
+            vec!["bar".into()],
+            vec!["baz".into()],
             Rule::new("bar", None).into(),
             vec![],
             vec![],
@@ -562,11 +586,11 @@ mod tests {
                 [(
                     "bar".into(),
                     Build::new(
-                        vec!["bar"],
+                        vec!["bar".into()],
                         vec![],
                         Some(Rule::new("", None)),
                         vec![],
-                        vec!["baz"],
+                        vec!["baz".into()],
                         None
                     )
                     .into()
@@ -600,11 +624,11 @@ mod tests {
                 [
                     (
                         "bar".into(),
-                        ir_explicit_build(vec!["bar"], Rule::new("", None), vec![]).into()
+                        ir_explicit_build(vec!["bar".into()], Rule::new("", None), vec![]).into()
                     ),
                     (
                         "baz".into(),
-                        ir_explicit_build(vec!["baz"], Rule::new("", None), vec![]).into()
+                        ir_explicit_build(vec!["baz".into()], Rule::new("", None), vec![]).into()
                     )
                 ]
                 .into_iter()
@@ -640,7 +664,7 @@ mod tests {
             create_simple_configuration(
                 [(
                     "bar".into(),
-                    ir_explicit_build(vec!["bar"], Rule::new("42", None), vec![]).into()
+                    ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -678,7 +702,7 @@ mod tests {
             Configuration::new(
                 [(
                     "bar".into(),
-                    ir_explicit_build(vec!["bar"], Rule::new("foo", None), vec![]).into()
+                    ir_explicit_build(vec!["bar".into()], Rule::new("foo", None), vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -712,7 +736,15 @@ mod tests {
             create_simple_configuration(
                 [(
                     "foo".into(),
-                    Build::new(vec!["foo"], vec![], None, vec!["bar"], vec![], None).into()
+                    Build::new(
+                        vec!["foo".into()],
+                        vec![],
+                        None,
+                        vec!["bar".into()],
+                        vec![],
+                        None
+                    )
+                    .into()
                 )]
                 .into_iter()
                 .collect(),
@@ -768,7 +800,7 @@ mod tests {
                 [(
                     "foo".into(),
                     Build::new(
-                        vec!["foo"],
+                        vec!["foo".into()],
                         vec![],
                         None,
                         vec![],
@@ -826,7 +858,7 @@ mod tests {
                 create_simple_configuration(
                     [(
                         "bar".into(),
-                        ir_explicit_build(vec!["bar"], Rule::new("42", None), vec![]).into()
+                        ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()
                     )]
                     .into_iter()
                     .collect(),
@@ -877,7 +909,7 @@ mod tests {
                 create_simple_configuration(
                     [(
                         "bar".into(),
-                        ir_explicit_build(vec!["bar"], Rule::new("42", None), vec![]).into()
+                        ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()
                     )]
                     .into_iter()
                     .collect(),
@@ -923,7 +955,7 @@ mod tests {
                 create_simple_configuration(
                     [(
                         "bar".into(),
-                        ir_explicit_build(vec!["bar"], Rule::new("42", None), vec![]).into()
+                        ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()
                     )]
                     .into_iter()
                     .collect(),

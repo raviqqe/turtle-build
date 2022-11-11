@@ -3,19 +3,19 @@ use fnv::{FnvHashMap, FnvHashSet};
 use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Configuration<'a> {
-    outputs: FnvHashMap<String, Arc<Build<'a>>>,
-    default_outputs: FnvHashSet<String>,
-    source_map: FnvHashMap<String, String>,
-    build_directory: Option<String>,
+pub struct Configuration {
+    outputs: FnvHashMap<Arc<str>, Arc<Build>>,
+    default_outputs: FnvHashSet<Arc<str>>,
+    source_map: FnvHashMap<Arc<str>, Arc<str>>,
+    build_directory: Option<Arc<str>>,
 }
 
-impl<'a> Configuration<'a> {
+impl Configuration {
     pub fn new(
-        outputs: FnvHashMap<String, Arc<Build<'a>>>,
-        default_outputs: FnvHashSet<String>,
-        source_map: FnvHashMap<String, String>,
-        build_directory: Option<String>,
+        outputs: FnvHashMap<Arc<str>, Arc<Build>>,
+        default_outputs: FnvHashSet<Arc<str>>,
+        source_map: FnvHashMap<Arc<str>, Arc<str>>,
+        build_directory: Option<Arc<str>>,
     ) -> Self {
         Self {
             outputs,
@@ -25,19 +25,19 @@ impl<'a> Configuration<'a> {
         }
     }
 
-    pub fn outputs(&self) -> &FnvHashMap<String, Arc<Build<'a>>> {
+    pub fn outputs(&self) -> &FnvHashMap<Arc<str>, Arc<Build>> {
         &self.outputs
     }
 
-    pub fn default_outputs(&self) -> &FnvHashSet<String> {
+    pub fn default_outputs(&self) -> &FnvHashSet<Arc<str>> {
         &self.default_outputs
     }
 
-    pub fn source_map(&self) -> &FnvHashMap<String, String> {
+    pub fn source_map(&self) -> &FnvHashMap<Arc<str>, Arc<str>> {
         &self.source_map
     }
 
-    pub fn build_directory(&self) -> Option<&str> {
-        self.build_directory.as_deref()
+    pub fn build_directory(&self) -> Option<&Arc<str>> {
+        self.build_directory.as_ref()
     }
 }

@@ -1,14 +1,16 @@
+use std::sync::Arc;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DynamicBuild {
-    inputs: Vec<String>,
+    inputs: Vec<Arc<str>>,
 }
 
 impl DynamicBuild {
-    pub fn new(inputs: Vec<String>) -> Self {
+    pub fn new(inputs: Vec<Arc<str>>) -> Self {
         Self { inputs }
     }
 
-    pub fn inputs(&self) -> &[String] {
+    pub fn inputs(&self) -> &[Arc<str>] {
         &self.inputs
     }
 }

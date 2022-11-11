@@ -2,6 +2,7 @@ use super::Rule;
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
+    sync::Arc,
 };
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -18,26 +19,26 @@ impl BuildId {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Build<'a> {
+pub struct Build {
     // IDs are persistent across different builds so that they can be used for,
     // for example, caching.
     id: BuildId,
-    outputs: Vec<&'a str>,
-    implicit_outputs: Vec<&'a str>,
+    outputs: Vec<Arc<str>>,
+    implicit_outputs: Vec<Arc<str>>,
     rule: Option<Rule>,
-    inputs: Vec<&'a str>,
-    order_only_inputs: Vec<&'a str>,
-    dynamic_module: Option<String>,
+    inputs: Vec<Arc<str>>,
+    order_only_inputs: Vec<Arc<str>>,
+    dynamic_module: Option<Arc<str>>,
 }
 
-impl<'a> Build<'a> {
+impl Build {
     pub fn new(
-        outputs: Vec<&'a str>,
-        implicit_outputs: Vec<&'a str>,
+        outputs: Vec<Arc<str>>,
+        implicit_outputs: Vec<Arc<str>>,
         rule: Option<Rule>,
-        inputs: Vec<&'a str>,
-        order_only_inputs: Vec<&'a str>,
-        dynamic_module: Option<String>,
+        inputs: Vec<Arc<str>>,
+        order_only_inputs: Vec<Arc<str>>,
+        dynamic_module: Option<Arc<str>>,
     ) -> Self {
         Self {
             id: Self::calculate_id(&outputs, &implicit_outputs),
@@ -54,11 +55,11 @@ impl<'a> Build<'a> {
         self.id
     }
 
-    pub fn outputs(&self) -> &[&'a str] {
+    pub fn outputs(&self) -> &[Arc<str>] {
         &self.outputs
     }
 
-    pub fn implicit_outputs(&self) -> &[&'a str] {
+    pub fn implicit_outputs(&self) -> &[Arc<str>] {
         &self.implicit_outputs
     }
 
@@ -66,19 +67,19 @@ impl<'a> Build<'a> {
         self.rule.as_ref()
     }
 
-    pub fn inputs(&self) -> &[&'a str] {
+    pub fn inputs(&self) -> &[Arc<str>] {
         &self.inputs
     }
 
-    pub fn order_only_inputs(&self) -> &[&'a str] {
+    pub fn order_only_inputs(&self) -> &[Arc<str>] {
         &self.order_only_inputs
     }
 
-    pub fn dynamic_module(&self) -> Option<&str> {
-        self.dynamic_module.as_deref()
+    pub fn dynamic_module(&self) -> Option<&Arc<str>> {
+        self.dynamic_module.as_ref()
     }
 
-    fn calculate_id(outputs: &[&'a str], implicit_outputs: &[&'a str]) -> BuildId {
+    fn calculate_id(outputs: &[Arc<str>], implicit_outputs: &[Arc<str>]) -> BuildId {
         let mut hasher = DefaultHasher::new();
 
         outputs.hash(&mut hasher);

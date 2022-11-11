@@ -10,31 +10,32 @@ use std::{collections::HashMap, sync::Arc};
 
 #[derive(Debug)]
 pub struct BuildGraph {
-    graph: Graph<String, ()>,
-    nodes: HashMap<String, NodeIndex<DefaultIx>>,
-    primary_outputs: HashMap<String, String>,
+    graph: Graph<Arc<str>, ()>,
+    nodes: HashMap<Arc<str>, NodeIndex<DefaultIx>>,
+    primary_outputs: HashMap<Arc<str>, Arc<str>>,
 }
 
 impl BuildGraph {
-    pub fn new(outputs: &FnvHashMap<String, Arc<Build>>) -> Self {
+    pub fn new(outputs: &FnvHashMap<Arc<str>, Arc<Build>>) -> Self {
         let mut this = Self {
-            graph: Graph::<String, ()>::new(),
-            nodes: HashMap::<String, NodeIndex<DefaultIx>>::new(),
+            graph: Graph::<Arc<str>, ()>::new(),
+            nodes: HashMap::<Arc<str>, NodeIndex<DefaultIx>>::new(),
             primary_outputs: HashMap::new(),
         };
 
         for (output, build) in outputs {
             for input in build.inputs().iter().chain(build.order_only_inputs()) {
-                this.add_edge(output, input);
+                this.add_edge(output.clone(), input.clone());
             }
 
             // Is this output primary?
-            if output == build.outputs()[0] {
-                this.primary_outputs.insert(output.into(), output.into());
+            if output == &build.outputs()[0] {
+                this.primary_outputs.insert(output.clone(), output.clone());
 
-                for &secondary in build.outputs().iter().skip(1) {
-                    this.add_edge(secondary, output);
-                    this.primary_outputs.insert(secondary.into(), output.into());
+                for secondary in build.outputs().iter().skip(1) {
+                    this.add_edge(secondary.clone(), output.clone());
+                    this.primary_outputs
+                        .insert(secondary.clone(), output.clone());
                 }
             }
         }
@@ -69,25 +70,25 @@ impl BuildGraph {
     ) -> Result<(), ValidationError> {
         for (output, build) in configuration.outputs() {
             for input in build.inputs() {
-                self.add_edge(&self.primary_outputs[output].clone(), input);
+                self.add_edge(self.primary_outputs[output].clone(), input.clone());
             }
         }
 
         self.validate()
     }
 
-    fn add_edge(&mut self, output: &str, input: &str) {
-        self.add_node(output);
-        self.add_node(input);
+    fn add_edge(&mut self, output: Arc<str>, input: Arc<str>) {
+        self.add_node(&output);
+        self.add_node(&input);
 
         self.graph
-            .add_edge(self.nodes[output], self.nodes[input], ());
+            .add_edge(self.nodes[&output], self.nodes[&input], ());
     }
 
-    fn add_node(&mut self, output: &str) {
+    fn add_node(&mut self, output: &Arc<str>) {
         if !self.nodes.contains_key(output) {
             self.nodes
-                .insert(output.into(), self.graph.add_node(output.into()));
+                .insert(output.clone(), self.graph.add_node(output.clone()));
         }
     }
 }
@@ -98,12 +99,12 @@ mod tests {
     use crate::ir::{DynamicBuild, Rule};
 
     fn validate_builds(
-        dependencies: &FnvHashMap<String, Arc<Build>>,
+        dependencies: &FnvHashMap<Arc<str>, Arc<Build>>,
     ) -> Result<(), ValidationError> {
         BuildGraph::new(dependencies).validate()
     }
 
-    fn explicit_build<'a>(outputs: Vec<&'a str>, inputs: Vec<&'a str>) -> Build<'a> {
+    fn explicit_build(outputs: Vec<Arc<str>>, inputs: Vec<Arc<str>>) -> Build {
         Build::new(
             outputs,
             vec![],
@@ -123,9 +124,12 @@ mod tests {
     fn validate_build_without_input() {
         assert_eq!(
             validate_builds(
-                &[("foo".into(), explicit_build(vec!["foo"], vec![]).into())]
-                    .into_iter()
-                    .collect()
+                &[(
+                    "foo".into(),
+                    explicit_build(vec!["foo".into()], vec![]).into()
+                )]
+                .into_iter()
+                .collect()
             ),
             Ok(())
         );
@@ -137,7 +141,7 @@ mod tests {
             validate_builds(
                 &[(
                     "foo".into(),
-                    explicit_build(vec!["foo"], vec!["bar"]).into()
+                    explicit_build(vec!["foo".into()], vec!["bar".into()]).into()
                 )]
                 .into_iter()
                 .collect()
@@ -153,11 +157,11 @@ mod tests {
                 &[(
                     "foo".into(),
                     Build::new(
-                        vec!["foo"],
+                        vec!["foo".into()],
                         vec![],
                         Rule::new("", None).into(),
                         vec![],
-                        vec!["bar"],
+                        vec!["bar".into()],
                         None
                     )
                     .into()
@@ -175,7 +179,7 @@ mod tests {
             validate_builds(
                 &[(
                     "foo".into(),
-                    explicit_build(vec!["foo"], vec!["foo"]).into()
+                    explicit_build(vec!["foo".into()], vec!["foo".into()]).into()
                 )]
                 .into_iter()
                 .collect()
@@ -191,11 +195,11 @@ mod tests {
                 &[(
                     "foo".into(),
                     Build::new(
-                        vec!["foo"],
+                        vec!["foo".into()],
                         vec![],
                         Rule::new("", None).into(),
                         vec![],
-                        vec!["foo"],
+                        vec!["foo".into()],
                         None
                     )
                     .into()
@@ -214,9 +218,12 @@ mod tests {
                 &[
                     (
                         "foo".into(),
-                        explicit_build(vec!["foo"], vec!["bar"]).into()
+                        explicit_build(vec!["foo".into()], vec!["bar".into()]).into()
                     ),
-                    ("bar".into(), explicit_build(vec!["bar"], vec![]).into())
+                    (
+                        "bar".into(),
+                        explicit_build(vec!["bar".into()], vec![]).into()
+                    )
                 ]
                 .into_iter()
                 .collect()
@@ -232,11 +239,11 @@ mod tests {
                 &[
                     (
                         "foo".into(),
-                        explicit_build(vec!["foo"], vec!["bar"]).into()
+                        explicit_build(vec!["foo".into()], vec!["bar".into()]).into()
                     ),
                     (
                         "bar".into(),
-                        explicit_build(vec!["bar"], vec!["foo"]).into()
+                        explicit_build(vec!["bar".into()], vec!["foo".into()]).into()
                     )
                 ]
                 .into_iter()
@@ -255,9 +262,12 @@ mod tests {
             &[
                 (
                     "foo".into(),
-                    explicit_build(vec!["foo"], vec!["bar"]).into(),
+                    explicit_build(vec!["foo".into()], vec!["bar".into()]).into(),
                 ),
-                ("bar".into(), explicit_build(vec!["bar"], vec![]).into()),
+                (
+                    "bar".into(),
+                    explicit_build(vec!["bar".into()], vec![]).into(),
+                ),
             ]
             .into_iter()
             .collect(),
@@ -280,7 +290,7 @@ mod tests {
 
     #[test]
     fn validate_circular_build_with_dependency_from_secondary_to_primary() {
-        let build = Arc::new(explicit_build(vec!["foo", "bar"], vec![]));
+        let build = Arc::new(explicit_build(vec!["foo".into(), "bar".into()], vec![]));
 
         let mut graph = BuildGraph::new(
             &[("foo".into(), build.clone()), ("bar".into(), build)]
@@ -302,7 +312,7 @@ mod tests {
 
     #[test]
     fn validate_circular_build_with_dependency_from_primary_to_secondary() {
-        let build = Arc::new(explicit_build(vec!["foo", "bar"], vec![]));
+        let build = Arc::new(explicit_build(vec!["foo".into(), "bar".into()], vec![]));
 
         let mut graph = BuildGraph::new(
             &[("foo".into(), build.clone()), ("bar".into(), build)]

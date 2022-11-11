@@ -3,7 +3,7 @@
 set -e
 
 rule_count=10
-input_count=100
+input_count=10
 subninja_count=10
 
 print_rule() (

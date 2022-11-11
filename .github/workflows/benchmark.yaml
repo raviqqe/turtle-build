@@ -6,11 +6,19 @@ on:
   pull_request:
 jobs:
   benchmark:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        benchmark:
+          - simple
+          - nested
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
       - uses: Swatinem/rust-cache@v2
       - uses: raviqqe/enable-homebrew@main
       - run: brew install ninja
       - run: cargo install --path . --locked
-      - run: benchmark/main.sh
+      - run: benchmark/${{ matrix.benchmark }}/main.sh

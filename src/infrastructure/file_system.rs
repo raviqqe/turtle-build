@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use dashmap::DashSet;
 use std::{
     error::Error,
     fmt::Debug,
@@ -9,6 +10,7 @@ use std::{
 use tokio::{
     fs::{self, File},
     io::AsyncReadExt,
+    task::yield_now,
 };
 
 #[async_trait]
@@ -25,20 +27,17 @@ pub trait FileSystem {
 }
 
 #[derive(Debug, Default)]
-pub struct OsFileSystem {}
+pub struct OsFileSystem {
+    path_lock: DashSet<PathBuf>,
+}
 
 impl OsFileSystem {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            path_lock: DashSet::default(),
+        }
     }
 
-    fn error(error: io::Error, path: &Path) -> String {
-        format!("{}: {}", error, path.display())
-    }
-}
-
-#[async_trait]
-impl FileSystem for OsFileSystem {
     async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
         File::open(path)
             .await
@@ -63,6 +62,41 @@ impl FileSystem for OsFileSystem {
             .map_err(|error| Self::error(error, path))?;
 
         Ok(())
+    }
+
+    fn error(error: io::Error, path: &Path) -> String {
+        format!("{}: {}", error, path.display())
+    }
+}
+
+#[async_trait]
+impl FileSystem for OsFileSystem {
+    async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
+        while !self.path_lock.insert(path.into()) {
+            yield_now().await;
+        }
+
+        let result = self.read_file(path, buffer).await;
+
+        self.path_lock.remove(path);
+
+        result
+    }
+
+    async fn read_file_to_string(
+        &self,
+        path: &Path,
+        buffer: &mut String,
+    ) -> Result<(), Box<dyn Error>> {
+        while !self.path_lock.insert(path.into()) {
+            yield_now().await;
+        }
+
+        let result = self.read_file_to_string(path, buffer).await;
+
+        self.path_lock.remove(path);
+
+        result
     }
 
     async fn modified_time(&self, path: &Path) -> Result<SystemTime, Box<dyn Error>> {

@@ -23,3 +23,12 @@ jobs:
       - uses: streetsidesoftware/cspell-action@main
         with:
           files: "**/*.{md,rs,sh,toml}"
+  unused_dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: rustup install nightly
+      - uses: Swatinem/rust-cache@v2
+      - run: |
+          rustup run nightly cargo install cargo-udeps
+          cargo +nightly udeps

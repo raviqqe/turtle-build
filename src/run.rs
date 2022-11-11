@@ -19,7 +19,7 @@ use async_recursion::async_recursion;
 use futures::future::{try_join_all, FutureExt, Shared};
 pub use options::Options;
 use std::{future::Future, path::Path, pin::Pin, sync::Arc};
-use tokio::{spawn, sync::Semaphore, time::Instant, try_join};
+use tokio::{spawn, time::Instant, try_join};
 
 type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), ApplicationError>> + Send>>;
 type BuildFuture = Shared<RawBuildFuture>;
@@ -37,7 +37,6 @@ pub async fn run(
         context.clone(),
         configuration,
         graph,
-        Semaphore::new(options.job_limit.unwrap_or_else(num_cpus::get)),
         options,
     ));
 
@@ -60,7 +59,7 @@ pub async fn run(
         .map(|r#ref| r#ref.value().clone())
         .collect::<Vec<_>>();
 
-    // Start running build futures actually.
+    // Start running build futures from roots.
     if let Err(error) = try_join_all(futures).await {
         // Flush explicitly here as flush on drop doesn't work in general
         // because of possible dependency cycles of build jobs.
@@ -243,10 +242,6 @@ async fn prepare_directory(
 }
 
 async fn run_rule(context: &RunContext, rule: &Rule) -> Result<(), ApplicationError> {
-    // Acquire a job semaphore first to guarantee a lock order between a job
-    // semaphore and console.
-    let permit = context.job_semaphore().acquire().await?;
-
     let ((output, duration), mut console) = try_join!(
         async {
             let start_time = Instant::now();
@@ -255,11 +250,8 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<(), ApplicationEr
                 .command_runner()
                 .run(rule.command())
                 .await?;
-            let duration = Instant::now() - start_time;
 
-            drop(permit);
-
-            Ok::<_, ApplicationError>((output, duration))
+            Ok::<_, ApplicationError>((output, Instant::now() - start_time))
         },
         async {
             let mut console = context.application().console().lock().await;

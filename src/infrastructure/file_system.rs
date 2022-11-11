@@ -78,7 +78,7 @@ impl FileSystem for OsFileSystem {
 
         let result = self.read_file(path, buffer).await;
 
-        self.path_lock.remove(path.into());
+        self.path_lock.remove(path);
 
         result
     }
@@ -94,7 +94,7 @@ impl FileSystem for OsFileSystem {
 
         let result = self.read_file_to_string(path, buffer).await;
 
-        self.path_lock.remove(path.into());
+        self.path_lock.remove(path);
 
         result
     }

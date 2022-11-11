@@ -103,7 +103,7 @@ mod tests {
         BuildGraph::new(dependencies).validate()
     }
 
-    fn explicit_build<'a>(outputs: Vec<&'a str>, inputs: Vec<&'a str>) -> Build<'a> {
+    fn explicit_build(outputs: Vec<&str>, inputs: Vec<&str>) -> Build {
         Build::new(
             outputs,
             vec![],

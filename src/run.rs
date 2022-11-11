@@ -21,15 +21,14 @@ pub use options::Options;
 use std::{future::Future, path::Path, pin::Pin, sync::Arc};
 use tokio::{spawn, sync::Semaphore, time::Instant, try_join};
 
-type RawBuildFuture<'a> =
-    Pin<Box<dyn Future<Output = Result<(), ApplicationError<'a>>> + Send + 'a>>;
-type BuildFuture<'a> = Shared<RawBuildFuture<'a>>;
+type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), ApplicationError>> + Send>>;
+type BuildFuture = Shared<RawBuildFuture>;
 
 pub async fn run(
     context: &Arc<Context>,
-    configuration: Arc<Configuration<'static>>,
+    configuration: Arc<Configuration>,
     options: Options,
-) -> Result<(), ApplicationError<'static>> {
+) -> Result<(), ApplicationError> {
     let graph = BuildGraph::new(configuration.outputs());
 
     graph.validate()?;
@@ -77,9 +76,9 @@ pub async fn run(
 
 #[async_recursion]
 async fn trigger_build(
-    context: Arc<RunContext<'static>>,
-    build: &Arc<Build<'static>>,
-) -> Result<(), ApplicationError<'static>> {
+    context: Arc<RunContext>,
+    build: &Arc<Build>,
+) -> Result<(), ApplicationError> {
     // Exclusive lock for atomic addition of a build job.
     let mut builds = context.build_futures().write().await;
 
@@ -94,10 +93,7 @@ async fn trigger_build(
     Ok(())
 }
 
-async fn spawn_build(
-    context: Arc<RunContext<'static>>,
-    build: Arc<Build<'static>>,
-) -> Result<(), ApplicationError<'static>> {
+async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), ApplicationError> {
     spawn(async move {
         let mut futures = vec![];
 
@@ -205,9 +201,9 @@ async fn spawn_build(
 }
 
 async fn build_input(
-    context: Arc<RunContext<'static>>,
+    context: Arc<RunContext>,
     input: &str,
-) -> Result<BuildFuture<'static>, ApplicationError<'static>> {
+) -> Result<BuildFuture, ApplicationError> {
     Ok(
         if let Some(build) = context.configuration().outputs().get(input) {
             trigger_build(context.clone(), build).await?;
@@ -215,7 +211,7 @@ async fn build_input(
             context.build_futures().read().await[&build.id()].clone()
         } else {
             let input = input.to_owned();
-            let future: RawBuildFuture<'static> =
+            let future: RawBuildFuture =
                 Box::pin(async move { check_file_existence(&context, &input).await });
             future.shared()
         },
@@ -223,9 +219,9 @@ async fn build_input(
 }
 
 async fn check_file_existence(
-    context: &RunContext<'static>,
+    context: &RunContext,
     path: impl AsRef<Path>,
-) -> Result<(), ApplicationError<'static>> {
+) -> Result<(), ApplicationError> {
     context
         .application()
         .file_system()
@@ -236,9 +232,9 @@ async fn check_file_existence(
 }
 
 async fn prepare_directory(
-    context: &RunContext<'_>,
+    context: &RunContext,
     path: impl AsRef<Path>,
-) -> Result<(), ApplicationError<'static>> {
+) -> Result<(), ApplicationError> {
     if let Some(directory) = path.as_ref().parent() {
         context
             .application()
@@ -250,10 +246,7 @@ async fn prepare_directory(
     Ok(())
 }
 
-async fn run_rule<'a>(
-    context: &RunContext<'a>,
-    rule: &Rule,
-) -> Result<(), ApplicationError<'static>> {
+async fn run_rule(context: &RunContext, rule: &Rule) -> Result<(), ApplicationError> {
     // Acquire a job semaphore first to guarantee a lock order between a job
     // semaphore and console.
     let permit = context.job_semaphore().acquire().await?;

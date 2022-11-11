@@ -2,13 +2,13 @@ use super::chain_map::ChainMap;
 use crate::ast;
 
 #[derive(Clone, Debug)]
-pub struct ModuleState<'a, 'b> {
-    pub rules: ChainMap<'b, String, ast::Rule<'a>>,
-    pub variables: ChainMap<'b, String, String>,
+pub struct ModuleState<'a, 'm> {
+    pub rules: ChainMap<'m, String, ast::Rule<'a>>,
+    pub variables: ChainMap<'m, String, String>,
 }
 
-impl<'a, 'b> ModuleState<'a, 'b> {
-    pub fn fork(&'b self) -> Self {
+impl<'a, 'm> ModuleState<'a, 'm> {
+    pub fn fork(&'m self) -> Self {
         Self {
             rules: self.rules.fork(),
             variables: self.variables.fork(),

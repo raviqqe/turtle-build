@@ -9,11 +9,11 @@ use std::{
 use tokio::{io, sync::AcquireError, task::JoinError};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ApplicationError<'a> {
+pub enum ApplicationError {
     Build,
     Compile(CompileError),
     DefaultOutputNotFound(String),
-    DynamicDependencyNotFound(Arc<Build<'a>>),
+    DynamicDependencyNotFound(Arc<Build>),
     InputNotBuilt(String),
     InputNotFound(String),
     Other(String),
@@ -22,7 +22,7 @@ pub enum ApplicationError<'a> {
     Validation(ValidationError),
 }
 
-impl<'a> ApplicationError<'a> {
+impl ApplicationError {
     pub fn map_outputs(self, source_map: &FnvHashMap<String, String>) -> Self {
         match self {
             Self::Validation(ValidationError::CircularBuildDependency(outputs)) => {
@@ -39,9 +39,9 @@ impl<'a> ApplicationError<'a> {
     }
 }
 
-impl<'a> Error for ApplicationError<'a> {}
+impl Error for ApplicationError {}
 
-impl<'a> Display for ApplicationError<'a> {
+impl Display for ApplicationError {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
             Self::Build => write!(formatter, "build failed"),
@@ -71,55 +71,55 @@ impl<'a> Display for ApplicationError<'a> {
     }
 }
 
-impl From<AcquireError> for ApplicationError<'static> {
+impl From<AcquireError> for ApplicationError {
     fn from(error: AcquireError) -> Self {
         Self::Other(format!("{}", &error))
     }
 }
 
-impl From<bincode::Error> for ApplicationError<'static> {
+impl From<bincode::Error> for ApplicationError {
     fn from(error: bincode::Error) -> Self {
         Self::Other(format!("{}", &error))
     }
 }
 
-impl From<Box<dyn Error>> for ApplicationError<'static> {
+impl From<Box<dyn Error>> for ApplicationError {
     fn from(error: Box<dyn Error>) -> Self {
         Self::Other(error.to_string())
     }
 }
 
-impl From<CompileError> for ApplicationError<'static> {
+impl From<CompileError> for ApplicationError {
     fn from(error: CompileError) -> Self {
         Self::Compile(error)
     }
 }
 
-impl From<io::Error> for ApplicationError<'static> {
+impl From<io::Error> for ApplicationError {
     fn from(error: io::Error) -> Self {
         Self::Other(format!("{}", &error))
     }
 }
 
-impl From<JoinError> for ApplicationError<'static> {
+impl From<JoinError> for ApplicationError {
     fn from(error: JoinError) -> Self {
         Self::Other(format!("{}", &error))
     }
 }
 
-impl From<ParseError> for ApplicationError<'static> {
+impl From<ParseError> for ApplicationError {
     fn from(error: ParseError) -> Self {
         Self::Parse(error)
     }
 }
 
-impl From<sled::Error> for ApplicationError<'static> {
+impl From<sled::Error> for ApplicationError {
     fn from(error: sled::Error) -> Self {
         Self::Sled(error)
     }
 }
 
-impl From<ValidationError> for ApplicationError<'static> {
+impl From<ValidationError> for ApplicationError {
     fn from(error: ValidationError) -> Self {
         Self::Validation(error)
     }

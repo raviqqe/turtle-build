@@ -28,11 +28,11 @@ const SOURCE_VARIABLE_NAME: &str = "srcdep";
 static VARIABLE_PATTERN: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\$([[:alpha:]_][[:alnum:]_]*)").unwrap());
 
-pub fn compile<'a>(
-    modules: &HashMap<PathBuf, ast::Module<'a>>,
+pub fn compile(
+    modules: &HashMap<PathBuf, ast::Module>,
     dependencies: &ModuleDependencyMap,
     root_module_path: &Path,
-) -> Result<Configuration<'a>, CompileError> {
+) -> Result<Configuration, CompileError> {
     let context = Context::new(modules.clone(), dependencies.clone());
 
     let mut global_state = GlobalState {
@@ -69,9 +69,9 @@ pub fn compile<'a>(
     ))
 }
 
-fn compile_module<'a>(
+fn compile_module(
     context: &Context<'a>,
-    global_state: &mut GlobalState<'a>,
+    global_state: &mut GlobalState,
     module_state: &mut ModuleState<'a, '_>,
     path: &Path,
 ) -> Result<(), CompileError> {
@@ -245,7 +245,7 @@ mod tests {
         )
     }
 
-    fn ir_explicit_build<'a>(outputs: Vec<&'a str>, rule: Rule, inputs: Vec<&'a str>) -> Build<'a> {
+    fn ir_explicit_build(outputs: Vec<&str>, rule: Rule, inputs: Vec<&str>) -> Build {
         Build::new(outputs, vec![], rule.into(), inputs, vec![], None)
     }
 

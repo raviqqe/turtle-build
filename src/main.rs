@@ -41,7 +41,7 @@ async fn main() {
         OsCommandRunner::new(arguments.job_limit),
         OsConsole::new(),
         OsDatabase::new(),
-        OsFileSystem::new(OPEN_FILE_LIMIT - 64),
+        OsFileSystem::new(OPEN_FILE_LIMIT),
     )
     .into();
 

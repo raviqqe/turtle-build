@@ -10,6 +10,7 @@ jobs:
       matrix:
         benchmark:
           - simple
+          - nested
         os:
           - ubuntu-latest
           - macos-latest

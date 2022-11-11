@@ -1,17 +1,17 @@
 use super::DynamicBuild;
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DynamicConfiguration {
-    outputs: HashMap<String, DynamicBuild>,
+    outputs: HashMap<Arc<str>, DynamicBuild>,
 }
 
 impl DynamicConfiguration {
-    pub fn new(outputs: HashMap<String, DynamicBuild>) -> Self {
+    pub fn new(outputs: HashMap<Arc<str>, DynamicBuild>) -> Self {
         Self { outputs }
     }
 
-    pub fn outputs(&self) -> &HashMap<String, DynamicBuild> {
+    pub fn outputs(&self) -> &HashMap<Arc<str>, DynamicBuild> {
         &self.outputs
     }
 }

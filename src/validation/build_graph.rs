@@ -70,7 +70,7 @@ impl BuildGraph {
     ) -> Result<(), ValidationError> {
         for (output, build) in configuration.outputs() {
             for input in build.inputs() {
-                self.add_edge(self.primary_outputs[output.as_str()].clone(), input.clone());
+                self.add_edge(self.primary_outputs[output].clone(), input.clone());
             }
         }
 

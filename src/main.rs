@@ -45,7 +45,8 @@ async fn main() {
         OsConsole::new(),
         OsDatabase::new(),
         OsFileSystem::new(
-            (OPEN_FILE_LIMIT - DEFAULT_FILE_COUNT_PER_PROCESS * (job_limit + 1))
+            OPEN_FILE_LIMIT
+                .saturating_sub(DEFAULT_FILE_COUNT_PER_PROCESS * (job_limit + 1))
                 .max(MIN_OPEN_FILE_LIMIT),
         ),
     )

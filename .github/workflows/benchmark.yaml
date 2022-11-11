@@ -5,11 +5,11 @@ on:
       - main
   pull_request:
 jobs:
-  strategy:
-    matrix:
-      benchmark:
-        - simple
   benchmark:
+    strategy:
+      matrix:
+        benchmark:
+          - simple
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3

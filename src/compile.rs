@@ -161,7 +161,7 @@ fn compile_module<'a>(
                 )?;
             }
             ast::Statement::Rule(rule) => {
-                module_state.rules.insert(rule.name().into(), rule.clone());
+                module_state.rules.insert(rule.name(), rule.clone());
             }
             ast::Statement::Submodule(submodule) => {
                 compile_module(
@@ -174,7 +174,7 @@ fn compile_module<'a>(
             ast::Statement::VariableDefinition(definition) => {
                 module_state
                     .variables
-                    .insert(definition.name().into(), definition.value().into());
+                    .insert(definition.name(), definition.value().into());
             }
         }
     }
@@ -217,7 +217,7 @@ fn resolve_dependency<'a>(
         .ok_or_else(|| CompileError::ModuleNotFound(submodule_path.into()))?)
 }
 
-fn interpolate_variables(template: &str, variables: &ChainMap<String, Arc<str>>) -> String {
+fn interpolate_variables(template: &str, variables: &ChainMap<&str, Arc<str>>) -> String {
     VARIABLE_PATTERN
         .replace_all(template, |captures: &Captures| {
             variables

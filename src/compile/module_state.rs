@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 #[derive(Clone, Debug)]
 pub struct ModuleState<'a, 'm> {
-    pub rules: ChainMap<'m, String, ast::Rule<'a>>,
-    pub variables: ChainMap<'m, String, Arc<str>>,
+    pub rules: ChainMap<'m, &'a str, ast::Rule<'a>>,
+    pub variables: ChainMap<'m, &'a str, Arc<str>>,
 }
 
 impl<'a, 'm> ModuleState<'a, 'm> {

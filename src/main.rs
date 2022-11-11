@@ -33,6 +33,7 @@ use validation::validate_modules;
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
 const DATABASE_DIRECTORY: &str = ".turtle";
 const OPEN_FILE_LIMIT: usize = 1024;
+const OPEN_FILE_LIMIT_MARGIN: usize = 64;
 
 #[tokio::main]
 async fn main() {
@@ -43,7 +44,7 @@ async fn main() {
         OsCommandRunner::new(),
         OsConsole::new(),
         OsDatabase::new(),
-        OsFileSystem::new(OPEN_FILE_LIMIT),
+        OsFileSystem::new(OPEN_FILE_LIMIT - OPEN_FILE_LIMIT_MARGIN),
     )
     .into();
 

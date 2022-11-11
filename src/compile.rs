@@ -5,11 +5,13 @@ mod global_state;
 mod module_state;
 
 use self::{
-    chain_map::ChainMap, context::Context, global_state::GlobalState, module_state::ModuleState,
+    chain_map::ChainMap, context::Context as CompileContext, global_state::GlobalState,
+    module_state::ModuleState,
 };
 pub use self::{context::ModuleDependencyMap, error::CompileError};
 use crate::{
     ast,
+    context::Context,
     ir::{Build, Configuration, DynamicBuild, DynamicConfiguration, Rule},
 };
 use once_cell::sync::Lazy;
@@ -29,11 +31,12 @@ static VARIABLE_PATTERN: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\$([[:alpha:]_][[:alnum:]_]*)").unwrap());
 
 pub fn compile(
+    context: &Context,
     modules: &HashMap<PathBuf, ast::Module<'static>>,
     dependencies: &ModuleDependencyMap,
     root_module_path: &Path,
 ) -> Result<Configuration<'static>, CompileError> {
-    let context = Context::new(modules.clone(), dependencies.clone());
+    let context = CompileContext::new(modules.clone(), dependencies.clone());
 
     let mut global_state = GlobalState {
         outputs: Default::default(),
@@ -70,7 +73,7 @@ pub fn compile(
 }
 
 fn compile_module(
-    context: &Context<'static>,
+    context: &CompileContext<'static>,
     global_state: &mut GlobalState<'static>,
     module_state: &mut ModuleState<'static, '_>,
     path: &Path,
@@ -193,7 +196,7 @@ pub fn compile_dynamic(module: &ast::DynamicModule) -> Result<DynamicConfigurati
 }
 
 fn resolve_dependency<'a>(
-    context: &'a Context,
+    context: &'a CompileContext,
     module_path: &Path,
     submodule_path: &str,
 ) -> Result<&'a Path, CompileError> {

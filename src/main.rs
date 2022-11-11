@@ -97,7 +97,12 @@ async fn execute(
 
     validate_modules(&dependencies)?;
 
-    let configuration = Arc::new(compile(&modules, &dependencies, &root_module_path)?);
+    let configuration = Arc::new(compile(
+        context,
+        &modules,
+        &dependencies,
+        &root_module_path,
+    )?);
 
     context.database().initialize(
         &configuration

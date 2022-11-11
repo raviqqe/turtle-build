@@ -3,15 +3,15 @@ use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DynamicConfiguration {
-    outputs: HashMap<String, DynamicBuild>,
+    outputs: HashMap<SmolStr, DynamicBuild>,
 }
 
 impl DynamicConfiguration {
-    pub fn new(outputs: HashMap<String, DynamicBuild>) -> Self {
+    pub fn new(outputs: HashMap<SmolStr, DynamicBuild>) -> Self {
         Self { outputs }
     }
 
-    pub fn outputs(&self) -> &HashMap<String, DynamicBuild> {
+    pub fn outputs(&self) -> &HashMap<SmolStr, DynamicBuild> {
         &self.outputs
     }
 }

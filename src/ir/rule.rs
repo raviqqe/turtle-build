@@ -1,11 +1,11 @@
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rule {
-    command: String,
-    description: Option<String>,
+    command: SmolStr,
+    description: Option<SmolStr>,
 }
 
 impl Rule {
-    pub fn new(command: impl Into<String>, description: Option<String>) -> Self {
+    pub fn new(command: impl Into<SmolStr>, description: Option<SmolStr>) -> Self {
         Self {
             command: command.into(),
             description,

@@ -1,4 +1,5 @@
 use super::Rule;
+use smol_str::SmolStr;
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
@@ -18,26 +19,26 @@ impl BuildId {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Build<'a> {
+pub struct Build {
     // IDs are persistent across different builds so that they can be used for,
     // for example, caching.
     id: BuildId,
-    outputs: Vec<&'a str>,
-    implicit_outputs: Vec<&'a str>,
+    outputs: Vec<SmolStr>,
+    implicit_outputs: Vec<SmolStr>,
     rule: Option<Rule>,
-    inputs: Vec<&'a str>,
-    order_only_inputs: Vec<&'a str>,
-    dynamic_module: Option<String>,
+    inputs: Vec<SmolStr>,
+    order_only_inputs: Vec<SmolStr>,
+    dynamic_module: Option<SmolStr>,
 }
 
-impl<'a> Build<'a> {
+impl Build {
     pub fn new(
-        outputs: Vec<&'a str>,
-        implicit_outputs: Vec<&'a str>,
+        outputs: Vec<SmolStr>,
+        implicit_outputs: Vec<SmolStr>,
         rule: Option<Rule>,
-        inputs: Vec<&'a str>,
-        order_only_inputs: Vec<&'a str>,
-        dynamic_module: Option<String>,
+        inputs: Vec<SmolStr>,
+        order_only_inputs: Vec<SmolStr>,
+        dynamic_module: Option<SmolStr>,
     ) -> Self {
         Self {
             id: Self::calculate_id(&outputs, &implicit_outputs),
@@ -54,11 +55,11 @@ impl<'a> Build<'a> {
         self.id
     }
 
-    pub fn outputs(&self) -> &[&'a str] {
+    pub fn outputs(&self) -> &[SmolStr] {
         &self.outputs
     }
 
-    pub fn implicit_outputs(&self) -> &[&'a str] {
+    pub fn implicit_outputs(&self) -> &[SmolStr] {
         &self.implicit_outputs
     }
 
@@ -66,11 +67,11 @@ impl<'a> Build<'a> {
         self.rule.as_ref()
     }
 
-    pub fn inputs(&self) -> &[&'a str] {
+    pub fn inputs(&self) -> &[SmolStr] {
         &self.inputs
     }
 
-    pub fn order_only_inputs(&self) -> &[&'a str] {
+    pub fn order_only_inputs(&self) -> &[SmolStr] {
         &self.order_only_inputs
     }
 
@@ -78,7 +79,7 @@ impl<'a> Build<'a> {
         self.dynamic_module.as_deref()
     }
 
-    fn calculate_id(outputs: &[&'a str], implicit_outputs: &[&'a str]) -> BuildId {
+    fn calculate_id(outputs: &[SmolStr], implicit_outputs: &[SmolStr]) -> BuildId {
         let mut hasher = DefaultHasher::new();
 
         outputs.hash(&mut hasher);

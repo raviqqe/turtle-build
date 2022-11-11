@@ -10,6 +10,7 @@ use std::{
 use tokio::{
     fs::{self, File},
     io::AsyncReadExt,
+    sync::Semaphore,
     task::yield_now,
 };
 
@@ -26,15 +27,17 @@ pub trait FileSystem {
     async fn canonicalize_path(&self, path: &Path) -> Result<PathBuf, Box<dyn Error>>;
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct OsFileSystem {
     path_lock: DashSet<PathBuf>,
+    semaphore: Semaphore,
 }
 
 impl OsFileSystem {
     pub fn new() -> Self {
         Self {
             path_lock: DashSet::default(),
+            semaphore: Semaphore::new(256),
         }
     }
 
@@ -76,6 +79,7 @@ impl FileSystem for OsFileSystem {
             yield_now().await;
         }
 
+        let _ = self.semaphore.acquire();
         let result = self.read_file(path, buffer).await;
 
         self.path_lock.remove(path);
@@ -92,6 +96,7 @@ impl FileSystem for OsFileSystem {
             yield_now().await;
         }
 
+        let _ = self.semaphore.acquire();
         let result = self.read_file_to_string(path, buffer).await;
 
         self.path_lock.remove(path);

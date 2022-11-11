@@ -12,7 +12,7 @@ impl PathPool {
         Self::default()
     }
 
-    pub fn path(&self, id: usize) -> &str {
+    pub fn get(&self, id: usize) -> &str {
         self.paths[id]
     }
 

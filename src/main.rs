@@ -38,10 +38,10 @@ const OPEN_FILE_LIMIT: usize = if cfg!(target_os = "macos") { 256 } else { 1024 
 async fn main() {
     let arguments = Arguments::parse();
     let context = Context::new(
-        OsCommandRunner::new(),
+        OsCommandRunner::new(arguments.job_limit),
         OsConsole::new(),
         OsDatabase::new(),
-        OsFileSystem::new(OPEN_FILE_LIMIT),
+        OsFileSystem::new(OPEN_FILE_LIMIT - 64),
     )
     .into();
 

@@ -6,14 +6,13 @@ use crate::{
 };
 use dashmap::DashMap;
 use std::sync::Arc;
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::Mutex;
 
 pub struct Context {
     application: Arc<ApplicationContext>,
     configuration: Arc<Configuration>,
     build_futures: DashMap<BuildId, BuildFuture>,
     build_graph: Mutex<BuildGraph>,
-    job_semaphore: Semaphore,
     options: Options,
 }
 
@@ -22,7 +21,6 @@ impl Context {
         application: Arc<ApplicationContext>,
         configuration: Arc<Configuration>,
         build_graph: BuildGraph,
-        job_semaphore: Semaphore,
         options: Options,
     ) -> Self {
         Self {
@@ -30,7 +28,6 @@ impl Context {
             build_graph: build_graph.into(),
             configuration,
             build_futures: DashMap::new(),
-            job_semaphore,
             options,
         }
     }
@@ -49,10 +46,6 @@ impl Context {
 
     pub fn build_graph(&self) -> &Mutex<BuildGraph> {
         &self.build_graph
-    }
-
-    pub fn job_semaphore(&self) -> &Semaphore {
-        &self.job_semaphore
     }
 
     pub fn options(&self) -> &Options {

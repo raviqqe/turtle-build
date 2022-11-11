@@ -229,16 +229,16 @@ mod tests {
     use super::*;
 
     fn explicit_build(
-        outputs: Vec<&str>,
-        rule: &str,
-        inputs: Vec<&str>,
+        outputs: Vec<String>,
+        rule: impl Into<String>,
+        inputs: Vec<String>,
         variable_definitions: Vec<VariableDefinition>,
     ) -> Build {
         Build::new(
-            outputs.iter().map(|&string| string.to_owned()).collect(),
+            outputs,
             vec![],
             rule,
-            inputs.iter().map(|&string| string.to_owned()).collect(),
+            inputs,
             vec![],
             vec![],
             variable_definitions,

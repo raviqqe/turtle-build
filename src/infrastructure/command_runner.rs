@@ -13,9 +13,9 @@ pub struct OsCommandRunner {
 }
 
 impl OsCommandRunner {
-    pub fn new(job_limit: Option<usize>) -> Self {
+    pub fn new(job_limit: usize) -> Self {
         Self {
-            semaphore: Semaphore::new(job_limit.unwrap_or_else(num_cpus::get)),
+            semaphore: Semaphore::new(job_limit),
         }
     }
 }

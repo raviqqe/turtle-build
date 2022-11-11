@@ -2,10 +2,10 @@ use crate::infrastructure::{CommandRunner, Console, Database, FileSystem};
 use tokio::sync::Mutex;
 
 pub struct Context {
-    command_runner: Box<dyn CommandRunner + Send + Sync + 'static>,
-    console: Mutex<Box<dyn Console + Send + Sync + 'static>>,
-    database: Box<dyn Database + Send + Sync + 'static>,
-    file_system: Box<dyn FileSystem + Send + Sync + 'static>,
+    command_runner: Box<dyn CommandRunner + Send + Sync>,
+    console: Mutex<Box<dyn Console + Send + Sync>>,
+    database: Box<dyn Database + Send + Sync>,
+    file_system: Box<dyn FileSystem + Send + Sync>,
 }
 
 impl Context {

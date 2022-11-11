@@ -1,14 +1,14 @@
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DynamicBuild {
-    inputs: Vec<SmolStr>,
+    inputs: Vec<String>,
 }
 
 impl DynamicBuild {
-    pub fn new(inputs: Vec<SmolStr>) -> Self {
+    pub fn new(inputs: Vec<String>) -> Self {
         Self { inputs }
     }
 
-    pub fn inputs(&self) -> &[SmolStr] {
+    pub fn inputs(&self) -> &[String] {
         &self.inputs
     }
 }

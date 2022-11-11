@@ -5,6 +5,10 @@ on:
       - main
   pull_request:
 jobs:
+  strategy:
+    matrix:
+      benchmark:
+        - simple
   benchmark:
     runs-on: ubuntu-latest
     steps:
@@ -13,4 +17,4 @@ jobs:
       - uses: raviqqe/enable-homebrew@main
       - run: brew install ninja
       - run: cargo install --path . --locked
-      - run: benchmark/main.sh
+      - run: benchmark/${{ matrix.benchmark }}/main.sh

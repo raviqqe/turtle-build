@@ -1,14 +1,14 @@
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Include<'a> {
-    path: &'a str,
+pub struct Include {
+    path: String,
 }
 
-impl<'a> Include<'a> {
-    pub fn new(path: &'a str) -> Self {
-        Self { path }
+impl Include {
+    pub fn new(path: impl Into<String>) -> Self {
+        Self { path: path.into() }
     }
 
-    pub fn path(&self) -> &'a str {
-        self.path
+    pub fn path(&self) -> &str {
+        &self.path
     }
 }

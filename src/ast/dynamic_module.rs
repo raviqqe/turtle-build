@@ -1,16 +1,16 @@
 use super::DynamicBuild;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DynamicModule<'a> {
-    builds: Vec<DynamicBuild<'a>>,
+pub struct DynamicModule {
+    builds: Vec<DynamicBuild>,
 }
 
-impl<'a> DynamicModule<'a> {
-    pub fn new(builds: Vec<DynamicBuild<'a>>) -> Self {
+impl DynamicModule {
+    pub fn new(builds: Vec<DynamicBuild>) -> Self {
         Self { builds }
     }
 
-    pub fn builds(&self) -> &[DynamicBuild<'a>] {
+    pub fn builds(&self) -> &[DynamicBuild] {
         &self.builds
     }
 }

@@ -121,7 +121,7 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Ap
 async fn read_modules(
     context: &Context,
     path: &Path,
-) -> Result<(HashMap<PathBuf, Module<'static>>, ModuleDependencyMap), ApplicationError> {
+) -> Result<(HashMap<PathBuf, Module>, ModuleDependencyMap), ApplicationError> {
     let mut paths = vec![context.file_system().canonicalize_path(path).await?];
     let mut modules = HashMap::new();
     let mut dependencies = HashMap::new();
@@ -134,8 +134,7 @@ async fn read_modules(
             .read_file_to_string(&path, &mut source)
             .await?;
 
-        // HACK Leak sources.
-        let module = parse(Box::leak(source.into_boxed_str()))?;
+        let module = parse(&source)?;
 
         let submodule_paths = try_join_all(
             module

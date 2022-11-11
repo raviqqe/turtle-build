@@ -100,12 +100,12 @@ fn compile_module<'a>(
                     build
                         .outputs()
                         .iter()
-                        .map(|&string| string.into())
+                        .map(|string| string.as_str().into())
                         .collect(),
                     build
                         .implicit_outputs()
                         .iter()
-                        .map(|&string| string.into())
+                        .map(|string| string.as_str().into())
                         .collect(),
                     if build.rule() == PHONY_RULE {
                         None
@@ -125,12 +125,12 @@ fn compile_module<'a>(
                         .inputs()
                         .iter()
                         .chain(build.implicit_inputs())
-                        .map(|&string| string.into())
+                        .map(|string| string.as_str().into())
                         .collect(),
                     build
                         .order_only_inputs()
                         .iter()
-                        .map(|&string| string.into())
+                        .map(|string| string.as_str().into())
                         .collect(),
                     variables.get(DYNAMIC_MODULE_VARIABLE).cloned(),
                 ));
@@ -139,18 +139,21 @@ fn compile_module<'a>(
 
                 global_state
                     .outputs
-                    .extend(outputs().map(|&output| (output.into(), ir.clone())));
+                    .extend(outputs().map(|output| (output.as_str().into(), ir.clone())));
 
                 if let Some(source) = variables.get(SOURCE_VARIABLE_NAME) {
                     global_state
                         .source_map
-                        .extend(outputs().map(|&output| (output.into(), source.clone())));
+                        .extend(outputs().map(|output| (output.as_str().into(), source.clone())));
                 }
             }
             ast::Statement::Default(default) => {
-                global_state
-                    .default_outputs
-                    .extend(default.outputs().iter().copied().map(From::from));
+                global_state.default_outputs.extend(
+                    default
+                        .outputs()
+                        .iter()
+                        .map(|string| string.as_str().into()),
+                );
             }
             ast::Statement::Include(include) => {
                 compile_module(
@@ -194,8 +197,7 @@ pub fn compile_dynamic(module: &ast::DynamicModule) -> Result<DynamicConfigurati
                         build
                             .implicit_inputs()
                             .iter()
-                            .copied()
-                            .map(From::from)
+                            .map(|string| string.as_str().into())
                             .collect(),
                     ),
                 )
@@ -243,12 +245,12 @@ mod tests {
             .collect()
     });
 
-    fn ast_explicit_build<'a>(
-        outputs: Vec<&'a str>,
-        rule: &'a str,
-        inputs: Vec<&'a str>,
-        variable_definitions: Vec<ast::VariableDefinition<'a>>,
-    ) -> ast::Build<'a> {
+    fn ast_explicit_build(
+        outputs: Vec<String>,
+        rule: impl Into<String>,
+        inputs: Vec<String>,
+        variable_definitions: Vec<ast::VariableDefinition>,
+    ) -> ast::Build {
         ast::Build::new(
             outputs,
             vec![],

@@ -1,13 +1,5 @@
+use crate::path_id::PathId;
 use fnv::FnvHashMap;
-
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub struct PathId(usize);
-
-impl PathId {
-    pub fn new(id: usize) -> Self {
-        Self(id)
-    }
-}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PathPool {
@@ -31,7 +23,7 @@ impl PathPool {
 
         self.paths.push(path);
 
-        let id = PathId(self.paths.len() - 1);
+        let id = PathId::new(self.paths.len() - 1);
 
         self.path_ids.insert(path, id);
 

@@ -5,6 +5,7 @@
     "builddir",
     "canonicalize",
     "cpus",
+    "dashmap",
     "dedup",
     "depfile",
     "dyndep",

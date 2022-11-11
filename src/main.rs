@@ -118,10 +118,10 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Ap
     Ok(())
 }
 
-async fn read_modules<'a>(
+async fn read_modules(
     context: &Context,
     path: &Path,
-) -> Result<(HashMap<PathBuf, Module<'a>>, ModuleDependencyMap), ApplicationError> {
+) -> Result<(HashMap<PathBuf, Module<'static>>, ModuleDependencyMap), ApplicationError> {
     let mut paths = vec![context.file_system().canonicalize_path(path).await?];
     let mut modules = HashMap::new();
     let mut dependencies = HashMap::new();

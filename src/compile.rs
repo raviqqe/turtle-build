@@ -28,6 +28,7 @@ const SOURCE_VARIABLE_NAME: &str = "srcdep";
 static VARIABLE_PATTERN: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\$([[:alpha:]_][[:alnum:]_]*)").unwrap());
 
+// TODO Use a string pool for paths.
 pub fn compile(
     modules: &HashMap<PathBuf, ast::Module>,
     dependencies: &ModuleDependencyMap,

@@ -34,10 +34,10 @@ pub struct OsFileSystem {
 }
 
 impl OsFileSystem {
-    pub fn new() -> Self {
+    pub fn new(open_file_limit: usize) -> Self {
         Self {
             path_lock: DashSet::default(),
-            semaphore: Semaphore::new(256),
+            semaphore: Semaphore::new(open_file_limit),
         }
     }
 

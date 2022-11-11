@@ -29,6 +29,7 @@ rand = "0.8.5"
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 sled = "0.34"
+sysinfo = "0.26.7"
 tokio = { "version" = "1", features = ["full"] }
 
 [dev-dependencies]

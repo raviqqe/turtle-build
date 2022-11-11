@@ -69,8 +69,8 @@ pub fn compile(
     ))
 }
 
-fn compile_module(
-    context: &Context<'a>,
+fn compile_module<'a>(
+    context: &'a Context,
     global_state: &mut GlobalState,
     module_state: &mut ModuleState<'a, '_>,
     path: &Path,
@@ -91,14 +91,22 @@ fn compile_module(
                         .iter()
                         .map(|definition| (definition.name().into(), definition.value().into()))
                         .chain([
-                            ("in".into(), build.inputs().join(" ")),
-                            ("out".into(), build.outputs().join(" ")),
+                            ("in".into(), build.inputs().join(" ").into()),
+                            ("out".into(), build.outputs().join(" ").into()),
                         ]),
                 );
 
                 let ir = Arc::new(Build::new(
-                    build.outputs().to_vec(),
-                    build.implicit_outputs().to_vec(),
+                    build
+                        .outputs()
+                        .iter()
+                        .map(|&string| string.into())
+                        .collect(),
+                    build
+                        .implicit_outputs()
+                        .iter()
+                        .map(|&string| string.into())
+                        .collect(),
                     if build.rule() == PHONY_RULE {
                         None
                     } else {
@@ -117,9 +125,13 @@ fn compile_module(
                         .inputs()
                         .iter()
                         .chain(build.implicit_inputs())
-                        .copied()
+                        .map(|&string| string.into())
                         .collect(),
-                    build.order_only_inputs().to_vec(),
+                    build
+                        .order_only_inputs()
+                        .iter()
+                        .map(|&string| string.into())
+                        .collect(),
                     variables.get(DYNAMIC_MODULE_VARIABLE).cloned(),
                 ));
 
@@ -127,7 +139,7 @@ fn compile_module(
 
                 global_state
                     .outputs
-                    .extend(outputs().map(|&output| (output.to_owned(), ir.clone())));
+                    .extend(outputs().map(|&output| (output.into(), ir.clone())));
 
                 if let Some(source) = variables.get(SOURCE_VARIABLE_NAME) {
                     global_state
@@ -205,10 +217,13 @@ fn resolve_dependency<'a>(
         .ok_or_else(|| CompileError::ModuleNotFound(submodule_path.into()))?)
 }
 
-fn interpolate_variables(template: &str, variables: &ChainMap<String, String>) -> String {
+fn interpolate_variables(template: &str, variables: &ChainMap<String, Arc<str>>) -> String {
     VARIABLE_PATTERN
         .replace_all(template, |captures: &Captures| {
-            variables.get(&captures[1]).cloned().unwrap_or_default()
+            variables
+                .get(&captures[1])
+                .map(|string| string.as_ref())
+                .unwrap_or_default()
         })
         .replace("$$", "$")
 }
@@ -245,7 +260,7 @@ mod tests {
         )
     }
 
-    fn ir_explicit_build(outputs: Vec<&str>, rule: Rule, inputs: Vec<&str>) -> Build {
+    fn ir_explicit_build(outputs: Vec<Arc<str>>, rule: Rule, inputs: Vec<Arc<str>>) -> Build {
         Build::new(outputs, vec![], rule.into(), inputs, vec![], None)
     }
 

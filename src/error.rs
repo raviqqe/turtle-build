@@ -12,7 +12,7 @@ use tokio::{io, sync::AcquireError, task::JoinError};
 pub enum ApplicationError {
     Build,
     Compile(CompileError),
-    DefaultOutputNotFound(String),
+    DefaultOutputNotFound(Arc<str>),
     DynamicDependencyNotFound(Arc<Build>),
     InputNotBuilt(String),
     InputNotFound(String),
@@ -23,7 +23,7 @@ pub enum ApplicationError {
 }
 
 impl ApplicationError {
-    pub fn map_outputs(self, source_map: &FnvHashMap<String, String>) -> Self {
+    pub fn map_outputs(self, source_map: &FnvHashMap<Arc<str>, Arc<str>>) -> Self {
         match self {
             Self::Validation(ValidationError::CircularBuildDependency(outputs)) => {
                 Self::Validation(ValidationError::CircularBuildDependency(

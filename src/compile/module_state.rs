@@ -1,10 +1,11 @@
 use super::chain_map::ChainMap;
 use crate::ast;
+use std::sync::Arc;
 
 #[derive(Clone, Debug)]
 pub struct ModuleState<'a, 'm> {
     pub rules: ChainMap<'m, String, ast::Rule<'a>>,
-    pub variables: ChainMap<'m, String, String>,
+    pub variables: ChainMap<'m, String, Arc<str>>,
 }
 
 impl<'a, 'm> ModuleState<'a, 'm> {

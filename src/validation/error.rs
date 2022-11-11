@@ -2,11 +2,12 @@ use itertools::Itertools;
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
+    sync::Arc,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ValidationError {
-    CircularBuildDependency(Vec<String>),
+    CircularBuildDependency(Vec<Arc<str>>),
     CircularModuleDependency,
 }
 
@@ -23,8 +24,8 @@ impl Display for ValidationError {
                         .iter()
                         .chain(cycle.first())
                         .dedup()
-                        .map(String::as_str)
-                        .collect::<Vec<_>>()
+                        .map(|string| string.as_ref())
+                        .collect::<Vec<&str>>()
                         .join(" -> ")
                 )
             }

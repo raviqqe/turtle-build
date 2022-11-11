@@ -47,8 +47,8 @@ pub async fn run(
             context
                 .configuration()
                 .outputs()
-                .get(output)
-                .ok_or_else(|| ApplicationError::DefaultOutputNotFound(output.into()))?,
+                .get(output.as_ref())
+                .ok_or_else(|| ApplicationError::DefaultOutputNotFound(output.clone()))?,
         )
         .await?;
     }
@@ -109,7 +109,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             context
                 .application()
                 .file_system()
-                .read_file_to_string(dynamic_module.as_ref(), &mut source)
+                .read_file_to_string(dynamic_module.as_ref().as_ref(), &mut source)
                 .await?;
             let configuration = compile_dynamic(&parse_dynamic(&source)?)?;
 
@@ -128,7 +128,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             build
                 .outputs()
                 .iter()
-                .find_map(|output| configuration.outputs().get(*output))
+                .find_map(|output| configuration.outputs().get(output.as_ref()))
                 .map(|build| build.inputs())
                 .ok_or_else(|| ApplicationError::DynamicDependencyNotFound(build.clone()))?
         } else {
@@ -148,7 +148,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                 .outputs()
                 .iter()
                 .chain(build.implicit_outputs())
-                .map(|path| check_file_existence(&context, path)),
+                .map(|path| check_file_existence(&context, path.as_ref())),
         )
         .await
         .is_ok();
@@ -156,8 +156,8 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         let (file_inputs, phony_inputs) = build
             .inputs()
             .iter()
-            .copied()
-            .chain(dynamic_inputs.iter().map(|input| input.as_str()))
+            .chain(dynamic_inputs)
+            .map(|string| string.as_ref())
             .partition::<Vec<_>, _>(|&input| {
                 if let Some(build) = context.configuration().outputs().get(input) {
                     build.rule().is_some()
@@ -183,7 +183,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                     .outputs()
                     .iter()
                     .chain(build.implicit_outputs())
-                    .map(|path| prepare_directory(&context, path)),
+                    .map(|path| prepare_directory(&context, path.as_ref())),
             )
             .await?;
 

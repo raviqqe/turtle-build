@@ -73,10 +73,7 @@ async fn main() {
     }
 }
 
-async fn execute(
-    context: &Arc<Context>,
-    arguments: &Arguments,
-) -> Result<(), ApplicationError<'static>> {
+async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), ApplicationError> {
     if let Some(directory) = &arguments.directory {
         set_current_dir(directory)?;
     }
@@ -100,8 +97,8 @@ async fn execute(
     context.database().initialize(
         &configuration
             .build_directory()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| root_module_path.parent().unwrap().into())
+            .map(|string| string.as_ref().as_ref())
+            .unwrap_or_else(|| root_module_path.parent().unwrap())
             .join(DATABASE_DIRECTORY)
             .join(env!("CARGO_PKG_VERSION").replace('.', "_")),
     )?;
@@ -124,7 +121,7 @@ async fn execute(
 async fn read_modules<'a>(
     context: &Context,
     path: &Path,
-) -> Result<(HashMap<PathBuf, Module<'a>>, ModuleDependencyMap), ApplicationError<'static>> {
+) -> Result<(HashMap<PathBuf, Module<'a>>, ModuleDependencyMap), ApplicationError> {
     let mut paths = vec![context.file_system().canonicalize_path(path).await?];
     let mut modules = HashMap::new();
     let mut dependencies = HashMap::new();
@@ -169,7 +166,7 @@ async fn resolve_submodule_path(
     context: &Context,
     module_path: &Path,
     submodule_path: &str,
-) -> Result<(String, PathBuf), ApplicationError<'static>> {
+) -> Result<(String, PathBuf), ApplicationError> {
     Ok((
         submodule_path.into(),
         context

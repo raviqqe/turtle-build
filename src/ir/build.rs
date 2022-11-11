@@ -28,17 +28,17 @@ pub struct Build {
     rule: Option<Rule>,
     inputs: Vec<Arc<str>>,
     order_only_inputs: Vec<Arc<str>>,
-    dynamic_module: Option<String>,
+    dynamic_module: Option<Arc<str>>,
 }
 
 impl Build {
     pub fn new(
-        outputs: Vec<&Arc<str>>,
-        implicit_outputs: Vec<&Arc<str>>,
+        outputs: Vec<Arc<str>>,
+        implicit_outputs: Vec<Arc<str>>,
         rule: Option<Rule>,
-        inputs: Vec<&Arc<str>>,
-        order_only_inputs: Vec<&Arc<str>>,
-        dynamic_module: Option<String>,
+        inputs: Vec<Arc<str>>,
+        order_only_inputs: Vec<Arc<str>>,
+        dynamic_module: Option<Arc<str>>,
     ) -> Self {
         Self {
             id: Self::calculate_id(&outputs, &implicit_outputs),
@@ -59,7 +59,7 @@ impl Build {
         &self.outputs
     }
 
-    pub fn implicit_outputs(&self) -> &[&Arc<str>] {
+    pub fn implicit_outputs(&self) -> &[Arc<str>] {
         &self.implicit_outputs
     }
 
@@ -67,7 +67,7 @@ impl Build {
         self.rule.as_ref()
     }
 
-    pub fn inputs(&self) -> &[&Arc<str>] {
+    pub fn inputs(&self) -> &[Arc<str>] {
         &self.inputs
     }
 
@@ -75,11 +75,11 @@ impl Build {
         &self.order_only_inputs
     }
 
-    pub fn dynamic_module(&self) -> Option<&str> {
-        self.dynamic_module.as_deref()
+    pub fn dynamic_module(&self) -> Option<&Arc<str>> {
+        self.dynamic_module.as_ref()
     }
 
-    fn calculate_id(outputs: &[&Arc<str>], implicit_outputs: &[&Arc<str>]) -> BuildId {
+    fn calculate_id(outputs: &[Arc<str>], implicit_outputs: &[Arc<str>]) -> BuildId {
         let mut hasher = DefaultHasher::new();
 
         outputs.hash(&mut hasher);

@@ -109,7 +109,6 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Ap
         configuration.clone(),
         run::Options {
             debug: arguments.debug,
-            job_limit: arguments.job_limit,
             profile: arguments.profile,
         },
     )

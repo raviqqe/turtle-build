@@ -7,6 +7,8 @@ mod error;
 mod infrastructure;
 mod ir;
 mod parse;
+mod path_id;
+mod path_pool;
 mod run;
 mod validation;
 

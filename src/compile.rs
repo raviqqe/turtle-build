@@ -12,12 +12,13 @@ pub use self::{context::ModuleDependencyMap, error::CompileError};
 use crate::{
     ast,
     context::Context,
-    ir::{Build, Configuration, DynamicBuild, DynamicConfiguration, Rule},
+    ir::{Build, BuildId, Configuration, DynamicBuild, DynamicConfiguration, Rule},
 };
 use once_cell::sync::Lazy;
 use regex::{Captures, Regex};
 use std::{
-    collections::HashMap,
+    collections::{hash_map::DefaultHasher, HashMap},
+    hash::{Hash, Hasher},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -100,7 +101,12 @@ fn compile_module(
                 );
 
                 let ir = Arc::new(Build::new(
-                    build.outputs().to_vec(),
+                    calculate_build_id(build.outputs(), build.implicit_outputs()),
+                    build
+                        .outputs()
+                        .iter()
+                        .map(|path| context.application().path_pool().insert(path))
+                        .collect(),
                     build.implicit_outputs().to_vec(),
                     if build.rule() == PHONY_RULE {
                         None
@@ -171,6 +177,15 @@ fn compile_module(
     }
 
     Ok(())
+}
+
+fn calculate_build_id(outputs: &[&str], implicit_outputs: &[&str]) -> BuildId {
+    let mut hasher = DefaultHasher::new();
+
+    outputs.hash(&mut hasher);
+    implicit_outputs.hash(&mut hasher);
+
+    BuildId::new(hasher.finish())
 }
 
 pub fn compile_dynamic(module: &ast::DynamicModule) -> Result<DynamicConfiguration, CompileError> {

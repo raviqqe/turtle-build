@@ -1,19 +1,22 @@
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct VariableDefinition<'a> {
-    name: &'a str,
-    value: &'a str,
+pub struct VariableDefinition {
+    name: String,
+    value: String,
 }
 
-impl<'a> VariableDefinition<'a> {
-    pub fn new(name: &'a str, value: &'a str) -> Self {
-        Self { name, value }
+impl VariableDefinition {
+    pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+        }
     }
 
-    pub fn name(&self) -> &'a str {
-        self.name
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
-    pub fn value(&self) -> &'a str {
-        self.value
+    pub fn value(&self) -> &str {
+        &self.value
     }
 }

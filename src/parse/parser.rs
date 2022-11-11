@@ -166,10 +166,13 @@ fn string_line(input: &str) -> IResult<&str, &str> {
     })(input)
 }
 
-fn string_literal(input: &str) -> IResult<&str, &str> {
-    token(recognize(many1_count(none_of(
-        &*(" \t\r\n".to_owned() + OPERATOR_CHARACTERS),
-    ))))(input)
+fn string_literal(input: &str) -> IResult<&str, String> {
+    map(
+        token(recognize(many1_count(none_of(
+            &*(" \t\r\n".to_owned() + OPERATOR_CHARACTERS),
+        )))),
+        |string| string.to_owned(),
+    )(input)
 }
 
 fn keyword(name: &'static str) -> impl Fn(&str) -> IResult<&str, ()> {
@@ -225,12 +228,12 @@ fn line_break(input: &str) -> IResult<&str, ()> {
 mod tests {
     use super::*;
 
-    fn explicit_build<'a>(
-        outputs: Vec<&'a str>,
-        rule: &'a str,
-        inputs: Vec<&'a str>,
-        variable_definitions: Vec<VariableDefinition<'a>>,
-    ) -> Build<'a> {
+    fn explicit_build(
+        outputs: Vec<String>,
+        rule: impl Into<String>,
+        inputs: Vec<String>,
+        variable_definitions: Vec<VariableDefinition>,
+    ) -> Build {
         Build::new(
             outputs,
             vec![],
@@ -339,7 +342,7 @@ mod tests {
             rule("rule foo\n command = bar\n description = baz\n")
                 .unwrap()
                 .1,
-            Rule::new("foo", "bar", Some("baz"))
+            Rule::new("foo", "bar", Some("baz".into()))
         );
     }
 
@@ -347,24 +350,29 @@ mod tests {
     fn parse_build() {
         assert_eq!(
             build("build foo: bar\n").unwrap().1,
-            explicit_build(vec!["foo"], "bar", vec![], vec![])
+            explicit_build(vec!["foo".into()], "bar", vec![], vec![])
         );
         assert_eq!(
             build("build foo: bar baz\n").unwrap().1,
-            explicit_build(vec!["foo"], "bar", vec!["baz"], vec![])
+            explicit_build(vec!["foo".into()], "bar", vec!["baz".into()], vec![])
         );
         assert_eq!(
             build("build foo: bar baz blah\n").unwrap().1,
-            explicit_build(vec!["foo"], "bar", vec!["baz", "blah"], vec![])
+            explicit_build(
+                vec!["foo".into()],
+                "bar",
+                vec!["baz".into(), "blah".into()],
+                vec![]
+            )
         );
         assert_eq!(
             build("build foo bar: baz\n").unwrap().1,
-            explicit_build(vec!["foo", "bar"], "baz", vec![], vec![])
+            explicit_build(vec!["foo".into(), "bar".into()], "baz", vec![], vec![])
         );
         assert_eq!(
             build("build foo: bar\n x = 1\n").unwrap().1,
             explicit_build(
-                vec!["foo"],
+                vec!["foo".into()],
                 "bar",
                 vec![],
                 vec![VariableDefinition::new("x", "1")]
@@ -373,7 +381,7 @@ mod tests {
         assert_eq!(
             build("build foo: bar\n x = 1\n y = 2\n").unwrap().1,
             explicit_build(
-                vec!["foo"],
+                vec!["foo".into()],
                 "bar",
                 vec![],
                 vec![
@@ -385,8 +393,8 @@ mod tests {
         assert_eq!(
             build("build x1 | x2: rule\n").unwrap().1,
             Build::new(
-                vec!["x1"],
-                vec!["x2"],
+                vec!["x1".into()],
+                vec!["x2".into()],
                 "rule",
                 vec![],
                 vec![],
@@ -397,8 +405,8 @@ mod tests {
         assert_eq!(
             build("build x1 | x2 x3: rule\n").unwrap().1,
             Build::new(
-                vec!["x1"],
-                vec!["x2", "x3"],
+                vec!["x1".into()],
+                vec!["x2".into(), "x3".into()],
                 "rule",
                 vec![],
                 vec![],
@@ -409,11 +417,11 @@ mod tests {
         assert_eq!(
             build("build x1: rule | x2\n").unwrap().1,
             Build::new(
-                vec!["x1"],
+                vec!["x1".into()],
                 vec![],
                 "rule",
                 vec![],
-                vec!["x2"],
+                vec!["x2".into()],
                 vec![],
                 vec![]
             )
@@ -421,11 +429,11 @@ mod tests {
         assert_eq!(
             build("build x1: rule | x2 x3\n").unwrap().1,
             Build::new(
-                vec!["x1"],
+                vec!["x1".into()],
                 vec![],
                 "rule",
                 vec![],
-                vec!["x2", "x3"],
+                vec!["x2".into(), "x3".into()],
                 vec![],
                 vec![]
             )
@@ -433,24 +441,24 @@ mod tests {
         assert_eq!(
             build("build x1: rule || x2\n").unwrap().1,
             Build::new(
-                vec!["x1"],
+                vec!["x1".into()],
                 vec![],
                 "rule",
                 vec![],
                 vec![],
-                vec!["x2"],
+                vec!["x2".into()],
                 vec![],
             )
         );
         assert_eq!(
             build("build x1: rule || x2 x3\n").unwrap().1,
             Build::new(
-                vec!["x1"],
+                vec!["x1".into()],
                 vec![],
                 "rule",
                 vec![],
                 vec![],
-                vec!["x2", "x3"],
+                vec!["x2".into(), "x3".into()],
                 vec![]
             )
         );
@@ -464,11 +472,11 @@ mod tests {
         );
         assert_eq!(
             dynamic_build("build foo: dyndep | bar\n").unwrap().1,
-            DynamicBuild::new("foo", vec!["bar"])
+            DynamicBuild::new("foo", vec!["bar".into()])
         );
         assert_eq!(
             dynamic_build("build foo: dyndep | bar baz\n").unwrap().1,
-            DynamicBuild::new("foo", vec!["bar", "baz"])
+            DynamicBuild::new("foo", vec!["bar".into(), "baz".into()])
         );
     }
 
@@ -478,11 +486,11 @@ mod tests {
         assert!(default("default\n").is_err());
         assert_eq!(
             default("default foo\n").unwrap().1,
-            DefaultOutput::new(vec!["foo"])
+            DefaultOutput::new(vec!["foo".into()])
         );
         assert_eq!(
             default("default foo bar\n").unwrap().1,
-            DefaultOutput::new(vec!["foo", "bar"])
+            DefaultOutput::new(vec!["foo".into(), "bar".into()])
         );
     }
 

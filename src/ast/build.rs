@@ -1,30 +1,30 @@
 use super::VariableDefinition;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Build<'a> {
-    outputs: Vec<&'a str>,
-    implicit_outputs: Vec<&'a str>,
-    rule: &'a str,
-    inputs: Vec<&'a str>,
-    implicit_inputs: Vec<&'a str>,
-    order_only_inputs: Vec<&'a str>,
-    variable_definitions: Vec<VariableDefinition<'a>>,
+pub struct Build {
+    outputs: Vec<String>,
+    implicit_outputs: Vec<String>,
+    rule: String,
+    inputs: Vec<String>,
+    implicit_inputs: Vec<String>,
+    order_only_inputs: Vec<String>,
+    variable_definitions: Vec<VariableDefinition>,
 }
 
-impl<'a> Build<'a> {
+impl Build {
     pub fn new(
-        outputs: Vec<&'a str>,
-        implicit_outputs: Vec<&'a str>,
-        rule: &'a str,
-        inputs: Vec<&'a str>,
-        implicit_inputs: Vec<&'a str>,
-        order_only_inputs: Vec<&'a str>,
-        variable_definitions: Vec<VariableDefinition<'a>>,
+        outputs: Vec<String>,
+        implicit_outputs: Vec<String>,
+        rule: impl Into<String>,
+        inputs: Vec<String>,
+        implicit_inputs: Vec<String>,
+        order_only_inputs: Vec<String>,
+        variable_definitions: Vec<VariableDefinition>,
     ) -> Self {
         Self {
             outputs,
             implicit_outputs,
-            rule,
+            rule: rule.into(),
             inputs,
             implicit_inputs,
             order_only_inputs,
@@ -32,27 +32,27 @@ impl<'a> Build<'a> {
         }
     }
 
-    pub fn outputs(&self) -> &[&'a str] {
+    pub fn outputs(&self) -> &[String] {
         &self.outputs
     }
 
-    pub fn implicit_outputs(&self) -> &[&'a str] {
+    pub fn implicit_outputs(&self) -> &[String] {
         &self.implicit_outputs
     }
 
-    pub fn rule(&self) -> &'a str {
-        self.rule
+    pub fn rule(&self) -> &str {
+        &self.rule
     }
 
-    pub fn inputs(&self) -> &[&'a str] {
+    pub fn inputs(&self) -> &[String] {
         &self.inputs
     }
 
-    pub fn implicit_inputs(&self) -> &[&'a str] {
+    pub fn implicit_inputs(&self) -> &[String] {
         &self.implicit_inputs
     }
 
-    pub fn order_only_inputs(&self) -> &[&'a str] {
+    pub fn order_only_inputs(&self) -> &[String] {
         &self.order_only_inputs
     }
 

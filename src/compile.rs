@@ -89,10 +89,10 @@ fn compile_module<'a>(
                     build
                         .variable_definitions()
                         .iter()
-                        .map(|definition| (definition.name().into(), definition.value().into()))
+                        .map(|definition| (definition.name(), definition.value().into()))
                         .chain([
-                            ("in".into(), build.inputs().join(" ").into()),
-                            ("out".into(), build.outputs().join(" ").into()),
+                            ("in", build.inputs().join(" ").into()),
+                            ("out", build.outputs().join(" ").into()),
                         ]),
                 );
 

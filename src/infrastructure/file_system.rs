@@ -79,8 +79,9 @@ impl FileSystem for OsFileSystem {
             yield_now().await;
         }
 
-        let _ = self.semaphore.acquire().await?;
+        let permit = self.semaphore.acquire().await?;
         let result = self.read_file(path, buffer).await;
+        drop(permit);
 
         self.path_lock.remove(path);
 
@@ -96,8 +97,9 @@ impl FileSystem for OsFileSystem {
             yield_now().await;
         }
 
-        let _ = self.semaphore.acquire().await?;
+        let permit = self.semaphore.acquire().await?;
         let result = self.read_file_to_string(path, buffer).await;
+        drop(permit);
 
         self.path_lock.remove(path);
 

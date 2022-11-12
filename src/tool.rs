@@ -1,1 +1,3 @@
-pub mod clean_dead;
+mod clean_dead;
+
+pub use clean_dead::*;

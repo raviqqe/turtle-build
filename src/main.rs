@@ -12,7 +12,7 @@ mod run;
 mod tool;
 mod validation;
 
-use arguments::Arguments;
+use arguments::{Arguments, Tool};
 use clap::Parser;
 use compile::compile;
 use context::Context;
@@ -93,7 +93,7 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Ap
     validate_modules(&dependencies)?;
 
     let configuration = Arc::new(compile(&modules, &dependencies, &root_module_path)?);
-    
+
     context.database().initialize(
         &configuration
             .build_directory()
@@ -103,16 +103,24 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Ap
             .join(env!("CARGO_PKG_VERSION").replace('.', "_")),
     )?;
 
-    run::run(
-        context,
-        configuration.clone(),
-        run::Options {
-            debug: arguments.debug,
-            profile: arguments.profile,
-        },
-    )
-    .await
-    .map_err(|error| error.map_outputs(configuration.source_map()))?;
+    if let Some(tool) = &arguments.tool {
+        match tool {
+            Tool::CleanDead => {
+                tool::clean_dead(&context).await?;
+            }
+        }
+    } else {
+        run::run(
+            context,
+            configuration.clone(),
+            run::Options {
+                debug: arguments.debug,
+                profile: arguments.profile,
+            },
+        )
+        .await
+        .map_err(|error| error.map_outputs(configuration.source_map()))?;
+    }
 
     Ok(())
 }

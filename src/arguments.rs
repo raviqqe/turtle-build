@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 
 #[derive(Parser)]
 #[clap(about = "The Ninja build system clone written in Rust", version)]
@@ -21,6 +21,8 @@ pub struct Arguments {
     pub tool: Option<Tool>,
 }
 
+#[derive(Clone, ValueEnum)]
+#[clap(rename_all = "lower")]
 pub enum Tool {
     CleanDead,
 }

@@ -105,9 +105,7 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Ap
 
     if let Some(tool) = &arguments.tool {
         match tool {
-            Tool::CleanDead => {
-                tool::clean_dead(&context).await?;
-            }
+            Tool::CleanDead => tool::clean_dead(&context).await?,
         }
     } else {
         run::run(

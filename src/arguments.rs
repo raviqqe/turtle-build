@@ -17,4 +17,10 @@ pub struct Arguments {
     pub debug: bool,
     #[clap(long, help = "Show profile timings", env = "TURTLE_PROFILE")]
     pub profile: bool,
+    #[clap(short, help = "Use a complementary tool")]
+    pub tool: Option<Tool>,
+}
+
+pub enum Tool {
+    CleanDead,
 }

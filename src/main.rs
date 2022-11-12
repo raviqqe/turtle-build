@@ -13,14 +13,11 @@ mod tool;
 mod validation;
 
 use arguments::Arguments;
-
 use clap::Parser;
 use compile::compile;
 use context::Context;
 use error::ApplicationError;
-
 use infrastructure::{OsCommandRunner, OsConsole, OsDatabase, OsFileSystem};
-
 use parse_modules::parse_modules;
 use std::{env::set_current_dir, process::exit, sync::Arc, time::Duration};
 use tokio::time::sleep;

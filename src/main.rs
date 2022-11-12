@@ -13,23 +13,16 @@ mod tool;
 mod validation;
 
 use arguments::Arguments;
-use ast::{Module, Statement};
+
 use clap::Parser;
-use compile::{compile, ModuleDependencyMap};
+use compile::compile;
 use context::Context;
 use error::ApplicationError;
-use futures::future::try_join_all;
+
 use infrastructure::{OsCommandRunner, OsConsole, OsDatabase, OsFileSystem};
-use parse::parse;
+
 use parse_modules::parse_modules;
-use std::{
-    collections::HashMap,
-    env::set_current_dir,
-    path::{Path, PathBuf},
-    process::exit,
-    sync::Arc,
-    time::Duration,
-};
+use std::{env::set_current_dir, process::exit, sync::Arc, time::Duration};
 use tokio::time::sleep;
 use validation::validate_modules;
 

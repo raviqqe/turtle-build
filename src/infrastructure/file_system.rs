@@ -109,11 +109,10 @@ impl FileSystem for OsFileSystem {
     }
 
     async fn metadata(&self, path: &Path) -> Result<Metadata, Box<dyn Error>> {
-        let metadata = fs::metadata(path)
+        Ok(fs::metadata(path)
             .await
-            .map_err(|error| Self::error(error, path))?;
-
-        Ok(metadata.try_into()?)
+            .map_err(|error| Self::error(error, path))?
+            .try_into()?)
     }
 
     async fn create_directory(&self, path: &Path) -> Result<(), Box<dyn Error>> {

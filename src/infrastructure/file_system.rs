@@ -8,7 +8,6 @@ use std::{
     fmt::Debug,
     io,
     path::{Path, PathBuf},
-    time::SystemTime,
 };
 use tokio::{
     fs::{self, File},

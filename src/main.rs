@@ -45,7 +45,7 @@ async fn main() {
     .into();
 
     if let Err(error) = execute(&context, &arguments).await {
-        if !(arguments.quiet && matches!(error, ApplicationError::Build)) {
+        if !arguments.quiet || !matches!(error, ApplicationError::Build) {
             context
                 .console()
                 .lock()

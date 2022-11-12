@@ -12,16 +12,24 @@ pub async fn clean_dead(
             .database()
             .get_outputs()?
             .iter()
-            .map(|output| remove_output(configuration, &output)),
+            .map(|output| remove_output(context, configuration, &output)),
     )
     .await?;
 
     Ok(())
 }
 
-async fn remove_output(configuration: &Configuration, output: &str) -> Result<(), Box<dyn Error>> {
-    if !configuration.outputs().contains_key(output) {
-        remove_file(output).await?;
+async fn remove_output(
+    context: &Context,
+    configuration: &Configuration,
+    output: &str,
+) -> Result<(), Box<dyn Error>> {
+    if configuration.outputs().contains_key(output) {
+        return Ok(());
+    } else if let Some(metadata) = context.file_system().metadata(output.as_ref()).await.ok() {
+        if metadata.is_file() {
+            remove_file(output).await?;
+        }
     }
 
     Ok(())

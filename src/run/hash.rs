@@ -29,8 +29,9 @@ pub async fn calculate_timestamp_hash(
         context
             .application()
             .file_system()
-            .modified_time(input.as_ref())
+            .metadata(input.as_ref())
             .await?
+            .modified_time()
             .hash(&mut hasher);
     }
 

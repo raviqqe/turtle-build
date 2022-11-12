@@ -1,5 +1,8 @@
+mod metadata;
+
 use async_trait::async_trait;
 use dashmap::DashSet;
+use metadata::Metadata;
 use std::{
     error::Error,
     fmt::Debug,
@@ -22,7 +25,7 @@ pub trait FileSystem {
         path: &Path,
         buffer: &mut String,
     ) -> Result<(), Box<dyn Error>>;
-    async fn modified_time(&self, path: &Path) -> Result<SystemTime, Box<dyn Error>>;
+    async fn metadata(&self, path: &Path) -> Result<Metadata, Box<dyn Error>>;
     async fn create_directory(&self, path: &Path) -> Result<(), Box<dyn Error>>;
     async fn canonicalize_path(&self, path: &Path) -> Result<PathBuf, Box<dyn Error>>;
 }
@@ -106,12 +109,12 @@ impl FileSystem for OsFileSystem {
         result
     }
 
-    async fn modified_time(&self, path: &Path) -> Result<SystemTime, Box<dyn Error>> {
-        Ok(fs::metadata(path)
+    async fn metadata(&self, path: &Path) -> Result<Metadata, Box<dyn Error>> {
+        let metadata = fs::metadata(path)
             .await
-            .map_err(|error| Self::error(error, path))?
-            .modified()
-            .map_err(|error| Self::error(error, path))?)
+            .map_err(|error| Self::error(error, path))?;
+
+        Ok(metadata.try_into()?)
     }
 
     async fn create_directory(&self, path: &Path) -> Result<(), Box<dyn Error>> {

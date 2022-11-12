@@ -31,7 +31,7 @@ async fn remove_output(
     if configuration.outputs().contains_key(output) {
         return Ok(());
     } else if let Ok(metadata) = context.file_system().metadata(output.as_ref()).await {
-        context.database().remove_hash(build_id).await?;
+        context.database().remove_hash(build_id)?;
 
         if metadata.is_file() {
             remove_file(output).await?;

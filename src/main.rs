@@ -93,7 +93,7 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Ap
     validate_modules(&dependencies)?;
 
     let configuration = Arc::new(compile(&modules, &dependencies, &root_module_path)?);
-
+    
     context.database().initialize(
         &configuration
             .build_directory()

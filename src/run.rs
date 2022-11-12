@@ -59,16 +59,11 @@ pub async fn run(
         .map(|r#ref| r#ref.value().clone())
         .collect::<Vec<_>>();
 
-    // Start running build futures from roots.
-    if let Err(error) = try_join_all(futures).await {
-        // Flush explicitly here as flush on drop doesn't work in general
-        // because of possible dependency cycles of build jobs.
-        context.application().database().flush().await?;
+    let result = try_join_all(futures).await;
 
-        return Err(error);
-    }
+    context.application().database().flush().await?;
 
-    Ok(())
+    result.map(|_| ())
 }
 
 #[async_recursion]

@@ -11,8 +11,8 @@ pub trait Database {
     fn initialize(&self, path: &Path) -> Result<(), Box<dyn Error>>;
     fn get_hash(&self, id: BuildId) -> Result<Option<BuildHash>, Box<dyn Error>>;
     fn set_hash(&self, id: BuildId, hash: BuildHash) -> Result<(), Box<dyn Error>>;
-    fn get_outputs(&self) -> Result<Vec<Vec<u8>>, Box<dyn Error>>;
-    fn set_output(&self, path: &Path) -> Result<(), Box<dyn Error>>;
+    fn get_outputs(&self) -> Result<Vec<String>, Box<dyn Error>>;
+    fn set_output(&self, path: &str) -> Result<(), Box<dyn Error>>;
     async fn flush(&self) -> Result<(), Box<dyn Error>>;
 }
 
@@ -66,17 +66,16 @@ impl Database for OsDatabase {
         Ok(())
     }
 
-    fn get_outputs(&self) -> Result<Vec<Vec<u8>>, Box<dyn Error>> {
+    fn get_outputs(&self) -> Result<Vec<String>, Box<dyn Error>> {
         self.output_database()?
             .iter()
             .keys()
-            .map(|key| Ok(key?.to_vec()))
+            .map(|key| Ok(String::from_utf8_lossy(key?.as_ref()).into()))
             .collect::<Result<_, _>>()
     }
 
-    fn set_output(&self, path: &Path) -> Result<(), Box<dyn Error>> {
-        self.output_database()?
-            .insert(path.to_string_lossy().as_bytes(), &[])?;
+    fn set_output(&self, path: &str) -> Result<(), Box<dyn Error>> {
+        self.output_database()?.insert(path.as_bytes(), &[])?;
 
         Ok(())
     }

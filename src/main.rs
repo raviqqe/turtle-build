@@ -7,26 +7,19 @@ mod error;
 mod infrastructure;
 mod ir;
 mod parse;
+mod parse_modules;
 mod run;
+mod tool;
 mod validation;
 
-use arguments::Arguments;
-use ast::{Module, Statement};
+use arguments::{Arguments, Tool};
 use clap::Parser;
-use compile::{compile, ModuleDependencyMap};
+use compile::compile;
 use context::Context;
 use error::ApplicationError;
-use futures::future::try_join_all;
 use infrastructure::{OsCommandRunner, OsConsole, OsDatabase, OsFileSystem};
-use parse::parse;
-use std::{
-    collections::HashMap,
-    env::set_current_dir,
-    path::{Path, PathBuf},
-    process::exit,
-    sync::Arc,
-    time::Duration,
-};
+use parse_modules::parse_modules;
+use std::{env::set_current_dir, process::exit, sync::Arc, time::Duration};
 use tokio::time::sleep;
 use validation::validate_modules;
 
@@ -95,7 +88,7 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Ap
                 .as_ref(),
         )
         .await?;
-    let (modules, dependencies) = read_modules(context, &root_module_path).await?;
+    let (modules, dependencies) = parse_modules(context, &root_module_path).await?;
 
     validate_modules(&dependencies)?;
 
@@ -110,73 +103,22 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Ap
             .join(env!("CARGO_PKG_VERSION").replace('.', "_")),
     )?;
 
-    run::run(
-        context,
-        configuration.clone(),
-        run::Options {
-            debug: arguments.debug,
-            profile: arguments.profile,
-        },
-    )
-    .await
-    .map_err(|error| error.map_outputs(configuration.source_map()))?;
-
-    Ok(())
-}
-
-async fn read_modules(
-    context: &Context,
-    path: &Path,
-) -> Result<(HashMap<PathBuf, Module>, ModuleDependencyMap), ApplicationError> {
-    let mut paths = vec![context.file_system().canonicalize_path(path).await?];
-    let mut modules = HashMap::new();
-    let mut dependencies = HashMap::new();
-
-    while let Some(path) = paths.pop() {
-        let mut source = String::new();
-
-        context
-            .file_system()
-            .read_file_to_string(&path, &mut source)
-            .await?;
-
-        let module = parse(&source)?;
-
-        let submodule_paths = try_join_all(
-            module
-                .statements()
-                .iter()
-                .filter_map(|statement| match statement {
-                    Statement::Include(include) => Some(include.path()),
-                    Statement::Submodule(submodule) => Some(submodule.path()),
-                    _ => None,
-                })
-                .map(|submodule_path| resolve_submodule_path(context, &path, submodule_path))
-                .collect::<Vec<_>>(),
+    if let Some(tool) = &arguments.tool {
+        match tool {
+            Tool::CleanDead => tool::clean_dead(context, &configuration).await?,
+        }
+    } else {
+        run::run(
+            context,
+            configuration.clone(),
+            run::Options {
+                debug: arguments.debug,
+                profile: arguments.profile,
+            },
         )
-        .await?
-        .into_iter()
-        .collect::<HashMap<_, _>>();
-
-        paths.extend(submodule_paths.values().cloned());
-
-        modules.insert(path.clone(), module);
-        dependencies.insert(path, submodule_paths);
+        .await
+        .map_err(|error| error.map_outputs(configuration.source_map()))?;
     }
 
-    Ok((modules, dependencies))
-}
-
-async fn resolve_submodule_path(
-    context: &Context,
-    module_path: &Path,
-    submodule_path: &str,
-) -> Result<(String, PathBuf), ApplicationError> {
-    Ok((
-        submodule_path.into(),
-        context
-            .file_system()
-            .canonicalize_path(&module_path.parent().unwrap().join(submodule_path))
-            .await?,
-    ))
+    Ok(())
 }

@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 
 #[derive(Parser)]
 #[clap(about = "The Ninja build system clone written in Rust", version)]
@@ -17,4 +17,12 @@ pub struct Arguments {
     pub debug: bool,
     #[clap(long, help = "Show profile timings", env = "TURTLE_PROFILE")]
     pub profile: bool,
+    #[clap(short, help = "Use a complementary tool")]
+    pub tool: Option<Tool>,
+}
+
+#[derive(Clone, ValueEnum)]
+#[clap(rename_all = "lower")]
+pub enum Tool {
+    CleanDead,
 }

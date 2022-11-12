@@ -59,16 +59,11 @@ pub async fn run(
         .map(|r#ref| r#ref.value().clone())
         .collect::<Vec<_>>();
 
-    // Start running build futures from roots.
-    if let Err(error) = try_join_all(futures).await {
-        // Flush explicitly here as flush on drop doesn't work in general
-        // because of possible dependency cycles of build jobs.
-        context.application().database().flush().await?;
+    let result = try_join_all(futures).await;
 
-        return Err(error);
-    }
+    context.application().database().flush().await?;
 
-    Ok(())
+    result.map(|_| ())
 }
 
 #[async_recursion]
@@ -147,7 +142,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         )
         .await
         .is_ok();
-        let old_hash = context.application().database().get(build.id())?;
+        let old_hash = context.application().database().get_hash(build.id())?;
         let (file_inputs, phony_inputs) = build
             .inputs()
             .iter()
@@ -183,12 +178,16 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             .await?;
 
             run_rule(&context, rule).await?;
+
+            for output in build.outputs() {
+                context.application().database().set_output(output)?;
+            }
         }
 
         context
             .application()
             .database()
-            .set(build.id(), BuildHash::new(timestamp_hash, content_hash))?;
+            .set_hash(build.id(), BuildHash::new(timestamp_hash, content_hash))?;
 
         Ok(())
     })
@@ -220,7 +219,7 @@ async fn check_file_existence(
     context
         .application()
         .file_system()
-        .modified_time(path.as_ref())
+        .metadata(path.as_ref())
         .await?;
 
     Ok(())

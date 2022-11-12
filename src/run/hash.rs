@@ -17,7 +17,7 @@ pub async fn calculate_timestamp_hash(
     file_inputs: &[&str],
     phony_inputs: &[&str],
 ) -> Result<u64, ApplicationError> {
-    if let Some(hash) = calculate_fallback_hash(build, file_inputs, phony_inputs) {
+    if let Some(hash) = calculate_phony_hash(build, file_inputs, phony_inputs) {
         return Ok(hash);
     }
 
@@ -29,8 +29,9 @@ pub async fn calculate_timestamp_hash(
         context
             .application()
             .file_system()
-            .modified_time(input.as_ref())
+            .metadata(input.as_ref())
             .await?
+            .modified_time()
             .hash(&mut hasher);
     }
 
@@ -49,7 +50,7 @@ pub async fn calculate_content_hash(
     file_inputs: &[&str],
     phony_inputs: &[&str],
 ) -> Result<u64, ApplicationError> {
-    if let Some(hash) = calculate_fallback_hash(build, file_inputs, phony_inputs) {
+    if let Some(hash) = calculate_phony_hash(build, file_inputs, phony_inputs) {
         return Ok(hash);
     }
 
@@ -80,7 +81,7 @@ fn get_build_hash(context: &Context, input: &str) -> Result<BuildHash, Applicati
     context
         .application()
         .database()
-        .get(
+        .get_hash(
             context
                 .configuration()
                 .outputs()
@@ -91,11 +92,7 @@ fn get_build_hash(context: &Context, input: &str) -> Result<BuildHash, Applicati
         .ok_or_else(|| ApplicationError::InputNotBuilt(input.into()))
 }
 
-fn calculate_fallback_hash(
-    build: &Build,
-    file_inputs: &[&str],
-    phony_inputs: &[&str],
-) -> Option<u64> {
+fn calculate_phony_hash(build: &Build, file_inputs: &[&str], phony_inputs: &[&str]) -> Option<u64> {
     if build.rule().is_none() && file_inputs.is_empty() && phony_inputs.is_empty() {
         Some(rand::random())
     } else {

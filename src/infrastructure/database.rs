@@ -86,7 +86,7 @@ impl Database for OsDatabase {
                     String::from_utf8_lossy(key.as_ref()).into(),
                     BuildId::from_bytes({
                         let mut id = [0; 8];
-                        id.copy_from_slice(&value.as_ref()[..8]);
+                        id.copy_from_slice(value.as_ref());
                         id
                     }),
                 ))

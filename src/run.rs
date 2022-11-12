@@ -180,7 +180,10 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             run_rule(&context, rule).await?;
 
             for output in build.outputs() {
-                context.application().database().set_output(output)?;
+                context
+                    .application()
+                    .database()
+                    .set_output(output, build.id())?;
             }
         }
 

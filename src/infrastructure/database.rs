@@ -9,14 +9,10 @@ const OUTPUT_TREE_NAME: &str = "output";
 #[async_trait]
 pub trait Database {
     fn initialize(&self, path: &Path) -> Result<(), Box<dyn Error>>;
-
     fn get_hash(&self, id: BuildId) -> Result<Option<BuildHash>, Box<dyn Error>>;
     fn set_hash(&self, id: BuildId, hash: BuildHash) -> Result<(), Box<dyn Error>>;
-    fn remove_hash(&self, id: BuildId) -> Result<(), Box<dyn Error>>;
-
-    fn get_outputs(&self) -> Result<Vec<(String, BuildId)>, Box<dyn Error>>;
-    fn set_output(&self, path: &str, id: BuildId) -> Result<(), Box<dyn Error>>;
-
+    fn get_outputs(&self) -> Result<Vec<String>, Box<dyn Error>>;
+    fn set_output(&self, path: &str) -> Result<(), Box<dyn Error>>;
     async fn flush(&self) -> Result<(), Box<dyn Error>>;
 }
 
@@ -70,33 +66,16 @@ impl Database for OsDatabase {
         Ok(())
     }
 
-    fn remove_hash(&self, id: BuildId) -> Result<(), Box<dyn Error>> {
-        self.hash_database()?.remove(id.to_bytes())?;
-
-        Ok(())
-    }
-
-    fn get_outputs(&self) -> Result<Vec<(String, BuildId)>, Box<dyn Error>> {
+    fn get_outputs(&self) -> Result<Vec<String>, Box<dyn Error>> {
         self.output_database()?
             .iter()
-            .map(|result| {
-                let (key, value) = result?;
-
-                Ok((
-                    String::from_utf8_lossy(key.as_ref()).into(),
-                    BuildId::from_bytes({
-                        let mut id = [0; 8];
-                        id.copy_from_slice(value.as_ref());
-                        id
-                    }),
-                ))
-            })
+            .keys()
+            .map(|key| Ok(String::from_utf8_lossy(key?.as_ref()).into()))
             .collect::<Result<_, _>>()
     }
 
-    fn set_output(&self, path: &str, id: BuildId) -> Result<(), Box<dyn Error>> {
-        self.output_database()?
-            .insert(path.as_bytes(), &id.to_bytes())?;
+    fn set_output(&self, path: &str) -> Result<(), Box<dyn Error>> {
+        self.output_database()?.insert(path.as_bytes(), &[])?;
 
         Ok(())
     }

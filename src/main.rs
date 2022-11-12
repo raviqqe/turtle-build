@@ -8,6 +8,7 @@ mod infrastructure;
 mod ir;
 mod parse;
 mod run;
+mod tool;
 mod validation;
 
 use arguments::Arguments;

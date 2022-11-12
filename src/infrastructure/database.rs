@@ -93,13 +93,13 @@ impl Database for OsDatabase {
 
     fn get_source(&self, output: &str) -> Result<Option<String>, Box<dyn Error>> {
         Ok(self
-            .output_database()?
+            .source_database()?
             .get(output)?
             .map(|source| String::from_utf8_lossy(&source).into()))
     }
 
     fn set_source(&self, output: &str, source: &str) -> Result<(), Box<dyn Error>> {
-        self.output_database()?.insert(output, source)?;
+        self.source_database()?.insert(output, source)?;
 
         Ok(())
     }

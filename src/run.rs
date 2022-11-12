@@ -138,7 +138,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                 .outputs()
                 .iter()
                 .chain(build.implicit_outputs())
-                .map(|path| check_file_existence(&context, path.as_ref())),
+                .map(|path| check_file_existence(&context, path)),
         )
         .await
         .is_ok();
@@ -181,6 +181,13 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
 
             for output in build.outputs() {
                 context.application().database().set_output(output)?;
+
+                if let Some(source) = context.configuration().source_map().get(output) {
+                    context
+                        .application()
+                        .database()
+                        .set_source(output, source)?;
+                }
             }
         }
 
@@ -212,15 +219,13 @@ async fn build_input(
     )
 }
 
-async fn check_file_existence(
-    context: &RunContext,
-    path: impl AsRef<Path>,
-) -> Result<(), ApplicationError> {
+async fn check_file_existence(context: &RunContext, path: &str) -> Result<(), ApplicationError> {
     context
         .application()
         .file_system()
         .metadata(path.as_ref())
-        .await?;
+        .await
+        .map_err(|_| ApplicationError::FileNotFound(path.into()))?;
 
     Ok(())
 }

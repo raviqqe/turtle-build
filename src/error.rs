@@ -1,5 +1,4 @@
 use crate::{compile::CompileError, ir::Build, parse::ParseError, validation::ValidationError};
-use fnv::FnvHashMap;
 use itertools::Itertools;
 use std::{
     error::Error,
@@ -14,6 +13,7 @@ pub enum ApplicationError {
     Compile(CompileError),
     DefaultOutputNotFound(Arc<str>),
     DynamicDependencyNotFound(Arc<Build>),
+    FileNotFound(String),
     InputNotBuilt(String),
     InputNotFound(String),
     Other(String),
@@ -23,13 +23,24 @@ pub enum ApplicationError {
 }
 
 impl ApplicationError {
-    pub fn map_outputs(self, source_map: &FnvHashMap<Arc<str>, Arc<str>>) -> Self {
-        match self {
+    pub fn map_outputs(self, map_path: &dyn Fn(&str) -> Option<String>) -> Self {
+        match &self {
+            Self::InputNotFound(path) => {
+                if let Some(path) = map_path(&path) {
+                    Self::FileNotFound(path)
+                } else {
+                    self
+                }
+            }
             Self::Validation(ValidationError::CircularBuildDependency(outputs)) => {
                 Self::Validation(ValidationError::CircularBuildDependency(
                     outputs
-                        .into_iter()
-                        .map(|output| source_map.get(&output).cloned().unwrap_or(output))
+                        .iter()
+                        .map(|output| {
+                            map_path(output)
+                                .map(|string| string.into())
+                                .unwrap_or(output.clone())
+                        })
                         .dedup()
                         .collect(),
                 ))
@@ -57,6 +68,7 @@ impl Display for ApplicationError {
                     build.dynamic_module().unwrap()
                 )
             }
+            Self::FileNotFound(path) => write!(formatter, "file \"{}\" not found", path),
             Self::InputNotBuilt(input) => {
                 write!(formatter, "input \"{}\" not built yet", input)
             }
@@ -136,14 +148,11 @@ mod tests {
                 "foo.o".into(),
                 "bar.o".into()
             ]))
-            .map_outputs(
-                &[
-                    ("foo.o".into(), "foo.c".into()),
-                    ("bar.o".into(), "bar.c".into())
-                ]
-                .into_iter()
-                .collect()
-            ),
+            .map_outputs(&|output| match output {
+                "foo.o" => Some("foo.c".into()),
+                "bar.o" => Some("bar.c".into()),
+                _ => None,
+            }),
             ApplicationError::from(ValidationError::CircularBuildDependency(vec![
                 "foo.c".into(),
                 "bar.c".into()
@@ -158,14 +167,11 @@ mod tests {
                 "foo.o".into(),
                 "foo.h".into()
             ]))
-            .map_outputs(
-                &[
-                    ("foo.o".into(), "foo.c".into()),
-                    ("foo.h".into(), "foo.c".into())
-                ]
-                .into_iter()
-                .collect()
-            ),
+            .map_outputs(&|output| match output {
+                "foo.o" => Some("foo.c".into()),
+                "foo.h" => Some("foo.c".into()),
+                _ => None,
+            }),
             ApplicationError::from(ValidationError::CircularBuildDependency(vec![
                 "foo.c".into()
             ]))

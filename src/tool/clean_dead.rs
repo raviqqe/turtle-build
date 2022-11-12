@@ -19,8 +19,6 @@ pub async fn clean_dead(
     )
     .await?;
 
-    context.database().flush().await?;
-
     Ok(())
 }
 

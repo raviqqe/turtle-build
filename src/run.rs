@@ -147,7 +147,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         )
         .await
         .is_ok();
-        let old_hash = context.application().database().get(build.id())?;
+        let old_hash = context.application().database().get_hash(build.id())?;
         let (file_inputs, phony_inputs) = build
             .inputs()
             .iter()
@@ -188,7 +188,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         context
             .application()
             .database()
-            .set(build.id(), BuildHash::new(timestamp_hash, content_hash))?;
+            .set_hash(build.id(), BuildHash::new(timestamp_hash, content_hash))?;
 
         Ok(())
     })

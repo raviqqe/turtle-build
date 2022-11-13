@@ -5,7 +5,7 @@ mod options;
 
 use self::context::Context as RunContext;
 use crate::{
-    build_graph::BuildGraph,
+    build_graph::{BuildGraph, BuildGraphError},
     build_hash::BuildHash,
     compile::compile_dynamic,
     context::Context,
@@ -17,6 +17,7 @@ use crate::{
 };
 use async_recursion::async_recursion;
 use futures::future::{try_join_all, FutureExt, Shared};
+use itertools::Itertools;
 pub use options::Options;
 use std::{future::Future, path::Path, pin::Pin, sync::Arc};
 use tokio::{spawn, time::Instant, try_join};
@@ -30,15 +31,19 @@ pub async fn run(
     options: Options,
 ) -> Result<(), ApplicationError> {
     let graph = BuildGraph::new(configuration.outputs());
-
-    graph.validate()?;
-
     let context = Arc::new(RunContext::new(
         context.clone(),
         configuration,
         graph,
         options,
     ));
+
+    context
+        .build_graph()
+        .lock()
+        .await
+        .validate()
+        .map_err(|error| map_build_graph_error(&context, &error))?;
 
     for output in context.configuration().default_outputs() {
         trigger_build(
@@ -107,7 +112,8 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                 .build_graph()
                 .lock()
                 .await
-                .validate_dynamic(&configuration)?;
+                .validate_dynamic(&configuration)
+                .map_err(|error| map_build_graph_error(&context, &error))?;
 
             Some(configuration)
         } else {
@@ -301,4 +307,31 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<(), ApplicationEr
     }
 
     Ok(())
+}
+
+fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> ApplicationError {
+    match error {
+        BuildGraphError::CircularDependency(outputs) => {
+            match outputs
+                .iter()
+                .map(|output| {
+                    Ok::<_, ApplicationError>(
+                        context
+                            .application()
+                            .database()
+                            .get_source(output)?
+                            .map(|string| string.into())
+                            .unwrap_or_else(|| output.clone()),
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()
+            {
+                Ok(outputs) => {
+                    BuildGraphError::CircularDependency(outputs.into_iter().dedup().collect())
+                        .into()
+                }
+                Err(error) => error,
+            }
+        }
+    }
 }

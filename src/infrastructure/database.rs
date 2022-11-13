@@ -5,7 +5,7 @@ use std::{error::Error, path::Path};
 
 const HASH_TREE_NAME: &str = "hash";
 const OUTPUT_TREE_NAME: &str = "output";
-const SOURCE_TREE_NAME: &str = "output";
+const SOURCE_TREE_NAME: &str = "source";
 
 #[async_trait]
 pub trait Database {

@@ -94,8 +94,6 @@ impl BuildGraph {
 
 #[cfg(test)]
 mod tests {
-    
-
     use super::*;
     use crate::ir::{DynamicBuild, Rule};
 

@@ -5,7 +5,7 @@ use std::{
     fmt::{self, Display, Formatter},
     sync::Arc,
 };
-use tokio::{io, sync::AcquireError, task::JoinError};
+use tokio::{io, task::JoinError};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ApplicationError {
@@ -80,18 +80,6 @@ impl Display for ApplicationError {
             Self::Sled(error) => write!(formatter, "{}", error),
             Self::Validation(error) => write!(formatter, "{}", error),
         }
-    }
-}
-
-impl From<AcquireError> for ApplicationError {
-    fn from(error: AcquireError) -> Self {
-        Self::Other(error.to_string())
-    }
-}
-
-impl From<bincode::Error> for ApplicationError {
-    fn from(error: bincode::Error) -> Self {
-        Self::Other(error.to_string())
     }
 }
 

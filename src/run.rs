@@ -6,7 +6,6 @@ mod options;
 use self::context::Context as RunContext;
 use crate::{
     build_graph::{BuildGraph, BuildGraphError},
-    build_hash::BuildHash,
     compile::compile_dynamic,
     context::Context,
     debug,

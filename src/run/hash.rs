@@ -1,6 +1,5 @@
 use super::context::Context;
 use crate::{
-    build_hash::BuildHash,
     error::ApplicationError,
     ir::{Build, Rule},
 };

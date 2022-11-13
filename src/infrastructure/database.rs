@@ -1,4 +1,4 @@
-use crate::{build_hash::BuildHash, ir::BuildId};
+use crate::ir::BuildId;
 use async_trait::async_trait;
 use once_cell::sync::OnceCell;
 use std::{error::Error, path::Path};

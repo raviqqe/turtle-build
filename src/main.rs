@@ -1,7 +1,6 @@
 mod arguments;
 mod ast;
 mod build_graph;
-mod build_hash;
 mod compile;
 mod context;
 mod error;

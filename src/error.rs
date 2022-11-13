@@ -13,17 +13,17 @@ use tokio::{io, task::JoinError};
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ApplicationError {
     Build,
+    BuildGraph(BuildGraphError),
     Compile(CompileError),
     DefaultOutputNotFound(Arc<str>),
     DynamicDependencyNotFound(Arc<Build>),
     FileNotFound(String),
     InputNotBuilt(String),
     InputNotFound(String),
-    ModuleDependencyError(ModuleDependencyError),
+    ModuleDependency(ModuleDependencyError),
     Other(String),
     Parse(ParseError),
     Sled(sled::Error),
-    Validation(BuildGraphError),
 }
 
 impl ApplicationError {
@@ -32,7 +32,7 @@ impl ApplicationError {
         map_path: impl Fn(&str) -> Result<Option<String>, E>,
     ) -> Self {
         match &self {
-            Self::Validation(BuildGraphError::CircularDependency(outputs)) => {
+            Self::BuildGraph(BuildGraphError::CircularDependency(outputs)) => {
                 match outputs
                     .iter()
                     .map(|output| -> Result<_, E> {
@@ -42,7 +42,7 @@ impl ApplicationError {
                     })
                     .collect::<Result<Vec<_>, _>>()
                 {
-                    Ok(outputs) => Self::Validation(BuildGraphError::CircularDependency(
+                    Ok(outputs) => Self::BuildGraph(BuildGraphError::CircularDependency(
                         outputs.into_iter().dedup().collect(),
                     )),
                     Err(error) => error.into(),
@@ -78,13 +78,13 @@ impl Display for ApplicationError {
             Self::InputNotFound(input) => {
                 write!(formatter, "input \"{}\" not found", input)
             }
-            Self::ModuleDependencyError(error) => {
+            Self::ModuleDependency(error) => {
                 write!(formatter, "{}", error)
             }
             Self::Other(message) => write!(formatter, "{}", message),
             Self::Parse(error) => write!(formatter, "{}", error),
             Self::Sled(error) => write!(formatter, "{}", error),
-            Self::Validation(error) => write!(formatter, "{}", error),
+            Self::BuildGraph(error) => write!(formatter, "{}", error),
         }
     }
 }
@@ -115,7 +115,7 @@ impl From<JoinError> for ApplicationError {
 
 impl From<ModuleDependencyError> for ApplicationError {
     fn from(error: ModuleDependencyError) -> Self {
-        Self::ModuleDependencyError(error)
+        Self::ModuleDependency(error)
     }
 }
 
@@ -133,7 +133,7 @@ impl From<sled::Error> for ApplicationError {
 
 impl From<BuildGraphError> for ApplicationError {
     fn from(error: BuildGraphError) -> Self {
-        Self::Validation(error)
+        Self::BuildGraph(error)
     }
 }
 

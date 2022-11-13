@@ -133,7 +133,7 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Ap
     Ok(())
 }
 
-pub async fn parse_modules(
+async fn parse_modules(
     context: &Context,
     path: &Path,
 ) -> Result<(HashMap<PathBuf, Module>, ModuleDependencyMap), ApplicationError> {

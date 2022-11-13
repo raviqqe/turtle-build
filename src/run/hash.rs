@@ -1,6 +1,7 @@
 use super::context::Context;
 use crate::{
     error::ApplicationError,
+    hash_type::HashType,
     ir::{Build, Rule},
 };
 use std::{
@@ -35,19 +36,7 @@ pub async fn calculate_timestamp_hash(
     }
 
     for &input in phony_inputs {
-        context
-            .application()
-            .database()
-            .get_timestamp_hash(
-                context
-                    .configuration()
-                    .outputs()
-                    .get(input)
-                    .ok_or_else(|| ApplicationError::InputNotFound(input.into()))?
-                    .id(),
-            )?
-            .ok_or_else(|| ApplicationError::InputNotBuilt(input.into()))?
-            .hash(&mut hasher);
+        get_build_hash(context, HashType::Timestamp, input)?.hash(&mut hasher);
     }
 
     Ok(hasher.finish())
@@ -80,22 +69,30 @@ pub async fn calculate_content_hash(
     }
 
     for &input in phony_inputs {
-        context
-            .application()
-            .database()
-            .get_content_hash(
-                context
-                    .configuration()
-                    .outputs()
-                    .get(input)
-                    .ok_or_else(|| ApplicationError::InputNotFound(input.into()))?
-                    .id(),
-            )?
-            .ok_or_else(|| ApplicationError::InputNotBuilt(input.into()))?
-            .hash(&mut hasher);
+        get_build_hash(context, HashType::Content, input)?.hash(&mut hasher);
     }
 
     Ok(hasher.finish())
+}
+
+fn get_build_hash(
+    context: &Context,
+    r#type: HashType,
+    input: &str,
+) -> Result<u64, ApplicationError> {
+    context
+        .application()
+        .database()
+        .get_hash(
+            r#type,
+            context
+                .configuration()
+                .outputs()
+                .get(input)
+                .ok_or_else(|| ApplicationError::InputNotFound(input.into()))?
+                .id(),
+        )?
+        .ok_or_else(|| ApplicationError::InputNotBuilt(input.into()))
 }
 
 fn calculate_phony_hash(build: &Build, file_inputs: &[&str], phony_inputs: &[&str]) -> Option<u64> {

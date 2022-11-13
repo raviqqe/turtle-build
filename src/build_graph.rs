@@ -278,7 +278,7 @@ mod tests {
             ]
             .into_iter()
             .collect(),
-        ) else { unreachable!()};
+        ) else { unreachable!() };
 
         assert_eq!(
             &paths,

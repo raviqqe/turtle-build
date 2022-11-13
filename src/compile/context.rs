@@ -1,7 +1,5 @@
-use crate::ast::Module;
+use crate::{ast::Module, module_dependency_map::ModuleDependencyMap};
 use std::{collections::HashMap, path::PathBuf};
-
-pub type ModuleDependencyMap = HashMap<PathBuf, HashMap<String, PathBuf>>;
 
 #[derive(Debug, Default)]
 pub struct Context {

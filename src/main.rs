@@ -6,6 +6,7 @@ mod context;
 mod error;
 mod infrastructure;
 mod ir;
+mod module_dependency_map;
 mod parse;
 mod parse_modules;
 mod run;

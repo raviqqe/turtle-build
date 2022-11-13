@@ -4,13 +4,14 @@ mod error;
 mod global_state;
 mod module_state;
 
+pub use self::error::CompileError;
 use self::{
     chain_map::ChainMap, context::Context, global_state::GlobalState, module_state::ModuleState,
 };
-pub use self::{context::ModuleDependencyMap, error::CompileError};
 use crate::{
     ast,
     ir::{Build, Configuration, DynamicBuild, DynamicConfiguration, Rule},
+    module_dependency_map::ModuleDependencyMap,
 };
 use once_cell::sync::Lazy;
 use regex::{Captures, Regex};

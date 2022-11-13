@@ -1,4 +1,4 @@
-use crate::compile::ModuleDependencyMap;
+use crate::module_dependency_map::ModuleDependencyMap;
 use petgraph::{algo::is_cyclic_directed, Graph};
 use std::{collections::HashMap, path::Path};
 

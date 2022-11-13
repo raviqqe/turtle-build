@@ -1,7 +1,7 @@
 use crate::{hash_type::HashType, ir::BuildId};
 use async_trait::async_trait;
 use once_cell::sync::OnceCell;
-use std::{error::Error, path::Path};
+use std::{error::Error, path::Path, str};
 
 const TIMESTAMP_HASH_TREE_NAME: &str = "timestamp_hash";
 const CONTENT_HASH_TREE_NAME: &str = "content_hash";
@@ -85,7 +85,7 @@ impl Database for OsDatabase {
         self.output_database()?
             .iter()
             .keys()
-            .map(|key| Ok(String::from_utf8_lossy(key?.as_ref()).into()))
+            .map(|key| Ok(str::from_utf8(key?.as_ref())?.into()))
             .collect::<Result<_, _>>()
     }
 
@@ -96,10 +96,11 @@ impl Database for OsDatabase {
     }
 
     fn get_source(&self, output: &str) -> Result<Option<String>, Box<dyn Error>> {
-        Ok(self
-            .source_database()?
-            .get(output)?
-            .map(|source| String::from_utf8_lossy(&source).into()))
+        Ok(if let Some(source) = self.source_database()?.get(output)? {
+            Some(str::from_utf8(&source)?.into())
+        } else {
+            None
+        })
     }
 
     fn set_source(&self, output: &str, source: &str) -> Result<(), Box<dyn Error>> {

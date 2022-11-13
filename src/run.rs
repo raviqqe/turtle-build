@@ -10,6 +10,7 @@ use crate::{
     context::Context,
     debug,
     error::ApplicationError,
+    hash_type::HashType,
     ir::{Build, Configuration, Rule},
     parse::parse_dynamic,
     profile,
@@ -167,7 +168,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                 == context
                     .application()
                     .database()
-                    .get_timestamp_hash(build.id())?
+                    .get_hash(HashType::Timestamp, build.id())?
         {
             return Ok(());
         }
@@ -180,7 +181,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                 == context
                     .application()
                     .database()
-                    .get_content_hash(build.id())?
+                    .get_hash(HashType::Content, build.id())?
         {
             return Ok(());
         } else if let Some(rule) = build.rule() {
@@ -207,14 +208,15 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             }
         }
 
+        context.application().database().set_hash(
+            HashType::Timestamp,
+            build.id(),
+            timestamp_hash,
+        )?;
         context
             .application()
             .database()
-            .set_timestamp_hash(build.id(), timestamp_hash)?;
-        context
-            .application()
-            .database()
-            .set_content_hash(build.id(), content_hash)?;
+            .set_hash(HashType::Content, build.id(), content_hash)?;
 
         Ok(())
     })

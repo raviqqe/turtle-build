@@ -36,8 +36,18 @@ pub async fn calculate_timestamp_hash(
     }
 
     for &input in phony_inputs {
-        get_build_hash(context, input)?
-            .timestamp()
+        context
+            .application()
+            .database()
+            .get_timestamp_hash(
+                context
+                    .configuration()
+                    .outputs()
+                    .get(input)
+                    .ok_or_else(|| ApplicationError::InputNotFound(input.into()))?
+                    .id(),
+            )?
+            .ok_or_else(|| ApplicationError::InputNotBuilt(input.into()))?
             .hash(&mut hasher);
     }
 
@@ -71,25 +81,22 @@ pub async fn calculate_content_hash(
     }
 
     for &input in phony_inputs {
-        get_build_hash(context, input)?.content().hash(&mut hasher);
+        context
+            .application()
+            .database()
+            .get_content_hash(
+                context
+                    .configuration()
+                    .outputs()
+                    .get(input)
+                    .ok_or_else(|| ApplicationError::InputNotFound(input.into()))?
+                    .id(),
+            )?
+            .ok_or_else(|| ApplicationError::InputNotBuilt(input.into()))?
+            .hash(&mut hasher);
     }
 
     Ok(hasher.finish())
-}
-
-fn get_build_hash(context: &Context, input: &str) -> Result<BuildHash, ApplicationError> {
-    context
-        .application()
-        .database()
-        .get_hash(
-            context
-                .configuration()
-                .outputs()
-                .get(input)
-                .ok_or_else(|| ApplicationError::InputNotFound(input.into()))?
-                .id(),
-        )?
-        .ok_or_else(|| ApplicationError::InputNotBuilt(input.into()))
 }
 
 fn calculate_phony_hash(build: &Build, file_inputs: &[&str], phony_inputs: &[&str]) -> Option<u64> {

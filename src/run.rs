@@ -220,12 +220,21 @@ async fn build_input(
 }
 
 async fn check_file_existence(context: &RunContext, path: &str) -> Result<(), ApplicationError> {
-    context
+    if context
         .application()
         .file_system()
         .metadata(path.as_ref())
         .await
-        .map_err(|_| ApplicationError::FileNotFound(path.into()))?;
+        .is_err()
+    {
+        return Err(ApplicationError::FileNotFound(
+            context
+                .application()
+                .database()
+                .get_source(path)?
+                .unwrap_or_else(|| path.into()),
+        ));
+    }
 
     Ok(())
 }

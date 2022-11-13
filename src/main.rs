@@ -116,20 +116,17 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Ap
         match tool {
             Tool::CleanDead => tool::clean_dead(context, &configuration).await?,
         }
-    } else {
-        run::run(
-            context,
-            configuration.clone(),
-            run::Options {
-                debug: arguments.debug,
-                profile: arguments.profile,
-            },
-        )
-        .await
-        .map_err(|error| error.map_outputs(|output| context.database().get_source(output)))?;
     }
 
-    Ok(())
+    run::run(
+        context,
+        configuration.clone(),
+        run::Options {
+            debug: arguments.debug,
+            profile: arguments.profile,
+        },
+    )
+    .await
 }
 
 async fn parse_modules(

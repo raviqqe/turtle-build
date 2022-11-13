@@ -2,7 +2,6 @@ use crate::{
     build_graph::BuildGraphError, compile::CompileError, ir::Build,
     module_dependency::ModuleDependencyError, parse::ParseError,
 };
-use itertools::Itertools;
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
@@ -24,33 +23,6 @@ pub enum ApplicationError {
     Other(String),
     Parse(ParseError),
     Sled(sled::Error),
-}
-
-impl ApplicationError {
-    pub fn map_outputs<E: Into<Self>>(
-        self,
-        map_path: impl Fn(&str) -> Result<Option<String>, E>,
-    ) -> Self {
-        match &self {
-            Self::BuildGraph(BuildGraphError::CircularDependency(outputs)) => {
-                match outputs
-                    .iter()
-                    .map(|output| -> Result<_, E> {
-                        Ok(map_path(output)?
-                            .map(|string| string.into())
-                            .unwrap_or_else(|| output.clone()))
-                    })
-                    .collect::<Result<Vec<_>, _>>()
-                {
-                    Ok(outputs) => Self::BuildGraph(BuildGraphError::CircularDependency(
-                        outputs.into_iter().dedup().collect(),
-                    )),
-                    Err(error) => error.into(),
-                }
-            }
-            _ => self,
-        }
-    }
 }
 
 impl Error for ApplicationError {}
@@ -134,45 +106,5 @@ impl From<sled::Error> for ApplicationError {
 impl From<BuildGraphError> for ApplicationError {
     fn from(error: BuildGraphError) -> Self {
         Self::BuildGraph(error)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn map_dependency_cycle_error() {
-        assert_eq!(
-            ApplicationError::from(BuildGraphError::CircularDependency(vec![
-                "foo.o".into(),
-                "bar.o".into()
-            ]))
-            .map_outputs(|output| Ok::<_, ApplicationError>(match output {
-                "foo.o" => Some("foo.c".into()),
-                "bar.o" => Some("bar.c".into()),
-                _ => None,
-            })),
-            ApplicationError::from(BuildGraphError::CircularDependency(vec![
-                "foo.c".into(),
-                "bar.c".into()
-            ]))
-        );
-    }
-
-    #[test]
-    fn map_dependency_cycle_error_with_duplicate_sources() {
-        assert_eq!(
-            ApplicationError::from(BuildGraphError::CircularDependency(vec![
-                "foo.o".into(),
-                "foo.h".into()
-            ]))
-            .map_outputs(|output| Ok::<_, ApplicationError>(match output {
-                "foo.o" => Some("foo.c".into()),
-                "foo.h" => Some("foo.c".into()),
-                _ => None,
-            })),
-            ApplicationError::from(BuildGraphError::CircularDependency(vec!["foo.c".into()]))
-        );
     }
 }

@@ -5,10 +5,11 @@ use petgraph::{
     graph::{DefaultIx, NodeIndex},
     Graph,
 };
-use std::{collections::HashMap, sync::Arc};
 use std::{
+    collections::HashMap,
     error::Error,
     fmt::{self, Display, Formatter},
+    sync::Arc,
 };
 
 #[derive(Debug)]

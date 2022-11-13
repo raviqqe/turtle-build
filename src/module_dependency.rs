@@ -1,8 +1,10 @@
 use petgraph::{algo::is_cyclic_directed, Graph};
-use std::error::Error;
-use std::fmt::{self, Display, Formatter};
-use std::path::Path;
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    error::Error,
+    fmt::{self, Display, Formatter},
+    path::{Path, PathBuf},
+};
 
 pub type ModuleDependencyMap = HashMap<PathBuf, HashMap<String, PathBuf>>;
 

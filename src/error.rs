@@ -32,16 +32,6 @@ impl ApplicationError {
         map_path: impl Fn(&str) -> Result<Option<String>, E>,
     ) -> Self {
         match &self {
-            Self::FileNotFound(path) => match map_path(path) {
-                Ok(path) => {
-                    if let Some(path) = path {
-                        Self::FileNotFound(path)
-                    } else {
-                        self
-                    }
-                }
-                Err(error) => error.into(),
-            },
             Self::Validation(BuildGraphError::CircularDependency(outputs)) => {
                 match outputs
                     .iter()

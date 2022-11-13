@@ -23,27 +23,36 @@ pub enum ApplicationError {
 }
 
 impl ApplicationError {
-    pub fn map_outputs(self, map_path: &dyn Fn(&str) -> Option<String>) -> Self {
+    pub fn map_outputs<E: Into<Self>>(
+        self,
+        map_path: impl Fn(&str) -> Result<Option<String>, E>,
+    ) -> Self {
         match &self {
-            Self::InputNotFound(path) => {
-                if let Some(path) = map_path(&path) {
-                    Self::FileNotFound(path)
-                } else {
-                    self
+            Self::FileNotFound(path) => match map_path(&path) {
+                Ok(path) => {
+                    if let Some(path) = path {
+                        Self::FileNotFound(path)
+                    } else {
+                        self
+                    }
                 }
-            }
+                Err(error) => error.into(),
+            },
             Self::Validation(ValidationError::CircularBuildDependency(outputs)) => {
-                Self::Validation(ValidationError::CircularBuildDependency(
-                    outputs
-                        .iter()
-                        .map(|output| {
-                            map_path(output)
-                                .map(|string| string.into())
-                                .unwrap_or(output.clone())
-                        })
-                        .dedup()
-                        .collect(),
-                ))
+                match outputs
+                    .iter()
+                    .map(|output| -> Result<_, E> {
+                        Ok(map_path(output)?
+                            .map(|string| string.into())
+                            .unwrap_or(output.clone()))
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+                {
+                    Ok(outputs) => Self::Validation(ValidationError::CircularBuildDependency(
+                        outputs.into_iter().dedup().collect(),
+                    )),
+                    Err(error) => error.into(),
+                }
             }
             _ => self,
         }
@@ -136,11 +145,11 @@ mod tests {
                 "foo.o".into(),
                 "bar.o".into()
             ]))
-            .map_outputs(&|output| match output {
+            .map_outputs(|output| Ok::<_, ApplicationError>(match output {
                 "foo.o" => Some("foo.c".into()),
                 "bar.o" => Some("bar.c".into()),
                 _ => None,
-            }),
+            })),
             ApplicationError::from(ValidationError::CircularBuildDependency(vec![
                 "foo.c".into(),
                 "bar.c".into()
@@ -155,11 +164,11 @@ mod tests {
                 "foo.o".into(),
                 "foo.h".into()
             ]))
-            .map_outputs(&|output| match output {
+            .map_outputs(|output| Ok::<_, ApplicationError>(match output {
                 "foo.o" => Some("foo.c".into()),
                 "foo.h" => Some("foo.c".into()),
                 _ => None,
-            }),
+            })),
             ApplicationError::from(ValidationError::CircularBuildDependency(vec![
                 "foo.c".into()
             ]))

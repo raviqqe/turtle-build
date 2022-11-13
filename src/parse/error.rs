@@ -18,7 +18,7 @@ impl ParseError {
 
 impl From<nom::Err<nom::error::Error<&str>>> for ParseError {
     fn from(error: nom::Err<nom::error::Error<&str>>) -> Self {
-        Self::new(format!("{}", error))
+        Self::new(error.to_string())
     }
 }
 

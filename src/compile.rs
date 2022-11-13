@@ -11,7 +11,7 @@ use self::{
 use crate::{
     ast,
     ir::{Build, Configuration, DynamicBuild, DynamicConfiguration, Rule},
-    module_dependency_map::ModuleDependencyMap,
+    module_dependency::ModuleDependencyMap,
 };
 use once_cell::sync::Lazy;
 use regex::{Captures, Regex};
@@ -35,7 +35,7 @@ pub fn compile(
     dependencies: &ModuleDependencyMap,
     root_module_path: &Path,
 ) -> Result<Configuration, CompileError> {
-    let context = Context::new(modules.clone(), dependencies.clone());
+    let context = Context::new(modules, dependencies);
 
     let mut global_state = GlobalState {
         outputs: Default::default(),
@@ -236,9 +236,9 @@ fn interpolate_variables(template: &str, variables: &ChainMap<&str, Arc<str>>) -
 mod tests {
     use super::*;
     use crate::ast;
-    use fnv::{FnvHashMap, FnvHashSet};
     use once_cell::sync::Lazy;
     use pretty_assertions::assert_eq;
+    use std::collections::HashSet;
 
     static ROOT_MODULE_PATH: Lazy<PathBuf> = Lazy::new(|| PathBuf::from("build.ninja"));
     static DEFAULT_DEPENDENCIES: Lazy<ModuleDependencyMap> = Lazy::new(|| {
@@ -269,8 +269,8 @@ mod tests {
     }
 
     fn create_simple_configuration(
-        outputs: FnvHashMap<Arc<str>, Arc<Build>>,
-        default_outputs: FnvHashSet<Arc<str>>,
+        outputs: HashMap<Arc<str>, Arc<Build>>,
+        default_outputs: HashSet<Arc<str>>,
     ) -> Configuration {
         Configuration::new(outputs, default_outputs, Default::default(), None)
     }

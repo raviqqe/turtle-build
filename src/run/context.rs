@@ -1,8 +1,8 @@
 use super::{options::Options, BuildFuture};
 use crate::{
+    build_graph::BuildGraph,
     context::Context as ApplicationContext,
     ir::{BuildId, Configuration},
-    validation::BuildGraph,
 };
 use dashmap::DashMap;
 use std::sync::Arc;

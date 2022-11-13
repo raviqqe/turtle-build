@@ -1,12 +1,16 @@
-use crate::module_dependency_map::ModuleDependencyMap;
 use petgraph::{algo::is_cyclic_directed, Graph};
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::HashMap,
+    error::Error,
+    fmt::{self, Display, Formatter},
+    path::{Path, PathBuf},
+};
 
-use super::ValidationError;
+pub type ModuleDependencyMap = HashMap<PathBuf, HashMap<String, PathBuf>>;
 
-pub fn validate_modules(modules: &ModuleDependencyMap) -> Result<(), ValidationError> {
+pub fn validate(modules: &ModuleDependencyMap) -> Result<(), ModuleDependencyError> {
     if is_module_dependency_circular(modules) {
-        return Err(ValidationError::CircularModuleDependency);
+        return Err(ModuleDependencyError::CircularDependency);
     }
 
     Ok(())
@@ -29,19 +33,36 @@ fn is_module_dependency_circular(modules: &ModuleDependencyMap) -> bool {
     is_cyclic_directed(&graph)
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ModuleDependencyError {
+    CircularDependency,
+}
+
+impl Error for ModuleDependencyError {}
+
+impl Display for ModuleDependencyError {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            Self::CircularDependency => {
+                write!(formatter, "build file dependency cycle detected")
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn validate_empty() {
-        assert_eq!(validate_modules(&Default::default()), Ok(()));
+        assert_eq!(validate(&Default::default()), Ok(()));
     }
 
     #[test]
     fn validate_module() {
         assert_eq!(
-            validate_modules(&[("foo".into(), Default::default())].into_iter().collect()),
+            validate(&[("foo".into(), Default::default())].into_iter().collect()),
             Ok(())
         );
     }
@@ -49,7 +70,7 @@ mod tests {
     #[test]
     fn validate_circular_module() {
         assert_eq!(
-            validate_modules(
+            validate(
                 &[(
                     "foo".into(),
                     [("foo".into(), "foo".into())].into_iter().collect()
@@ -57,14 +78,14 @@ mod tests {
                 .into_iter()
                 .collect()
             ),
-            Err(ValidationError::CircularModuleDependency)
+            Err(ModuleDependencyError::CircularDependency)
         );
     }
 
     #[test]
     fn validate_two_modules() {
         assert_eq!(
-            validate_modules(
+            validate(
                 &[
                     (
                         "foo".into(),
@@ -82,7 +103,7 @@ mod tests {
     #[test]
     fn validate_two_circular_modules() {
         assert_eq!(
-            validate_modules(
+            validate(
                 &[
                     (
                         "foo".into(),
@@ -96,7 +117,7 @@ mod tests {
                 .into_iter()
                 .collect()
             ),
-            Err(ValidationError::CircularModuleDependency)
+            Err(ModuleDependencyError::CircularDependency)
         );
     }
 }

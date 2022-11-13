@@ -6,6 +6,7 @@ mod context;
 mod error;
 mod infrastructure;
 mod ir;
+mod module_dependency_map;
 mod parse;
 mod parse_modules;
 mod run;
@@ -117,7 +118,7 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Ap
             },
         )
         .await
-        .map_err(|error| error.map_outputs(configuration.source_map()))?;
+        .map_err(|error| error.map_outputs(|output| context.database().get_source(output)))?;
     }
 
     Ok(())

@@ -1,8 +1,8 @@
 use crate::{
     ast::{Module, Statement},
-    compile::ModuleDependencyMap,
     context::Context,
     error::ApplicationError,
+    module_dependency_map::ModuleDependencyMap,
     parse::parse,
 };
 use futures::future::try_join_all;

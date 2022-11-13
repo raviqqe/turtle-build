@@ -85,13 +85,13 @@ impl Display for ApplicationError {
 
 impl From<AcquireError> for ApplicationError {
     fn from(error: AcquireError) -> Self {
-        Self::Other(format!("{}", &error))
+        Self::Other(error.to_string())
     }
 }
 
 impl From<bincode::Error> for ApplicationError {
     fn from(error: bincode::Error) -> Self {
-        Self::Other(format!("{}", &error))
+        Self::Other(error.to_string())
     }
 }
 
@@ -109,13 +109,13 @@ impl From<CompileError> for ApplicationError {
 
 impl From<io::Error> for ApplicationError {
     fn from(error: io::Error) -> Self {
-        Self::Other(format!("{}", &error))
+        Self::Other(error.to_string())
     }
 }
 
 impl From<JoinError> for ApplicationError {
     fn from(error: JoinError) -> Self {
-        Self::Other(format!("{}", &error))
+        Self::Other(error.to_string())
     }
 }
 

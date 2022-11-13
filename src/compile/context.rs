@@ -1,14 +1,17 @@
 use crate::{ast::Module, module_dependency_map::ModuleDependencyMap};
 use std::{collections::HashMap, path::PathBuf};
 
-#[derive(Debug, Default)]
-pub struct Context {
-    modules: HashMap<PathBuf, Module>,
-    dependencies: ModuleDependencyMap,
+#[derive(Debug)]
+pub struct Context<'a> {
+    modules: &'a HashMap<PathBuf, Module>,
+    dependencies: &'a ModuleDependencyMap,
 }
 
-impl Context {
-    pub fn new(modules: HashMap<PathBuf, Module>, dependencies: ModuleDependencyMap) -> Self {
+impl<'a> Context<'a> {
+    pub fn new(
+        modules: &'a HashMap<PathBuf, Module>,
+        dependencies: &'a ModuleDependencyMap,
+    ) -> Self {
         Self {
             modules,
             dependencies,

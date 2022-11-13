@@ -35,7 +35,7 @@ pub fn compile(
     dependencies: &ModuleDependencyMap,
     root_module_path: &Path,
 ) -> Result<Configuration, CompileError> {
-    let context = Context::new(modules.clone(), dependencies.clone());
+    let context = Context::new(modules, dependencies);
 
     let mut global_state = GlobalState {
         outputs: Default::default(),

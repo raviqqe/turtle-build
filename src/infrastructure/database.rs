@@ -123,6 +123,13 @@ mod tests {
         database.initialize(tempdir().unwrap().path()).unwrap();
     }
 
+    #[tokio::test]
+    async fn flush() {
+        let database = OsDatabase::new();
+        database.initialize(tempdir().unwrap().path()).unwrap();
+        database.flush().await.unwrap();
+    }
+
     #[test]
     fn set_hash() {
         let database = OsDatabase::new();
@@ -143,10 +150,39 @@ mod tests {
         assert_eq!(database.get_hash(BuildId::new(0)).unwrap(), Some(hash));
     }
 
-    #[tokio::test]
-    async fn flush() {
+    #[test]
+    fn set_output() {
         let database = OsDatabase::new();
         database.initialize(tempdir().unwrap().path()).unwrap();
-        database.flush().await.unwrap();
+
+        database.set_output("foo").unwrap();
+    }
+
+    #[test]
+    fn get_output() {
+        let database = OsDatabase::new();
+        database.initialize(tempdir().unwrap().path()).unwrap();
+
+        database.set_output("foo").unwrap();
+
+        assert_eq!(database.get_outputs().unwrap(), vec!["foo"]);
+    }
+
+    #[test]
+    fn set_source() {
+        let database = OsDatabase::new();
+        database.initialize(tempdir().unwrap().path()).unwrap();
+
+        database.set_source("foo", "bar").unwrap();
+    }
+
+    #[test]
+    fn get_source() {
+        let database = OsDatabase::new();
+        database.initialize(tempdir().unwrap().path()).unwrap();
+
+        database.set_source("foo", "bar").unwrap();
+
+        assert_eq!(database.get_source("foo").unwrap(), Some("bar".into()));
     }
 }

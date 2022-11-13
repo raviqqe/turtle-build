@@ -96,11 +96,11 @@ impl Database for OsDatabase {
     }
 
     fn get_source(&self, output: &str) -> Result<Option<String>, Box<dyn Error>> {
-        Ok(self
+        self
             .source_database()?
             .get(output)?
             .map(|source| Ok::<_, Box<dyn Error>>(str::from_utf8(&source)?.into()))
-            .transpose()?)
+            .transpose()
     }
 
     fn set_source(&self, output: &str, source: &str) -> Result<(), Box<dyn Error>> {

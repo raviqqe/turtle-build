@@ -265,7 +265,7 @@ mod tests {
 
     #[test]
     fn validate_two_circular_builds() {
-        let Err(BuildGraphError::CircularDependency(paths)) = validate_builds(
+        let BuildGraphError::CircularDependency(paths) = validate_builds(
             &[
                 (
                     "foo".into(),
@@ -278,7 +278,8 @@ mod tests {
             ]
             .into_iter()
             .collect(),
-        ) else { unreachable!() };
+        )
+        .unwrap_err();
 
         assert_eq!(
             &paths,

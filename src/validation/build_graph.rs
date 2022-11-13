@@ -1,6 +1,5 @@
 use super::error::ValidationError;
 use crate::ir::{Build, DynamicConfiguration};
-use fnv::FnvHashMap;
 use petgraph::{
     algo::{kosaraju_scc, toposort},
     graph::{DefaultIx, NodeIndex},
@@ -16,7 +15,7 @@ pub struct BuildGraph {
 }
 
 impl BuildGraph {
-    pub fn new(outputs: &FnvHashMap<Arc<str>, Arc<Build>>) -> Self {
+    pub fn new(outputs: &HashMap<Arc<str>, Arc<Build>>) -> Self {
         let mut this = Self {
             graph: Graph::<Arc<str>, ()>::new(),
             nodes: HashMap::<Arc<str>, NodeIndex<DefaultIx>>::new(),
@@ -95,11 +94,13 @@ impl BuildGraph {
 
 #[cfg(test)]
 mod tests {
+    
+
     use super::*;
     use crate::ir::{DynamicBuild, Rule};
 
     fn validate_builds(
-        dependencies: &FnvHashMap<Arc<str>, Arc<Build>>,
+        dependencies: &HashMap<Arc<str>, Arc<Build>>,
     ) -> Result<(), ValidationError> {
         BuildGraph::new(dependencies).validate()
     }
@@ -234,25 +235,28 @@ mod tests {
 
     #[test]
     fn validate_two_circular_builds() {
+        let Err(ValidationError::CircularBuildDependency(paths)) = validate_builds(
+            &[
+                (
+                    "foo".into(),
+                    explicit_build(vec!["foo".into()], vec!["bar".into()]).into(),
+                ),
+                (
+                    "bar".into(),
+                    explicit_build(vec!["bar".into()], vec!["foo".into()]).into(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        ) else { unreachable!()};
+
         assert_eq!(
-            validate_builds(
-                &[
-                    (
-                        "foo".into(),
-                        explicit_build(vec!["foo".into()], vec!["bar".into()]).into()
-                    ),
-                    (
-                        "bar".into(),
-                        explicit_build(vec!["bar".into()], vec!["foo".into()]).into()
-                    )
-                ]
-                .into_iter()
-                .collect()
-            ),
-            Err(ValidationError::CircularBuildDependency(vec![
-                "foo".into(),
-                "bar".into(),
-            ]))
+            &paths,
+            &if &*paths[0] == "foo" {
+                ["foo".into(), "bar".into()]
+            } else {
+                ["bar".into(), "foo".into()]
+            }
         );
     }
 

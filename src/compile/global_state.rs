@@ -1,10 +1,12 @@
 use crate::ir::Build;
-use fnv::{FnvHashMap, FnvHashSet};
-use std::sync::Arc;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 #[derive(Clone, Debug)]
 pub struct GlobalState {
-    pub outputs: FnvHashMap<Arc<str>, Arc<Build>>,
-    pub default_outputs: FnvHashSet<Arc<str>>,
-    pub source_map: FnvHashMap<Arc<str>, Arc<str>>,
+    pub outputs: HashMap<Arc<str>, Arc<Build>>,
+    pub default_outputs: HashSet<Arc<str>>,
+    pub source_map: HashMap<Arc<str>, Arc<str>>,
 }

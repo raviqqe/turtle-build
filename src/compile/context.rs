@@ -19,10 +19,10 @@ impl<'a> Context<'a> {
     }
 
     pub fn modules(&self) -> &HashMap<PathBuf, Module> {
-        &self.modules
+        self.modules
     }
 
     pub fn dependencies(&self) -> &ModuleDependencyMap {
-        &self.dependencies
+        self.dependencies
     }
 }

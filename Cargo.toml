@@ -18,7 +18,6 @@ async-trait = "0.1.58"
 bincode = "1"
 clap = { version = "4", features = ["derive", "env"] }
 dashmap = "5.4.0"
-fnv = "1"
 futures = "0.3"
 itertools = "0.10"
 nom = "7.1.1"

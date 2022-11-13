@@ -1,9 +1,10 @@
-use crate::{build_hash::BuildHash, ir::BuildId};
+use crate::{hash_type::HashType, ir::BuildId};
 use async_trait::async_trait;
 use once_cell::sync::OnceCell;
-use std::{error::Error, path::Path};
+use std::{error::Error, path::Path, str};
 
-const HASH_TREE_NAME: &str = "hash";
+const TIMESTAMP_HASH_TREE_NAME: &str = "timestamp_hash";
+const CONTENT_HASH_TREE_NAME: &str = "content_hash";
 const OUTPUT_TREE_NAME: &str = "output";
 const SOURCE_TREE_NAME: &str = "source";
 
@@ -11,8 +12,8 @@ const SOURCE_TREE_NAME: &str = "source";
 pub trait Database {
     fn initialize(&self, path: &Path) -> Result<(), Box<dyn Error>>;
 
-    fn get_hash(&self, id: BuildId) -> Result<Option<BuildHash>, Box<dyn Error>>;
-    fn set_hash(&self, id: BuildId, hash: BuildHash) -> Result<(), Box<dyn Error>>;
+    fn get_hash(&self, r#type: HashType, id: BuildId) -> Result<Option<u64>, Box<dyn Error>>;
+    fn set_hash(&self, r#type: HashType, id: BuildId, hash: u64) -> Result<(), Box<dyn Error>>;
 
     fn get_outputs(&self) -> Result<Vec<String>, Box<dyn Error>>;
     fn set_output(&self, path: &str) -> Result<(), Box<dyn Error>>;
@@ -39,8 +40,11 @@ impl OsDatabase {
         Ok(self.database.get().ok_or("database not initialized")?)
     }
 
-    fn hash_database(&self) -> Result<sled::Tree, Box<dyn Error>> {
-        Ok(self.database()?.open_tree(HASH_TREE_NAME)?)
+    fn hash_database(&self, r#type: HashType) -> Result<sled::Tree, Box<dyn Error>> {
+        Ok(self.database()?.open_tree(match r#type {
+            HashType::Content => CONTENT_HASH_TREE_NAME,
+            HashType::Timestamp => TIMESTAMP_HASH_TREE_NAME,
+        })?)
     }
 
     fn output_database(&self) -> Result<sled::Tree, Box<dyn Error>> {
@@ -62,16 +66,16 @@ impl Database for OsDatabase {
         Ok(())
     }
 
-    fn get_hash(&self, id: BuildId) -> Result<Option<BuildHash>, Box<dyn Error>> {
+    fn get_hash(&self, r#type: HashType, id: BuildId) -> Result<Option<u64>, Box<dyn Error>> {
         Ok(self
-            .hash_database()?
+            .hash_database(r#type)?
             .get(id.to_bytes())?
             .map(|value| bincode::deserialize(&value))
             .transpose()?)
     }
 
-    fn set_hash(&self, id: BuildId, hash: BuildHash) -> Result<(), Box<dyn Error>> {
-        self.hash_database()?
+    fn set_hash(&self, r#type: HashType, id: BuildId, hash: u64) -> Result<(), Box<dyn Error>> {
+        self.hash_database(r#type)?
             .insert(id.to_bytes(), bincode::serialize(&hash)?)?;
 
         Ok(())
@@ -81,7 +85,7 @@ impl Database for OsDatabase {
         self.output_database()?
             .iter()
             .keys()
-            .map(|key| Ok(String::from_utf8_lossy(key?.as_ref()).into()))
+            .map(|key| Ok(str::from_utf8(key?.as_ref())?.into()))
             .collect::<Result<_, _>>()
     }
 
@@ -92,10 +96,10 @@ impl Database for OsDatabase {
     }
 
     fn get_source(&self, output: &str) -> Result<Option<String>, Box<dyn Error>> {
-        Ok(self
-            .source_database()?
+        self.source_database()?
             .get(output)?
-            .map(|source| String::from_utf8_lossy(&source).into()))
+            .map(|source| Ok::<_, Box<dyn Error>>(str::from_utf8(&source)?.into()))
+            .transpose()
     }
 
     fn set_source(&self, output: &str, source: &str) -> Result<(), Box<dyn Error>> {
@@ -131,23 +135,49 @@ mod tests {
     }
 
     #[test]
-    fn set_hash() {
+    fn timestamp_hash() {
         let database = OsDatabase::new();
         database.initialize(tempdir().unwrap().path()).unwrap();
 
         database
-            .set_hash(BuildId::new(0), BuildHash::new(0, 0))
+            .set_hash(HashType::Timestamp, BuildId::new(0), 42)
             .unwrap();
+
+        assert_eq!(
+            database
+                .get_hash(HashType::Timestamp, BuildId::new(0))
+                .unwrap(),
+            Some(42)
+        );
+        assert_eq!(
+            database
+                .get_hash(HashType::Content, BuildId::new(0))
+                .unwrap(),
+            None,
+        );
     }
 
     #[test]
-    fn get_hash() {
+    fn content_hash() {
         let database = OsDatabase::new();
         database.initialize(tempdir().unwrap().path()).unwrap();
-        let hash = BuildHash::new(0, 1);
 
-        database.set_hash(BuildId::new(0), hash).unwrap();
-        assert_eq!(database.get_hash(BuildId::new(0)).unwrap(), Some(hash));
+        database
+            .set_hash(HashType::Content, BuildId::new(0), 42)
+            .unwrap();
+
+        assert_eq!(
+            database
+                .get_hash(HashType::Content, BuildId::new(0))
+                .unwrap(),
+            Some(42)
+        );
+        assert_eq!(
+            database
+                .get_hash(HashType::Timestamp, BuildId::new(0))
+                .unwrap(),
+            None,
+        );
     }
 
     #[test]

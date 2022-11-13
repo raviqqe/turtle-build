@@ -1,7 +1,7 @@
 use super::context::Context;
 use crate::{
-    build_hash::BuildHash,
     error::ApplicationError,
+    hash_type::HashType,
     ir::{Build, Rule},
 };
 use std::{
@@ -36,9 +36,7 @@ pub async fn calculate_timestamp_hash(
     }
 
     for &input in phony_inputs {
-        get_build_hash(context, input)?
-            .timestamp()
-            .hash(&mut hasher);
+        get_build_hash(context, HashType::Timestamp, input)?.hash(&mut hasher);
     }
 
     Ok(hasher.finish())
@@ -71,17 +69,22 @@ pub async fn calculate_content_hash(
     }
 
     for &input in phony_inputs {
-        get_build_hash(context, input)?.content().hash(&mut hasher);
+        get_build_hash(context, HashType::Content, input)?.hash(&mut hasher);
     }
 
     Ok(hasher.finish())
 }
 
-fn get_build_hash(context: &Context, input: &str) -> Result<BuildHash, ApplicationError> {
+fn get_build_hash(
+    context: &Context,
+    r#type: HashType,
+    input: &str,
+) -> Result<u64, ApplicationError> {
     context
         .application()
         .database()
         .get_hash(
+            r#type,
             context
                 .configuration()
                 .outputs()

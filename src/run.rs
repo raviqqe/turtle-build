@@ -6,11 +6,11 @@ mod options;
 use self::context::Context as RunContext;
 use crate::{
     build_graph::{BuildGraph, BuildGraphError},
-    build_hash::BuildHash,
     compile::compile_dynamic,
     context::Context,
     debug,
     error::ApplicationError,
+    hash_type::HashType,
     ir::{Build, Configuration, Rule},
     parse::parse_dynamic,
     profile,
@@ -148,7 +148,6 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         )
         .await
         .is_ok();
-        let old_hash = context.application().database().get_hash(build.id())?;
         let (file_inputs, phony_inputs) = build
             .inputs()
             .iter()
@@ -164,14 +163,26 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         let timestamp_hash =
             hash::calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
-        if outputs_exist && Some(timestamp_hash) == old_hash.map(|hash| hash.timestamp()) {
+        if outputs_exist
+            && Some(timestamp_hash)
+                == context
+                    .application()
+                    .database()
+                    .get_hash(HashType::Timestamp, build.id())?
+        {
             return Ok(());
         }
 
         let content_hash =
             hash::calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
-        if outputs_exist && Some(content_hash) == old_hash.map(|hash| hash.content()) {
+        if outputs_exist
+            && Some(content_hash)
+                == context
+                    .application()
+                    .database()
+                    .get_hash(HashType::Content, build.id())?
+        {
             return Ok(());
         } else if let Some(rule) = build.rule() {
             try_join_all(
@@ -197,10 +208,15 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             }
         }
 
+        context.application().database().set_hash(
+            HashType::Timestamp,
+            build.id(),
+            timestamp_hash,
+        )?;
         context
             .application()
             .database()
-            .set_hash(build.id(), BuildHash::new(timestamp_hash, content_hash))?;
+            .set_hash(HashType::Content, build.id(), content_hash)?;
 
         Ok(())
     })

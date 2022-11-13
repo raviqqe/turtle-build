@@ -28,7 +28,7 @@ impl ApplicationError {
         map_path: impl Fn(&str) -> Result<Option<String>, E>,
     ) -> Self {
         match &self {
-            Self::FileNotFound(path) => match map_path(&path) {
+            Self::FileNotFound(path) => match map_path(path) {
                 Ok(path) => {
                     if let Some(path) = path {
                         Self::FileNotFound(path)
@@ -44,7 +44,7 @@ impl ApplicationError {
                     .map(|output| -> Result<_, E> {
                         Ok(map_path(output)?
                             .map(|string| string.into())
-                            .unwrap_or(output.clone()))
+                            .unwrap_or_else(|| output.clone()))
                     })
                     .collect::<Result<Vec<_>, _>>()
                 {

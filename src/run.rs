@@ -5,6 +5,7 @@ mod options;
 
 use self::context::Context as RunContext;
 use crate::{
+    build_graph::BuildGraph,
     build_hash::BuildHash,
     compile::compile_dynamic,
     context::Context,
@@ -13,7 +14,6 @@ use crate::{
     ir::{Build, Configuration, Rule},
     parse::parse_dynamic,
     profile,
-    validation::BuildGraph,
 };
 use async_recursion::async_recursion;
 use futures::future::{try_join_all, FutureExt, Shared};

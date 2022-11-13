@@ -1,16 +1,16 @@
 mod arguments;
 mod ast;
+mod build_graph;
 mod build_hash;
 mod compile;
 mod context;
 mod error;
 mod infrastructure;
 mod ir;
-mod module_dependency_map;
+mod module_dependency;
 mod parse;
 mod run;
 mod tool;
-mod validation;
 
 use arguments::{Arguments, Tool};
 use ast::{Module, Statement};
@@ -20,7 +20,7 @@ use context::Context;
 use error::ApplicationError;
 use futures::future::try_join_all;
 use infrastructure::{OsCommandRunner, OsConsole, OsDatabase, OsFileSystem};
-use module_dependency_map::ModuleDependencyMap;
+use module_dependency::ModuleDependencyMap;
 use parse::parse;
 use std::{
     collections::HashMap,
@@ -31,7 +31,6 @@ use std::{
     time::Duration,
 };
 use tokio::time::sleep;
-use validation::validate_modules;
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
 const DATABASE_DIRECTORY: &str = ".turtle";
@@ -100,7 +99,7 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Ap
         .await?;
     let (modules, dependencies) = parse_modules(context, &root_module_path).await?;
 
-    validate_modules(&dependencies)?;
+    module_dependency::validate(&dependencies)?;
 
     let configuration = Arc::new(compile(&modules, &dependencies, &root_module_path)?);
 

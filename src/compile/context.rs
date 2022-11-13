@@ -1,4 +1,4 @@
-use crate::{ast::Module, module_dependency_map::ModuleDependencyMap};
+use crate::{ast::Module, module_dependency::ModuleDependencyMap};
 use std::{collections::HashMap, path::PathBuf};
 
 #[derive(Debug)]

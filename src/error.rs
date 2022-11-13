@@ -1,4 +1,7 @@
-use crate::{compile::CompileError, ir::Build, parse::ParseError, validation::ValidationError};
+use crate::{
+    build_graph::BuildGraphError, compile::CompileError, ir::Build,
+    module_dependency::ModuleDependencyError, parse::ParseError,
+};
 use itertools::Itertools;
 use std::{
     error::Error,
@@ -16,10 +19,11 @@ pub enum ApplicationError {
     FileNotFound(String),
     InputNotBuilt(String),
     InputNotFound(String),
+    ModuleDependencyError(ModuleDependencyError),
     Other(String),
     Parse(ParseError),
     Sled(sled::Error),
-    Validation(ValidationError),
+    Validation(BuildGraphError),
 }
 
 impl ApplicationError {
@@ -38,7 +42,7 @@ impl ApplicationError {
                 }
                 Err(error) => error.into(),
             },
-            Self::Validation(ValidationError::CircularBuildDependency(outputs)) => {
+            Self::Validation(BuildGraphError::CircularDependency(outputs)) => {
                 match outputs
                     .iter()
                     .map(|output| -> Result<_, E> {
@@ -48,7 +52,7 @@ impl ApplicationError {
                     })
                     .collect::<Result<Vec<_>, _>>()
                 {
-                    Ok(outputs) => Self::Validation(ValidationError::CircularBuildDependency(
+                    Ok(outputs) => Self::Validation(BuildGraphError::CircularDependency(
                         outputs.into_iter().dedup().collect(),
                     )),
                     Err(error) => error.into(),
@@ -84,6 +88,9 @@ impl Display for ApplicationError {
             Self::InputNotFound(input) => {
                 write!(formatter, "input \"{}\" not found", input)
             }
+            Self::ModuleDependencyError(error) => {
+                write!(formatter, "{}", error)
+            }
             Self::Other(message) => write!(formatter, "{}", message),
             Self::Parse(error) => write!(formatter, "{}", error),
             Self::Sled(error) => write!(formatter, "{}", error),
@@ -116,6 +123,12 @@ impl From<JoinError> for ApplicationError {
     }
 }
 
+impl From<ModuleDependencyError> for ApplicationError {
+    fn from(error: ModuleDependencyError) -> Self {
+        Self::ModuleDependencyError(error)
+    }
+}
+
 impl From<ParseError> for ApplicationError {
     fn from(error: ParseError) -> Self {
         Self::Parse(error)
@@ -128,8 +141,8 @@ impl From<sled::Error> for ApplicationError {
     }
 }
 
-impl From<ValidationError> for ApplicationError {
-    fn from(error: ValidationError) -> Self {
+impl From<BuildGraphError> for ApplicationError {
+    fn from(error: BuildGraphError) -> Self {
         Self::Validation(error)
     }
 }
@@ -141,7 +154,7 @@ mod tests {
     #[test]
     fn map_dependency_cycle_error() {
         assert_eq!(
-            ApplicationError::from(ValidationError::CircularBuildDependency(vec![
+            ApplicationError::from(BuildGraphError::CircularDependency(vec![
                 "foo.o".into(),
                 "bar.o".into()
             ]))
@@ -150,7 +163,7 @@ mod tests {
                 "bar.o" => Some("bar.c".into()),
                 _ => None,
             })),
-            ApplicationError::from(ValidationError::CircularBuildDependency(vec![
+            ApplicationError::from(BuildGraphError::CircularDependency(vec![
                 "foo.c".into(),
                 "bar.c".into()
             ]))
@@ -160,7 +173,7 @@ mod tests {
     #[test]
     fn map_dependency_cycle_error_with_duplicate_sources() {
         assert_eq!(
-            ApplicationError::from(ValidationError::CircularBuildDependency(vec![
+            ApplicationError::from(BuildGraphError::CircularDependency(vec![
                 "foo.o".into(),
                 "foo.h".into()
             ]))
@@ -169,9 +182,7 @@ mod tests {
                 "foo.h" => Some("foo.c".into()),
                 _ => None,
             })),
-            ApplicationError::from(ValidationError::CircularBuildDependency(vec![
-                "foo.c".into()
-            ]))
+            ApplicationError::from(BuildGraphError::CircularDependency(vec!["foo.c".into()]))
         );
     }
 }

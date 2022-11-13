@@ -1,11 +1,15 @@
-use super::error::ValidationError;
 use crate::ir::{Build, DynamicConfiguration};
+use itertools::Itertools;
 use petgraph::{
     algo::{kosaraju_scc, toposort},
     graph::{DefaultIx, NodeIndex},
     Graph,
 };
 use std::{collections::HashMap, sync::Arc};
+use std::{
+    error::Error,
+    fmt::{self, Display, Formatter},
+};
 
 #[derive(Debug)]
 pub struct BuildGraph {
@@ -42,13 +46,13 @@ impl BuildGraph {
         this
     }
 
-    pub fn validate(&self) -> Result<(), ValidationError> {
+    pub fn validate(&self) -> Result<(), BuildGraphError> {
         if let Err(cycle) = toposort(&self.graph, None) {
             let mut components = kosaraju_scc(&self.graph);
 
             components.sort_by_key(|component| component.len());
 
-            return Err(ValidationError::CircularBuildDependency(
+            return Err(BuildGraphError::CircularDependency(
                 components
                     .into_iter()
                     .rev()
@@ -66,7 +70,7 @@ impl BuildGraph {
     pub fn validate_dynamic(
         &mut self,
         configuration: &DynamicConfiguration,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), BuildGraphError> {
         for (output, build) in configuration.outputs() {
             for input in build.inputs() {
                 self.add_edge(self.primary_outputs[output].clone(), input.clone());
@@ -92,6 +96,33 @@ impl BuildGraph {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum BuildGraphError {
+    CircularDependency(Vec<Arc<str>>),
+}
+
+impl Error for BuildGraphError {}
+
+impl Display for BuildGraphError {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            Self::CircularDependency(cycle) => {
+                write!(
+                    formatter,
+                    "dependency cycle detected: {}",
+                    cycle
+                        .iter()
+                        .chain(cycle.first())
+                        .dedup()
+                        .map(|string| string.as_ref())
+                        .collect::<Vec<&str>>()
+                        .join(" -> ")
+                )
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -99,7 +130,7 @@ mod tests {
 
     fn validate_builds(
         dependencies: &HashMap<Arc<str>, Arc<Build>>,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), BuildGraphError> {
         BuildGraph::new(dependencies).validate()
     }
 
@@ -183,7 +214,7 @@ mod tests {
                 .into_iter()
                 .collect()
             ),
-            Err(ValidationError::CircularBuildDependency(vec!["foo".into()]))
+            Err(BuildGraphError::CircularDependency(vec!["foo".into()]))
         );
     }
 
@@ -206,7 +237,7 @@ mod tests {
                 .into_iter()
                 .collect()
             ),
-            Err(ValidationError::CircularBuildDependency(vec!["foo".into()]))
+            Err(BuildGraphError::CircularDependency(vec!["foo".into()]))
         );
     }
 
@@ -233,7 +264,7 @@ mod tests {
 
     #[test]
     fn validate_two_circular_builds() {
-        let Err(ValidationError::CircularBuildDependency(paths)) = validate_builds(
+        let Err(BuildGraphError::CircularDependency(paths)) = validate_builds(
             &[
                 (
                     "foo".into(),
@@ -283,7 +314,7 @@ mod tests {
                     .into_iter()
                     .collect(),
             )),
-            Err(ValidationError::CircularBuildDependency(vec![
+            Err(BuildGraphError::CircularDependency(vec![
                 "foo".into(),
                 "bar".into(),
             ]))
@@ -308,7 +339,7 @@ mod tests {
                     .into_iter()
                     .collect(),
             )),
-            Err(ValidationError::CircularBuildDependency(vec!["foo".into()]))
+            Err(BuildGraphError::CircularDependency(vec!["foo".into()]))
         );
     }
 
@@ -330,7 +361,7 @@ mod tests {
                     .into_iter()
                     .collect(),
             )),
-            Err(ValidationError::CircularBuildDependency(vec![
+            Err(BuildGraphError::CircularDependency(vec![
                 "bar".into(),
                 "foo".into()
             ]))

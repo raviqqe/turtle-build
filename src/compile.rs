@@ -11,7 +11,7 @@ use self::{
 use crate::{
     ast,
     ir::{Build, Configuration, DynamicBuild, DynamicConfiguration, Rule},
-    module_dependency_map::ModuleDependencyMap,
+    module_dependency::ModuleDependencyMap,
 };
 use once_cell::sync::Lazy;
 use regex::{Captures, Regex};

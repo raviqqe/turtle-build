@@ -15,7 +15,7 @@ pub struct Arguments {
     pub log_prefix: Option<String>,
     #[clap(long, help = "Show no message on failure of build jobs")]
     pub quiet: bool,
-    #[clap(long, help = "Show debug output", env = "TURTLE_DEBUG")]
+    #[clap(long, help = "Show debug logs", env = "TURTLE_DEBUG")]
     pub debug: bool,
     #[clap(long, help = "Show profile timings", env = "TURTLE_PROFILE")]
     pub profile: bool,

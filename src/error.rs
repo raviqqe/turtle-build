@@ -21,6 +21,7 @@ pub enum ApplicationError {
     InputNotFound(String),
     ModuleDependency(ModuleDependencyError),
     Other(String),
+    OutputNotFound(String),
     Parse(ParseError),
     Sled(sled::Error),
 }
@@ -54,6 +55,9 @@ impl Display for ApplicationError {
                 write!(formatter, "{}", error)
             }
             Self::Other(message) => write!(formatter, "{}", message),
+            Self::OutputNotFound(output) => {
+                write!(formatter, "output \"{}\" not found", output)
+            }
             Self::Parse(error) => write!(formatter, "{}", error),
             Self::Sled(error) => write!(formatter, "{}", error),
             Self::BuildGraph(error) => write!(formatter, "{}", error),

@@ -55,7 +55,7 @@ Feature: Others
     When I successfully run `turtle`
     Then the exit status should be 0
 
-  Scenario: Specify a target
+  Scenario: Specify an output
     Given a file named "build.ninja" with:
     """
     rule echo

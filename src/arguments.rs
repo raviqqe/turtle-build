@@ -3,6 +3,8 @@ use clap::{Parser, ValueEnum};
 #[derive(Parser)]
 #[clap(about = "The Ninja build system clone written in Rust", version)]
 pub struct Arguments {
+    #[clap(help = "Specify targets")]
+    pub targets: Vec<String>,
     #[clap(short, help = "Set a root build file")]
     pub file: Option<String>,
     #[clap(short = 'C', help = "Set a working directory")]

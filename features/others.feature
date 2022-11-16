@@ -54,3 +54,18 @@ Feature: Others
     """
     When I successfully run `turtle`
     Then the exit status should be 0
+
+  Scenario: Specify a target
+    Given a file named "foo.ninja" with:
+    """
+    rule echo
+      command = echo hello
+
+    build foo: echo
+    build bar: echo
+
+    default foo bar
+
+    """
+    When I successfully run `turtle -f foo.ninja foo`
+    Then the stdout should contain exactly "hello"

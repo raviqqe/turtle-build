@@ -120,6 +120,7 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Ap
         run::run(
             context,
             configuration.clone(),
+            &arguments.outputs,
             run::Options {
                 debug: arguments.debug,
                 profile: arguments.profile,

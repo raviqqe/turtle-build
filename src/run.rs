@@ -28,6 +28,7 @@ type BuildFuture = Shared<RawBuildFuture>;
 pub async fn run(
     context: &Arc<Context>,
     configuration: Arc<Configuration>,
+    outputs: &[String],
     options: Options,
 ) -> Result<(), ApplicationError> {
     let graph = BuildGraph::new(configuration.outputs());
@@ -45,16 +46,30 @@ pub async fn run(
         .validate()
         .map_err(|error| map_build_graph_error(&context, &error))?;
 
-    for output in context.configuration().default_outputs() {
-        trigger_build(
-            context.clone(),
-            context
-                .configuration()
-                .outputs()
-                .get(output.as_ref())
-                .ok_or_else(|| ApplicationError::DefaultOutputNotFound(output.clone()))?,
-        )
-        .await?;
+    if outputs.is_empty() {
+        for output in context.configuration().default_outputs() {
+            trigger_build(
+                context.clone(),
+                context
+                    .configuration()
+                    .outputs()
+                    .get(output.as_ref())
+                    .ok_or_else(|| ApplicationError::DefaultOutputNotFound(output.clone()))?,
+            )
+            .await?;
+        }
+    } else {
+        for output in outputs {
+            trigger_build(
+                context.clone(),
+                context
+                    .configuration()
+                    .outputs()
+                    .get(output.as_str())
+                    .ok_or_else(|| ApplicationError::OutputNotFound(output.clone()))?,
+            )
+            .await?;
+        }
     }
 
     // Do not inline this to avoid borrowing a lock of builds.

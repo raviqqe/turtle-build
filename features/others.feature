@@ -56,7 +56,7 @@ Feature: Others
     Then the exit status should be 0
 
   Scenario: Specify a target
-    Given a file named "foo.ninja" with:
+    Given a file named "build.ninja" with:
     """
     rule echo
       command = echo hello
@@ -67,5 +67,5 @@ Feature: Others
     default foo bar
 
     """
-    When I successfully run `turtle -f foo.ninja foo`
+    When I successfully run `turtle foo`
     Then the stdout should contain exactly "hello"

@@ -32,9 +32,9 @@ impl Display for ApplicationError {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
             Self::Build => write!(formatter, "build failed"),
-            Self::Compile(error) => write!(formatter, "{}", error),
+            Self::Compile(error) => write!(formatter, "{error}"),
             Self::DefaultOutputNotFound(output) => {
-                write!(formatter, "default output \"{}\" not found", output)
+                write!(formatter, "default output \"{output}\" not found")
             }
             Self::DynamicDependencyNotFound(build) => {
                 write!(
@@ -44,23 +44,23 @@ impl Display for ApplicationError {
                     build.dynamic_module().unwrap()
                 )
             }
-            Self::FileNotFound(path) => write!(formatter, "file \"{}\" not found", path),
+            Self::FileNotFound(path) => write!(formatter, "file \"{path}\" not found"),
             Self::InputNotBuilt(input) => {
-                write!(formatter, "input \"{}\" not built yet", input)
+                write!(formatter, "input \"{input}\" not built yet")
             }
             Self::InputNotFound(input) => {
-                write!(formatter, "input \"{}\" not found", input)
+                write!(formatter, "input \"{input}\" not found")
             }
             Self::ModuleDependency(error) => {
-                write!(formatter, "{}", error)
+                write!(formatter, "{error}")
             }
-            Self::Other(message) => write!(formatter, "{}", message),
+            Self::Other(message) => write!(formatter, "{message}"),
             Self::OutputNotFound(output) => {
-                write!(formatter, "output \"{}\" not found", output)
+                write!(formatter, "output \"{output}\" not found")
             }
-            Self::Parse(error) => write!(formatter, "{}", error),
-            Self::Sled(error) => write!(formatter, "{}", error),
-            Self::BuildGraph(error) => write!(formatter, "{}", error),
+            Self::Parse(error) => write!(formatter, "{error}"),
+            Self::Sled(error) => write!(formatter, "{error}"),
+            Self::BuildGraph(error) => write!(formatter, "{error}"),
         }
     }
 }

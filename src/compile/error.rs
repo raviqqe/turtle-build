@@ -19,7 +19,7 @@ impl Display for CompileError {
                 write!(formatter, "module \"{}\" not found", path.display())
             }
             Self::RuleNotFound(rule) => {
-                write!(formatter, "rule \"{}\" not found", rule)
+                write!(formatter, "rule \"{rule}\" not found")
             }
         }
     }

@@ -17,6 +17,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use train_map::TrainMap;
 
 const PHONY_RULE: &str = "phony";
 const BUILD_DIRECTORY_VARIABLE: &str = "builddir";

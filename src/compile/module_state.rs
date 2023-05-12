@@ -1,6 +1,6 @@
-use super::train_map::TrainMap;
 use crate::ast;
 use std::sync::Arc;
+use train_map::TrainMap;
 
 #[derive(Clone, Debug)]
 pub struct ModuleState<'a, 'm> {

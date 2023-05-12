@@ -1,13 +1,10 @@
-mod chain_map;
 mod context;
 mod error;
 mod global_state;
 mod module_state;
 
 pub use self::error::CompileError;
-use self::{
-    chain_map::ChainMap, context::Context, global_state::GlobalState, module_state::ModuleState,
-};
+use self::{context::Context, global_state::GlobalState, module_state::ModuleState};
 use crate::{
     ast,
     ir::{Build, Configuration, DynamicBuild, DynamicConfiguration, Rule},
@@ -20,6 +17,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use train_map::TrainMap;
 
 const PHONY_RULE: &str = "phony";
 const BUILD_DIRECTORY_VARIABLE: &str = "builddir";
@@ -43,8 +41,8 @@ pub fn compile(
         source_map: Default::default(),
     };
     let mut module_state = ModuleState {
-        rules: ChainMap::new(),
-        variables: ChainMap::new(),
+        rules: TrainMap::new(),
+        variables: TrainMap::new(),
     };
 
     compile_module(
@@ -221,7 +219,7 @@ fn resolve_dependency<'a>(
         .ok_or_else(|| CompileError::ModuleNotFound(submodule_path.into()))?)
 }
 
-fn interpolate_variables(template: &str, variables: &ChainMap<&str, Arc<str>>) -> String {
+fn interpolate_variables(template: &str, variables: &TrainMap<&str, Arc<str>>) -> String {
     VARIABLE_PATTERN
         .replace_all(template, |captures: &Captures| {
             variables

@@ -17,7 +17,7 @@ async-recursion = "1"
 async-trait = "0.1.73"
 bincode = "1"
 clap = { version = "4", features = ["derive", "env"] }
-dashmap = "5.5.0"
+dashmap = "5.5.1"
 futures = "0.3"
 itertools = "0.11"
 nom = "7.1.3"

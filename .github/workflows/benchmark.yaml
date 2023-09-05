@@ -13,7 +13,7 @@ jobs:
           - nested
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
       - uses: raviqqe/enable-homebrew@main
       - run: brew install ninja

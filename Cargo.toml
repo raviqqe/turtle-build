@@ -19,7 +19,7 @@ bincode = "1"
 clap = { version = "4", features = ["derive", "env"] }
 dashmap = "5.5.3"
 futures = "0.3"
-itertools = "0.11"
+itertools = "0.12"
 nom = "7.1.3"
 num_cpus = "1"
 once_cell = "1"

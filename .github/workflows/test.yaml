@@ -12,7 +12,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: tools/build.sh
       - run: git diff --exit-code
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: build
           path: target/release/turtle

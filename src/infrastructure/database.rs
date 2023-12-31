@@ -1,5 +1,4 @@
 use crate::{hash_type::HashType, ir::BuildId};
-use async_trait::async_trait;
 use once_cell::sync::OnceCell;
 use std::{error::Error, path::Path, str};
 
@@ -8,7 +7,6 @@ const CONTENT_HASH_TREE_NAME: &str = "content_hash";
 const OUTPUT_TREE_NAME: &str = "output";
 const SOURCE_TREE_NAME: &str = "source";
 
-#[async_trait]
 pub trait Database {
     fn initialize(&self, path: &Path) -> Result<(), Box<dyn Error>>;
 
@@ -56,7 +54,6 @@ impl OsDatabase {
     }
 }
 
-#[async_trait]
 impl Database for OsDatabase {
     fn initialize(&self, path: &Path) -> Result<(), Box<dyn Error>> {
         self.database

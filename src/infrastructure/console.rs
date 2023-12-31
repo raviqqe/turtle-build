@@ -1,8 +1,6 @@
-use async_trait::async_trait;
 use std::{error::Error, fmt::Debug};
 use tokio::io::{stderr, stdout, AsyncWriteExt, Stderr, Stdout};
 
-#[async_trait]
 pub trait Console {
     async fn write_stdout(&mut self, buffer: &[u8]) -> Result<(), Box<dyn Error>>;
     async fn write_stderr(&mut self, buffer: &[u8]) -> Result<(), Box<dyn Error>>;
@@ -23,7 +21,6 @@ impl OsConsole {
     }
 }
 
-#[async_trait]
 impl Console for OsConsole {
     async fn write_stdout(&mut self, src: &[u8]) -> Result<(), Box<dyn Error>> {
         self.stdout.write_all(src).await?;

@@ -1,6 +1,5 @@
 mod metadata;
 
-use async_trait::async_trait;
 use dashmap::DashSet;
 use metadata::Metadata;
 use std::{
@@ -16,7 +15,6 @@ use tokio::{
     task::yield_now,
 };
 
-#[async_trait]
 pub trait FileSystem {
     async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), Box<dyn Error>>;
     async fn read_file_to_string(
@@ -74,7 +72,6 @@ impl OsFileSystem {
     }
 }
 
-#[async_trait]
 impl FileSystem for OsFileSystem {
     async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
         while !self.path_lock.insert(path.into()) {

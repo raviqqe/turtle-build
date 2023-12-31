@@ -1,8 +1,6 @@
-use async_trait::async_trait;
 use std::{error::Error, process::Output};
 use tokio::{process::Command, sync::Semaphore};
 
-#[async_trait]
 pub trait CommandRunner {
     async fn run(&self, command: &str) -> Result<Output, Box<dyn Error>>;
 }
@@ -20,7 +18,6 @@ impl OsCommandRunner {
     }
 }
 
-#[async_trait]
 impl CommandRunner for OsCommandRunner {
     async fn run(&self, command: &str) -> Result<Output, Box<dyn Error>> {
         let permit = self.semaphore.acquire().await?;

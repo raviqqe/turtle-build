@@ -14,7 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 async-recursion = "1"
-async-trait = "0.1.77"
+async-trait = "0.1.78"
 bincode = "1"
 clap = { version = "4", features = ["derive", "env"] }
 dashmap = "5.5.3"

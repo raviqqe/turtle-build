@@ -8,7 +8,7 @@ pub struct ModuleState<'a, 'm> {
     pub variables: TrainMap<'m, &'a str, Arc<str>>,
 }
 
-impl<'a, 'm> ModuleState<'a, 'm> {
+impl<'m> ModuleState<'_, 'm> {
     pub fn fork(&'m self) -> Self {
         Self {
             rules: self.rules.fork(),

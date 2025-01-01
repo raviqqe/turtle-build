@@ -23,7 +23,7 @@ itertools = "0.13"
 nom = "7.1.3"
 num_cpus = "1"
 once_cell = "1"
-petgraph = "0.6"
+petgraph = "0.7"
 rand = "0.8.5"
 regex = "1"
 serde = { version = "1", features = ["derive"] }

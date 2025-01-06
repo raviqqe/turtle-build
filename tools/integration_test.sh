@@ -8,4 +8,4 @@ bundler install
 
 export PATH=$PWD/target/release:$PATH
 
-cucumber --publish-quiet "$@"
+bundler exec cucumber --publish-quiet "$@"

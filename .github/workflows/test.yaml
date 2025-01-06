@@ -39,7 +39,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
-      - uses: raviqqe/enable-homebrew@main
+      - uses: homebrew/actions/setup-homebrew@master
       - run: brew install ninja
       - run: mkdir -p target/release
       - run: cp tools/turtle.sh target/release/turtle

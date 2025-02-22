@@ -1,4 +1,4 @@
-use super::{options::Options, BuildFuture};
+use super::{BuildFuture, options::Options};
 use crate::{
     build_graph::BuildGraph,
     context::Context as ApplicationContext,

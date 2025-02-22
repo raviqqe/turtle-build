@@ -16,7 +16,7 @@ use crate::{
     profile,
 };
 use async_recursion::async_recursion;
-use futures::future::{try_join_all, FutureExt, Shared};
+use futures::future::{FutureExt, Shared, try_join_all};
 use itertools::Itertools;
 pub use options::Options;
 use std::{future::Future, path::Path, pin::Pin, sync::Arc};

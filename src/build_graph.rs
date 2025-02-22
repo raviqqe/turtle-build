@@ -1,9 +1,9 @@
 use crate::ir::{Build, DynamicConfiguration};
 use itertools::Itertools;
 use petgraph::{
+    Graph,
     algo::{kosaraju_scc, toposort},
     graph::{DefaultIx, NodeIndex},
-    Graph,
 };
 use std::{
     collections::HashMap,

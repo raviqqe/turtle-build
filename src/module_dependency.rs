@@ -1,4 +1,4 @@
-use petgraph::{algo::is_cyclic_directed, Graph};
+use petgraph::{Graph, algo::is_cyclic_directed};
 use std::{
     collections::HashMap,
     error::Error,

@@ -142,7 +142,7 @@ pub fn dynamic_build(input: &str) -> IResult<&str, DynamicBuild> {
 fn default(input: &str) -> IResult<&str, DefaultOutput> {
     map(
         tuple((keyword("default"), many1(string_literal), line_break)),
-        |(_, outputs, _)| DefaultOutput::new(outputs.into_iter().map(From::from).collect()),
+        |(_, outputs, _)| DefaultOutput::new(outputs.into_iter().collect()),
     )(input)
 }
 

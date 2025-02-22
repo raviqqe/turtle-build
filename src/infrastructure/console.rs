@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use std::{error::Error, fmt::Debug};
-use tokio::io::{stderr, stdout, AsyncWriteExt, Stderr, Stdout};
+use tokio::io::{AsyncWriteExt, Stderr, Stdout, stderr, stdout};
 
 #[async_trait]
 pub trait Console {

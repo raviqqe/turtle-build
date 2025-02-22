@@ -3,13 +3,13 @@ use crate::ast::{
     VariableDefinition,
 };
 use nom::{
+    IResult, Parser,
     branch::alt,
     bytes::complete::tag,
     character::complete::{alpha1, alphanumeric1, line_ending, none_of, one_of, space1},
     combinator::{all_consuming, into, map, not, opt, peek, recognize, value},
     multi::{many0, many0_count, many1, many1_count},
     sequence::{delimited, preceded, terminated, tuple},
-    IResult, Parser,
 };
 
 const OPERATOR_CHARACTERS: &str = "|:";
@@ -142,7 +142,7 @@ pub fn dynamic_build(input: &str) -> IResult<&str, DynamicBuild> {
 fn default(input: &str) -> IResult<&str, DefaultOutput> {
     map(
         tuple((keyword("default"), many1(string_literal), line_break)),
-        |(_, outputs, _)| DefaultOutput::new(outputs.into_iter().map(From::from).collect()),
+        |(_, outputs, _)| DefaultOutput::new(outputs.into_iter().collect()),
     )(input)
 }
 

@@ -945,7 +945,6 @@ dependencies = [
  "pretty_assertions",
  "rand",
  "regex",
- "serde",
  "sled",
  "tempfile",
  "tokio",

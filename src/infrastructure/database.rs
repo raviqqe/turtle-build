@@ -79,7 +79,7 @@ impl Database for OsDatabase {
             .hash_database(r#type)?
             .get(id.to_bytes())?
             .map(|value| {
-                bincode::decode_from_slice(&value, BINCODE_CONFIGURATION.clone())
+                bincode::decode_from_slice(&value, *BINCODE_CONFIGURATION)
                     .map(|(value, _)| value)
             })
             .transpose()?)
@@ -88,7 +88,7 @@ impl Database for OsDatabase {
     fn set_hash(&self, r#type: HashType, id: BuildId, hash: u64) -> Result<(), Box<dyn Error>> {
         self.hash_database(r#type)?.insert(
             id.to_bytes(),
-            bincode::encode_to_vec(&hash, BINCODE_CONFIGURATION.clone())?,
+            bincode::encode_to_vec(hash, *BINCODE_CONFIGURATION)?,
         )?;
 
         Ok(())

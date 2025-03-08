@@ -15,7 +15,7 @@ path = "src/main.rs"
 [dependencies]
 async-recursion = "1"
 async-trait = "0.1.87"
-bincode = "1"
+bincode = "2"
 clap = { version = "4", features = ["derive", "env"] }
 dashmap = "6.1.0"
 futures = "0.3"
@@ -26,7 +26,6 @@ once_cell = "1"
 petgraph = "0.7"
 rand = "0.9.0"
 regex = "1"
-serde = { version = "1", features = ["derive"] }
 sled = "0.34"
 tokio = { "version" = "1", features = ["full"] }
 train-map = "0.1.1"

@@ -25,6 +25,7 @@
     "tempdir",
     "tempfile",
     "toposort",
+    "varint",
     "yota"
   ]
 }

@@ -1,12 +1,20 @@
 use crate::{hash_type::HashType, ir::BuildId};
 use async_trait::async_trait;
 use once_cell::sync::OnceCell;
-use std::{error::Error, path::Path, str};
+use std::{error::Error, path::Path, str, sync::LazyLock};
 
 const TIMESTAMP_HASH_TREE_NAME: &str = "timestamp_hash";
 const CONTENT_HASH_TREE_NAME: &str = "content_hash";
 const OUTPUT_TREE_NAME: &str = "output";
 const SOURCE_TREE_NAME: &str = "source";
+
+static BINCODE_CONFIGURATION: LazyLock<bincode::config::Configuration> = LazyLock::new(|| {
+    bincode::config::Configuration::<
+        bincode::config::LittleEndian,
+        bincode::config::Varint,
+        bincode::config::NoLimit,
+    >::default()
+});
 
 #[async_trait]
 pub trait Database {
@@ -70,13 +78,18 @@ impl Database for OsDatabase {
         Ok(self
             .hash_database(r#type)?
             .get(id.to_bytes())?
-            .map(|value| bincode::deserialize(&value))
+            .map(|value| {
+                bincode::decode_from_slice(&value, BINCODE_CONFIGURATION.clone())
+                    .map(|(value, _)| value)
+            })
             .transpose()?)
     }
 
     fn set_hash(&self, r#type: HashType, id: BuildId, hash: u64) -> Result<(), Box<dyn Error>> {
-        self.hash_database(r#type)?
-            .insert(id.to_bytes(), bincode::serialize(&hash)?)?;
+        self.hash_database(r#type)?.insert(
+            id.to_bytes(),
+            bincode::encode_to_vec(&hash, BINCODE_CONFIGURATION.clone())?,
+        )?;
 
         Ok(())
     }

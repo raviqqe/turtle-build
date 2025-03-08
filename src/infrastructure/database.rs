@@ -79,8 +79,7 @@ impl Database for OsDatabase {
             .hash_database(r#type)?
             .get(id.to_bytes())?
             .map(|value| {
-                bincode::decode_from_slice(&value, *BINCODE_CONFIGURATION)
-                    .map(|(value, _)| value)
+                bincode::decode_from_slice(&value, *BINCODE_CONFIGURATION).map(|(value, _)| value)
             })
             .transpose()?)
     }

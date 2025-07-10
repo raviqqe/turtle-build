@@ -1,6 +1,6 @@
 # Turtle
 
-[![GitHub Action](https://img.shields.io/github/actions/workflow/status/raviqqe/turtle/test.yaml?branch=main&style=flat-square)](https://github.com/raviqqe/turtle/actions)
+[![GitHub Action](https://img.shields.io/github/actions/workflow/status/raviqqe/turtle-build/test.yaml?branch=main&style=flat-square)](https://github.com/raviqqe/turtle-build/actions)
 [![crates.io](https://img.shields.io/crates/v/turtle-build?style=flat-square)](https://crates.io/crates/turtle-build)
 [![License](https://img.shields.io/crates/l/turtle-build?style=flat-square)](#license)
 

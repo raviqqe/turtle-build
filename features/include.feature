@@ -1,36 +1,37 @@
 Feature: Include statement
+
   Scenario: Use a variable in a child build file
     Given a file named "build.ninja" with:
-    """
-    include foo.ninja
+      """
+      include foo.ninja
 
-    rule echo
-      command = echo $x
+      rule echo
+        command = echo $x
 
-    build foo: echo
+      build foo: echo
 
-    """
+      """
     And a file named "foo.ninja" with:
-    """
-    x = hello
+      """
+      x = hello
 
-    """
+      """
     When I successfully run `turtle`
     Then the stdout should contain exactly "hello"
 
   Scenario: Use a rule in a child build file
     Given a file named "build.ninja" with:
-    """
-    include foo.ninja
+      """
+      include foo.ninja
 
-    build foo: hello
+      build foo: hello
 
-    """
+      """
     And a file named "foo.ninja" with:
-    """
-    rule hello
-      command = echo hello
+      """
+      rule hello
+        command = echo hello
 
-    """
+      """
     When I successfully run `turtle`
     Then the stdout should contain exactly "hello"

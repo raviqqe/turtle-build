@@ -26,11 +26,10 @@ async fn remove_output(
 ) -> Result<(), Box<dyn Error>> {
     if configuration.outputs().contains_key(output) {
         return Ok(());
-    } else if let Ok(metadata) = context.file_system().metadata(output.as_ref()).await {
-        if metadata.is_file() {
+    } else if let Ok(metadata) = context.file_system().metadata(output.as_ref()).await
+        && metadata.is_file() {
             remove_file(output).await?;
         }
-    }
 
     Ok(())
 }

@@ -1,7 +1,7 @@
 version: 2
 builds:
-  - id: turtle-build
-    binary: turtle-build
+  - id: turtle
+    binary: turtle
     builder: rust
     flags: --release
     targets:

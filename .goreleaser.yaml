@@ -1,0 +1,9 @@
+version: 2
+builds:
+  - id: turtle-build
+    binary: turtle-build
+    builder: rust
+    flags: --release
+    targets:
+      - x86_64-unknown-linux-gnu
+      - aarch64-unknown-linux-gnu

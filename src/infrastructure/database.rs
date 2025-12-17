@@ -8,14 +8,6 @@ const CONTENT_HASH_TREE_NAME: &str = "content_hash";
 const OUTPUT_TREE_NAME: &str = "output";
 const SOURCE_TREE_NAME: &str = "source";
 
-static BINCODE_CONFIGURATION: LazyLock<bincode::config::Configuration> = LazyLock::new(|| {
-    bincode::config::Configuration::<
-        bincode::config::LittleEndian,
-        bincode::config::Varint,
-        bincode::config::NoLimit,
-    >::default()
-});
-
 #[async_trait]
 pub trait Database {
     fn initialize(&self, path: &Path) -> Result<(), Box<dyn Error>>;

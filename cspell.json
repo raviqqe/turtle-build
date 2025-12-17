@@ -1,7 +1,6 @@
 {
   "words": [
     "alnum",
-    "bincode",
     "builddir",
     "buildx",
     "canonicalize",
@@ -20,6 +19,7 @@
     "petgraph",
     "raviqqe",
     "reimplementation",
+    "rkyv",
     "rsplit",
     "rustfmt",
     "serde",

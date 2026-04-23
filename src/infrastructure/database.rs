@@ -5,6 +5,7 @@ use std::{error::Error, path::Path, str, sync::LazyLock};
 
 const TIMESTAMP_HASH_TREE_NAME: &str = "timestamp_hash";
 const CONTENT_HASH_TREE_NAME: &str = "content_hash";
+const DISCOVERED_DEPENDENCY_TREE_NAME: &str = "discovered_dependency";
 const OUTPUT_TREE_NAME: &str = "output";
 const SOURCE_TREE_NAME: &str = "source";
 
@@ -22,6 +23,13 @@ pub trait Database {
 
     fn get_hash(&self, r#type: HashType, id: BuildId) -> Result<Option<u64>, Box<dyn Error>>;
     fn set_hash(&self, r#type: HashType, id: BuildId, hash: u64) -> Result<(), Box<dyn Error>>;
+
+    fn get_discovered_dependencies(&self, id: BuildId) -> Result<Vec<String>, Box<dyn Error>>;
+    fn set_discovered_dependencies(
+        &self,
+        id: BuildId,
+        dependencies: &[String],
+    ) -> Result<(), Box<dyn Error>>;
 
     fn get_outputs(&self) -> Result<Vec<String>, Box<dyn Error>>;
     fn set_output(&self, path: &str) -> Result<(), Box<dyn Error>>;
@@ -59,6 +67,12 @@ impl OsDatabase {
         Ok(self.database()?.open_tree(OUTPUT_TREE_NAME)?)
     }
 
+    fn discovered_dependency_database(&self) -> Result<sled::Tree, Box<dyn Error>> {
+        Ok(self
+            .database()?
+            .open_tree(DISCOVERED_DEPENDENCY_TREE_NAME)?)
+    }
+
     fn source_database(&self) -> Result<sled::Tree, Box<dyn Error>> {
         Ok(self.database()?.open_tree(SOURCE_TREE_NAME)?)
     }
@@ -88,6 +102,30 @@ impl Database for OsDatabase {
         self.hash_database(r#type)?.insert(
             id.to_bytes(),
             bincode::encode_to_vec(hash, *BINCODE_CONFIGURATION)?,
+        )?;
+
+        Ok(())
+    }
+
+    fn get_discovered_dependencies(&self, id: BuildId) -> Result<Vec<String>, Box<dyn Error>> {
+        Ok(self
+            .discovered_dependency_database()?
+            .get(id.to_bytes())?
+            .map(|value| {
+                bincode::decode_from_slice(&value, *BINCODE_CONFIGURATION).map(|(value, _)| value)
+            })
+            .transpose()?
+            .unwrap_or_default())
+    }
+
+    fn set_discovered_dependencies(
+        &self,
+        id: BuildId,
+        dependencies: &[String],
+    ) -> Result<(), Box<dyn Error>> {
+        self.discovered_dependency_database()?.insert(
+            id.to_bytes(),
+            bincode::encode_to_vec(dependencies, *BINCODE_CONFIGURATION)?,
         )?;
 
         Ok(())
@@ -208,6 +246,23 @@ mod tests {
         database.set_output("foo").unwrap();
 
         assert_eq!(database.get_outputs().unwrap(), vec!["foo"]);
+    }
+
+    #[test]
+    fn discovered_dependencies() {
+        let database = OsDatabase::new();
+        database.initialize(tempdir().unwrap().path()).unwrap();
+
+        database
+            .set_discovered_dependencies(BuildId::new(0), &["foo".into(), "bar".into()])
+            .unwrap();
+
+        assert_eq!(
+            database
+                .get_discovered_dependencies(BuildId::new(0))
+                .unwrap(),
+            vec!["foo", "bar"]
+        );
     }
 
     #[test]

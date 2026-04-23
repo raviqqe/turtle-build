@@ -8,10 +8,10 @@ use crate::{
     build_graph::{BuildGraph, BuildGraphError},
     compile::compile_dynamic,
     context::Context,
-    debug,
+    debug, depfile,
     error::ApplicationError,
     hash_type::HashType,
-    ir::{Build, Configuration, Rule},
+    ir::{Build, Configuration, DependencyStyle, Rule},
     parse::parse_dynamic,
     profile,
 };
@@ -19,7 +19,7 @@ use async_recursion::async_recursion;
 use futures::future::{FutureExt, Shared, try_join_all};
 use itertools::Itertools;
 pub use options::Options;
-use std::{future::Future, path::Path, pin::Pin, sync::Arc};
+use std::{collections::HashSet, future::Future, path::Path, pin::Pin, process::Output, sync::Arc};
 use tokio::{spawn, time::Instant, try_join};
 
 type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), ApplicationError>> + Send>>;
@@ -154,6 +154,18 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
 
         try_join_all(futures).await?;
 
+        let discovered_dependencies = context
+            .application()
+            .database()
+            .get_discovered_dependencies(build.id())?;
+        let mut futures = vec![];
+
+        for input in &discovered_dependencies {
+            futures.push(build_input(context.clone(), input).await?);
+        }
+
+        try_join_all(futures).await?;
+
         let outputs_exist = try_join_all(
             build
                 .outputs()
@@ -163,18 +175,8 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         )
         .await
         .is_ok();
-        let (file_inputs, phony_inputs) = build
-            .inputs()
-            .iter()
-            .chain(dynamic_inputs)
-            .map(|string| string.as_ref())
-            .partition::<Vec<_>, _>(|&input| {
-                if let Some(build) = context.configuration().outputs().get(input) {
-                    build.rule().is_some()
-                } else {
-                    true
-                }
-            });
+        let (file_inputs, phony_inputs) =
+            classify_inputs(&context, &build, dynamic_inputs, &discovered_dependencies);
         let timestamp_hash =
             hash::calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
@@ -209,7 +211,12 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             )
             .await?;
 
-            run_rule(&context, rule).await?;
+            let discovered_dependencies = run_rule(&context, rule).await?;
+
+            context
+                .application()
+                .database()
+                .set_discovered_dependencies(build.id(), &discovered_dependencies)?;
 
             for output in build.outputs() {
                 context.application().database().set_output(output)?;
@@ -222,6 +229,17 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                 }
             }
         }
+
+        let discovered_dependencies = context
+            .application()
+            .database()
+            .get_discovered_dependencies(build.id())?;
+        let (file_inputs, phony_inputs) =
+            classify_inputs(&context, &build, dynamic_inputs, &discovered_dependencies);
+        let timestamp_hash =
+            hash::calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
+        let content_hash =
+            hash::calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
         context.application().database().set_hash(
             HashType::Timestamp,
@@ -291,7 +309,31 @@ async fn prepare_directory(
     Ok(())
 }
 
-async fn run_rule(context: &RunContext, rule: &Rule) -> Result<(), ApplicationError> {
+fn classify_inputs<'a>(
+    context: &'a RunContext,
+    build: &'a Build,
+    dynamic_inputs: &'a [Arc<str>],
+    discovered_dependencies: &'a [String],
+) -> (Vec<&'a str>, Vec<&'a str>) {
+    let mut seen = HashSet::new();
+
+    build
+        .inputs()
+        .iter()
+        .chain(dynamic_inputs)
+        .map(|string| string.as_ref())
+        .chain(discovered_dependencies.iter().map(String::as_str))
+        .filter(|input| seen.insert(*input))
+        .partition::<Vec<_>, _>(|&input| {
+            if let Some(build) = context.configuration().outputs().get(input) {
+                build.rule().is_some()
+            } else {
+                true
+            }
+        })
+}
+
+async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Vec<String>, ApplicationError> {
     let ((output, duration), mut console) = try_join!(
         async {
             let start_time = Instant::now();
@@ -316,6 +358,7 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<(), ApplicationEr
             Ok(console)
         }
     )?;
+    let output = read_rule_output(context, rule, output).await?;
 
     profile!(context, console, "duration: {}ms", duration.as_millis());
 
@@ -337,7 +380,93 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<(), ApplicationEr
         return Err(ApplicationError::Build);
     }
 
-    Ok(())
+    Ok(output.discovered_dependencies)
+}
+
+async fn read_rule_output(
+    context: &RunContext,
+    rule: &Rule,
+    output: Output,
+) -> Result<RuleOutput, ApplicationError> {
+    let (mut discovered_dependencies, stdout) =
+        if rule.dependency_style() == Some(DependencyStyle::Msvc) {
+            extract_show_includes(output.stdout)
+        } else {
+            (vec![], output.stdout)
+        };
+
+    if let Some(depfile) = rule.depfile() {
+        discovered_dependencies.extend(read_depfile(context, depfile).await?);
+    }
+
+    deduplicate_strings(&mut discovered_dependencies);
+
+    Ok(RuleOutput {
+        discovered_dependencies,
+        stderr: output.stderr,
+        status: output.status,
+        stdout,
+    })
+}
+
+async fn read_depfile(context: &RunContext, path: &str) -> Result<Vec<String>, ApplicationError> {
+    let mut source = String::new();
+
+    match context
+        .application()
+        .file_system()
+        .read_file_to_string(path.as_ref(), &mut source)
+        .await
+    {
+        Ok(()) => depfile::parse(&source).map_err(ApplicationError::Other),
+        Err(error) if error.to_string().starts_with("No such file or directory:") => Ok(vec![]),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn extract_show_includes(output: Vec<u8>) -> (Vec<String>, Vec<u8>) {
+    const PREFIX: &[u8] = b"Note: including file: ";
+
+    let mut filtered_output = vec![];
+    let mut includes = vec![];
+
+    for line in output.split(|&byte| byte == b'\n') {
+        if let Some(include) = line.strip_prefix(PREFIX) {
+            let include = include
+                .iter()
+                .skip_while(|&&byte| byte == b' ')
+                .copied()
+                .collect::<Vec<_>>();
+            let include = if include.last() == Some(&b'\r') {
+                &include[..include.len().saturating_sub(1)]
+            } else {
+                &include
+            };
+
+            includes.push(String::from_utf8_lossy(include).into_owned());
+        } else {
+            if !filtered_output.is_empty() {
+                filtered_output.push(b'\n');
+            }
+
+            filtered_output.extend_from_slice(line);
+        }
+    }
+
+    (includes, filtered_output)
+}
+
+fn deduplicate_strings(strings: &mut Vec<String>) {
+    let mut seen = HashSet::new();
+
+    strings.retain(|string| seen.insert(string.clone()));
+}
+
+struct RuleOutput {
+    discovered_dependencies: Vec<String>,
+    stderr: Vec<u8>,
+    status: std::process::ExitStatus,
+    stdout: Vec<u8>,
 }
 
 fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> ApplicationError {

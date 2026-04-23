@@ -6,6 +6,7 @@ use std::{
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CompileError {
+    InvalidDependencyStyle(String),
     ModuleNotFound(PathBuf),
     RuleNotFound(String),
 }
@@ -15,6 +16,9 @@ impl Error for CompileError {}
 impl Display for CompileError {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
+            Self::InvalidDependencyStyle(style) => {
+                write!(formatter, "dependency style \"{style}\" not supported")
+            }
             Self::ModuleNotFound(path) => {
                 write!(formatter, "module \"{}\" not found", path.display())
             }

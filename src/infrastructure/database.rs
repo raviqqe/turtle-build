@@ -68,7 +68,9 @@ impl OsDatabase {
     }
 
     fn discovered_dependency_database(&self) -> Result<sled::Tree, Box<dyn Error>> {
-        Ok(self.database()?.open_tree(DISCOVERED_DEPENDENCY_TREE_NAME)?)
+        Ok(self
+            .database()?
+            .open_tree(DISCOVERED_DEPENDENCY_TREE_NAME)?)
     }
 
     fn source_database(&self) -> Result<sled::Tree, Box<dyn Error>> {

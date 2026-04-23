@@ -29,13 +29,10 @@ impl Rule {
         depfile: Option<String>,
         deps: Option<String>,
     ) -> Self {
-        Self {
-            name: name.into(),
-            command: command.into(),
-            description,
-            depfile,
-            deps,
-        }
+        let mut rule = Self::new(name, command, description);
+        rule.depfile = depfile;
+        rule.deps = deps;
+        rule
     }
 
     pub fn name(&self) -> &str {

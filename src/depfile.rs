@@ -28,10 +28,7 @@ struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     fn new(source: &'a str) -> Self {
-        Self {
-            source,
-            index: 0,
-        }
+        Self { source, index: 0 }
     }
 
     fn expect(&mut self, character: char) -> Result<(), String> {

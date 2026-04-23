@@ -28,12 +28,10 @@ impl Rule {
         depfile: Option<String>,
         dependency_style: Option<DependencyStyle>,
     ) -> Self {
-        Self {
-            command: command.into(),
-            description,
-            depfile,
-            dependency_style,
-        }
+        let mut rule = Self::new(command, description);
+        rule.depfile = depfile;
+        rule.dependency_style = dependency_style;
+        rule
     }
 
     pub fn command(&self) -> &str {

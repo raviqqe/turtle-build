@@ -8,8 +8,7 @@ use crate::{
     build_graph::{BuildGraph, BuildGraphError},
     compile::compile_dynamic,
     context::Context,
-    depfile,
-    debug,
+    debug, depfile,
     error::ApplicationError,
     hash_type::HashType,
     ir::{Build, Configuration, DependencyStyle, Rule},
@@ -318,7 +317,8 @@ fn classify_inputs<'a>(
 ) -> (Vec<&'a str>, Vec<&'a str>) {
     let mut seen = HashSet::new();
 
-    build.inputs()
+    build
+        .inputs()
         .iter()
         .chain(dynamic_inputs)
         .map(|string| string.as_ref())
@@ -388,13 +388,12 @@ async fn read_rule_output(
     rule: &Rule,
     output: Output,
 ) -> Result<RuleOutput, ApplicationError> {
-    let (mut discovered_dependencies, stdout) = if rule.dependency_style()
-        == Some(DependencyStyle::Msvc)
-    {
-        extract_show_includes(output.stdout)
-    } else {
-        (vec![], output.stdout)
-    };
+    let (mut discovered_dependencies, stdout) =
+        if rule.dependency_style() == Some(DependencyStyle::Msvc) {
+            extract_show_includes(output.stdout)
+        } else {
+            (vec![], output.stdout)
+        };
 
     if let Some(depfile) = rule.depfile() {
         discovered_dependencies.extend(read_depfile(context, depfile).await?);

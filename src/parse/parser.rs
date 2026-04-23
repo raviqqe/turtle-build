@@ -9,7 +9,7 @@ use nom::{
     character::complete::{alpha1, alphanumeric1, line_ending, none_of, one_of, space1},
     combinator::{all_consuming, into, map, not, opt, peek, recognize, value},
     multi::{many0, many0_count, many1, many1_count},
-    sequence::{delimited, preceded, terminated},
+    sequence::{preceded, terminated},
 };
 
 const OPERATOR_CHARACTERS: &str = "|:";
@@ -74,18 +74,32 @@ fn rule(input: &str) -> IResult<&str, Rule> {
             keyword("rule"),
             identifier,
             line_break,
-            delimited(
-                (indent, keyword("command"), sign("=")),
-                string_line,
-                line_break,
-            ),
-            opt(delimited(
-                (indent, keyword("description"), sign("=")),
-                string_line,
-                line_break,
-            )),
+            many1(preceded(indent, variable_definition)),
         ),
-        |(_, name, _, command, description)| Rule::new(name, command, description.map(From::from)),
+        |(_, name, _, variables)| {
+            let command = variables
+                .iter()
+                .find(|definition| definition.name() == "command")
+                .map(|definition| definition.value())
+                .unwrap_or_default();
+
+            Rule::with_dependencies(
+                name,
+                command,
+                variables
+                    .iter()
+                    .find(|definition| definition.name() == "description")
+                    .map(|definition| definition.value().into()),
+                variables
+                    .iter()
+                    .find(|definition| definition.name() == "depfile")
+                    .map(|definition| definition.value().into()),
+                variables
+                    .iter()
+                    .find(|definition| definition.name() == "deps")
+                    .map(|definition| definition.value().into()),
+            )
+        },
     )
     .parse(input)
 }
@@ -358,6 +372,12 @@ mod tests {
                 .unwrap()
                 .1,
             Rule::new("foo", "bar", Some("baz".into()))
+        );
+        assert_eq!(
+            rule("rule foo\n depfile = foo.d\n command = bar\n deps = gcc\n")
+                .unwrap()
+                .1,
+            Rule::with_dependencies("foo", "bar", None, Some("foo.d".into()), Some("gcc".into()))
         );
     }
 

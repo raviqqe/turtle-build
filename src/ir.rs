@@ -8,4 +8,4 @@ pub use build::*;
 pub use configuration::*;
 pub use dynamic_build::*;
 pub use dynamic_configuration::*;
-pub use rule::*;
+pub use rule::{DependencyStyle, Rule};

@@ -13,9 +13,9 @@ jobs:
           - nested
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: Swatinem/rust-cache@v2
-      - uses: raviqqe/enable-homebrew@main
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: raviqqe/enable-homebrew@0cd19e7c245801a3494a29415862f79b874536aa # v1.0.4
       - run: brew install ninja
       - run: cargo install --path . --locked
       - run: benchmark/${{ matrix.benchmark }}/main.sh

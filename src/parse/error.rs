@@ -26,6 +26,6 @@ impl Error for ParseError {}
 
 impl Display for ParseError {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "{}", &self.message)
+        write!(formatter, "{}", self.message)
     }
 }

@@ -7,7 +7,7 @@ pub use self::error::CompileError;
 use self::{context::Context, global_state::GlobalState, module_state::ModuleState};
 use crate::{
     ast,
-    ir::{Build, Configuration, DynamicBuild, DynamicConfiguration, Rule},
+    ir::{Build, Configuration, DependencyStyle, DynamicBuild, DynamicConfiguration, Rule},
     module_dependency::ModuleDependencyMap,
 };
 use once_cell::sync::Lazy;
@@ -115,10 +115,21 @@ fn compile_module<'a>(
                             .get(build.rule())
                             .ok_or_else(|| CompileError::RuleNotFound(build.rule().into()))?;
 
-                        Some(Rule::new(
+                        let dependency_style = match rule
+                            .deps()
+                            .map(|deps| interpolate_variables(deps, &variables))
+                        {
+                            None => None,
+                            Some(deps) => Some(parse_dependency_style(&deps)?),
+                        };
+
+                        Some(Rule::with_dependencies(
                             interpolate_variables(rule.command(), &variables),
                             rule.description()
                                 .map(|description| interpolate_variables(description, &variables)),
+                            rule.depfile()
+                                .map(|depfile| interpolate_variables(depfile, &variables)),
+                            dependency_style,
                         ))
                     },
                     build
@@ -183,6 +194,14 @@ fn compile_module<'a>(
     }
 
     Ok(())
+}
+
+fn parse_dependency_style(style: &str) -> Result<DependencyStyle, CompileError> {
+    match style {
+        "gcc" => Ok(DependencyStyle::Gcc),
+        "msvc" => Ok(DependencyStyle::Msvc),
+        _ => Err(CompileError::InvalidDependencyStyle(style.into())),
+    }
 }
 
 pub fn compile_dynamic(module: &ast::DynamicModule) -> Result<DynamicConfiguration, CompileError> {

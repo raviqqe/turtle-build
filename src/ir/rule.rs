@@ -1,7 +1,7 @@
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum DependencyStyle {
     Gcc,
-    Msvc,
+    Msvc { prefix: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -22,16 +22,14 @@ impl Rule {
         }
     }
 
-    pub fn with_dependencies(
-        command: impl Into<String>,
-        description: Option<String>,
-        depfile: Option<String>,
-        dependency_style: Option<DependencyStyle>,
-    ) -> Self {
-        let mut rule = Self::new(command, description);
-        rule.depfile = depfile;
-        rule.dependency_style = dependency_style;
-        rule
+    pub fn with_depfile(mut self, depfile: Option<String>) -> Self {
+        self.depfile = depfile;
+        self
+    }
+
+    pub fn with_dependency_style(mut self, dependency_style: Option<DependencyStyle>) -> Self {
+        self.dependency_style = dependency_style;
+        self
     }
 
     pub fn command(&self) -> &str {
@@ -46,7 +44,7 @@ impl Rule {
         self.depfile.as_deref()
     }
 
-    pub fn dependency_style(&self) -> Option<DependencyStyle> {
-        self.dependency_style
+    pub fn dependency_style(&self) -> Option<&DependencyStyle> {
+        self.dependency_style.as_ref()
     }
 }

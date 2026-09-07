@@ -7,7 +7,7 @@ use nom::{
     branch::alt,
     bytes::complete::tag,
     character::complete::{alpha1, alphanumeric1, line_ending, none_of, one_of, space1},
-    combinator::{all_consuming, into, map, not, opt, peek, recognize, value},
+    combinator::{all_consuming, into, map, map_opt, not, opt, peek, recognize, value},
     multi::{many0, many0_count, many1, many1_count},
     sequence::{preceded, terminated},
 };
@@ -69,7 +69,7 @@ fn dynamic_module_version(input: &str) -> IResult<&str, &str> {
 }
 
 fn rule(input: &str) -> IResult<&str, Rule> {
-    map(
+    map_opt(
         (
             keyword("rule"),
             identifier,
@@ -77,27 +77,21 @@ fn rule(input: &str) -> IResult<&str, Rule> {
             many1(preceded(indent, variable_definition)),
         ),
         |(_, name, _, variables)| {
-            let command = variables
-                .iter()
-                .find(|definition| definition.name() == "command")
-                .map(|definition| definition.value())
-                .unwrap_or_default();
+            // Ninja takes the last definition when a rule variable is
+            // assigned more than once.
+            let find = |key| {
+                variables
+                    .iter()
+                    .rev()
+                    .find(|definition| definition.name() == key)
+                    .map(VariableDefinition::value)
+            };
 
-            Rule::with_dependencies(
-                name,
-                command,
-                variables
-                    .iter()
-                    .find(|definition| definition.name() == "description")
-                    .map(|definition| definition.value().into()),
-                variables
-                    .iter()
-                    .find(|definition| definition.name() == "depfile")
-                    .map(|definition| definition.value().into()),
-                variables
-                    .iter()
-                    .find(|definition| definition.name() == "deps")
-                    .map(|definition| definition.value().into()),
+            Some(
+                Rule::new(name, find("command")?, find("description").map(Into::into))
+                    .with_depfile(find("depfile").map(Into::into))
+                    .with_deps(find("deps").map(Into::into))
+                    .with_msvc_deps_prefix(find("msvc_deps_prefix").map(Into::into)),
             )
         },
     )
@@ -377,7 +371,24 @@ mod tests {
             rule("rule foo\n depfile = foo.d\n command = bar\n deps = gcc\n")
                 .unwrap()
                 .1,
-            Rule::with_dependencies("foo", "bar", None, Some("foo.d".into()), Some("gcc".into()))
+            Rule::new("foo", "bar", None)
+                .with_depfile(Some("foo.d".into()))
+                .with_deps(Some("gcc".into()))
+        );
+    }
+
+    #[test]
+    fn reject_rule_without_command() {
+        assert!(rule("rule foo\n description = bar\n").is_err());
+    }
+
+    #[test]
+    fn parse_rule_with_duplicate_command_takes_last() {
+        assert_eq!(
+            rule("rule foo\n command = bar\n command = baz\n")
+                .unwrap()
+                .1,
+            Rule::new("foo", "baz", None)
         );
     }
 

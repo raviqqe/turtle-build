@@ -104,5 +104,9 @@ fn calculate_phony_hash(build: &Build, file_inputs: &[&str], phony_inputs: &[&st
 }
 
 fn hash_command(build: &Build, hasher: &mut impl Hasher) {
-    build.rule().map(Rule::command).hash(hasher);
+    let rule = build.rule();
+
+    rule.map(Rule::command).hash(hasher);
+    rule.and_then(Rule::depfile).hash(hasher);
+    rule.and_then(Rule::dependency_style).hash(hasher);
 }

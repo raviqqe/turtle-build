@@ -81,6 +81,26 @@ impl BuildGraph {
         self.validate()
     }
 
+    // Dependencies discovered by a build's own command (say, a depfile)
+    // are not known when the static graph is built, so let's cycle through one
+    // (e.g. a generated header that in turn depends on this build's output)
+    // which would otherwise only surface as a deadlock between two futures awaiting
+    // each other.
+    pub fn validate_discovered_dependencies(
+        &mut self,
+        output: &Arc<str>,
+        dependencies: &[String],
+    ) -> Result<(), BuildGraphError> {
+        for dependency in dependencies {
+            self.add_edge(
+                self.primary_outputs[output].clone(),
+                dependency.as_str().into(),
+            );
+        }
+
+        self.validate()
+    }
+
     fn add_edge(&mut self, output: Arc<str>, input: Arc<str>) {
         self.add_node(&output);
         self.add_node(&input);
@@ -320,6 +340,53 @@ mod tests {
                 "foo".into(),
                 "bar".into(),
             ]))
+        );
+    }
+
+    #[test]
+    fn validate_with_discovered_dependencies() {
+        let mut graph = BuildGraph::new(
+            &[
+                (
+                    "foo".into(),
+                    explicit_build(vec!["foo".into()], vec!["bar".into()]).into(),
+                ),
+                (
+                    "bar".into(),
+                    explicit_build(vec!["bar".into()], vec![]).into(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        );
+
+        graph.validate().unwrap();
+
+        assert_eq!(
+            graph.validate_discovered_dependencies(&"bar".into(), &["foo".into()]),
+            Err(BuildGraphError::CircularDependency(vec![
+                "foo".into(),
+                "bar".into(),
+            ]))
+        );
+    }
+
+    #[test]
+    fn validate_without_discovered_dependencies() {
+        let mut graph = BuildGraph::new(
+            &[(
+                "foo".into(),
+                explicit_build(vec!["foo".into()], vec![]).into(),
+            )]
+            .into_iter()
+            .collect(),
+        );
+
+        graph.validate().unwrap();
+
+        assert_eq!(
+            graph.validate_discovered_dependencies(&"foo".into(), &[]),
+            Ok(())
         );
     }
 

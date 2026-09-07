@@ -1,121 +1,43 @@
-pub fn parse(source: &str) -> Result<Vec<String>, String> {
-    let mut parser = Parser::new(source);
-    let mut dependencies = vec![];
+mod error;
+mod parser;
 
-    while parser.skip_line_breaks() {
-        let Some(target) = parser.read_path()? else {
-            break;
-        };
+pub use self::error::DepfileError;
+use self::parser::parse as parse_source;
 
-        parser.skip_spaces()?;
-
-        if !target.ends_with(':') {
-            parser.expect(':')?;
-        }
-
-        while let Some(path) = parser.read_path()? {
-            dependencies.push(path.into());
-        }
-    }
-
-    Ok(dependencies)
+pub fn parse(path: &str, source: &str) -> Result<Vec<String>, DepfileError> {
+    parse_source(path, source)
 }
 
-struct Parser<'a> {
-    source: &'a str,
-    index: usize,
-}
+// A pure, lexical equivalent of ninja's `CanonicalizePath`. It MUST NOT TOUCH
+// the file system (no symlink resolution, no existence check), since it also
+// applies to paths for files that may not exist yet (like... generated
+// headers).
+pub fn canonicalize_path(path: &str) -> String {
+    let absolute = path.starts_with('/');
+    let mut components: Vec<&str> = vec![];
 
-impl<'a> Parser<'a> {
-    fn new(source: &'a str) -> Self {
-        Self { source, index: 0 }
-    }
-
-    fn expect(&mut self, character: char) -> Result<(), String> {
-        match self.peek() {
-            Some(peek) if peek == character => {
-                self.advance();
-                Ok(())
+    for component in path.split('/') {
+        if component.is_empty() || component == "." {
+            continue;
+        } else if component == ".." {
+            if matches!(components.last(), Some(&last) if last != "..") {
+                components.pop();
+            } else if !absolute {
+                components.push("..");
             }
-            _ => Err(format!("expected '{character}'")),
-        }
-    }
-
-    fn peek(&self) -> Option<char> {
-        self.source[self.index..].chars().next()
-    }
-
-    fn peek_next(&self) -> Option<char> {
-        let mut characters = self.source[self.index..].chars();
-
-        characters.next()?;
-
-        characters.next()
-    }
-
-    fn advance(&mut self) -> Option<char> {
-        let character = self.peek()?;
-        self.index += character.len_utf8();
-        Some(character)
-    }
-
-    fn skip_line_breaks(&mut self) -> bool {
-        while matches!(self.peek(), Some(' ' | '\t' | '\n' | '\r')) {
-            self.advance();
-        }
-
-        self.peek().is_some()
-    }
-
-    fn skip_spaces(&mut self) -> Result<(), String> {
-        loop {
-            match self.peek() {
-                Some(' ' | '\t') => {
-                    self.advance();
-                }
-                Some('\\') if matches!(self.peek_next(), Some('\n')) => {
-                    self.advance();
-                    self.advance();
-                }
-                Some('\\') if matches!(self.peek_next(), Some('\r')) => {
-                    self.advance();
-                    self.advance();
-
-                    if matches!(self.peek(), Some('\n')) {
-                        self.advance();
-                    }
-                }
-                Some('\\') => return Err("invalid backslash escape".into()),
-                _ => return Ok(()),
-            }
-        }
-    }
-
-    fn read_path(&mut self) -> Result<Option<&'a str>, String> {
-        self.skip_spaces()?;
-
-        let start = self.index;
-
-        loop {
-            match self.peek() {
-                None | Some(' ' | '\t' | '\n' | '\r') => break,
-                Some('\\')
-                    if matches!(self.peek_next(), Some('\n'))
-                        || matches!(self.peek_next(), Some('\r')) =>
-                {
-                    break;
-                }
-                _ => {
-                    self.advance();
-                }
-            }
-        }
-
-        if self.index == start {
-            Ok(None)
         } else {
-            Ok(Some(&self.source[start..self.index]))
+            components.push(component);
         }
+    }
+
+    let joined = components.join("/");
+
+    if absolute {
+        format!("/{joined}")
+    } else if joined.is_empty() {
+        ".".into()
+    } else {
+        joined
     }
 }
 
@@ -125,17 +47,47 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     #[test]
-    fn parse_dependencies() {
+    fn canonicalize_current_directory_component() {
+        assert_eq!(canonicalize_path("foo/./bar"), "foo/bar");
+        assert_eq!(canonicalize_path("./foo.c"), "foo.c");
+    }
+
+    #[test]
+    fn canonicalize_parent_directory_component() {
+        assert_eq!(canonicalize_path("a/b/../c"), "a/c");
+        assert_eq!(canonicalize_path("a/.."), ".");
+    }
+
+    #[test]
+    fn canonicalize_leading_parent_directory_component() {
+        assert_eq!(canonicalize_path("../up.h"), "../up.h");
+        assert_eq!(canonicalize_path("../../a"), "../../a");
+    }
+
+    #[test]
+    fn canonicalize_duplicate_slashes() {
+        assert_eq!(canonicalize_path("a//b.h"), "a/b.h");
+    }
+
+    #[test]
+    fn canonicalize_trailing_slash() {
+        assert_eq!(canonicalize_path("a/b/"), "a/b");
+    }
+
+    #[test]
+    fn canonicalize_absolute_path() {
         assert_eq!(
-            parse("foo.o: foo.c foo.h\n").unwrap(),
-            vec!["foo.c", "foo.h"]
+            canonicalize_path("/usr/include/stdio.h"),
+            "/usr/include/stdio.h"
         );
         assert_eq!(
-            parse("foo.o: foo.c \\\n bar.h\n").unwrap(),
-            vec!["foo.c", "bar.h"]
+            canonicalize_path("//usr/include/stdio.h"),
+            "/usr/include/stdio.h"
         );
-        assert_eq!(parse("foo.o : foo.c\r\n").unwrap(), vec!["foo.c"]);
-        assert_eq!(parse("foo.o: C:/foo.c\n").unwrap(), vec!["C:/foo.c"]);
-        assert_eq!(parse("foo.o:\nbar.o: bar.h\n").unwrap(), vec!["bar.h"]);
+    }
+
+    #[test]
+    fn canonicalize_unchanged_path() {
+        assert_eq!(canonicalize_path("foo.c"), "foo.c");
     }
 }

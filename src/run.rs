@@ -10,7 +10,7 @@ use crate::{
     context::Context,
     debug,
     error::ApplicationError,
-    file,
+    file::canonicalize_path,
     hash_type::HashType,
     infrastructure::is_not_found,
     ir::{Build, Configuration, DependencyStyle, Rule},
@@ -506,7 +506,7 @@ async fn read_rule_output(
     }
 
     for dependency in &mut discovered_dependencies {
-        *dependency = file::canonicalize_path(dependency);
+        *dependency = canonicalize_path(dependency);
     }
 
     Ok(discovered_dependencies)

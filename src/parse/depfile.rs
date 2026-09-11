@@ -18,8 +18,6 @@ pub fn depfile(input: &str) -> IResult<&str, Vec<String>> {
     .parse(input)
 }
 
-// Dependencies of every rule are collected regardless of its targets, which
-// only ever over-approximates the dependencies of a build.
 fn rule(input: &str) -> IResult<&str, Vec<String>> {
     map(
         (

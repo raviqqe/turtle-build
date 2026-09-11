@@ -12,7 +12,6 @@ use crate::{
     error::ApplicationError,
     file::canonicalize_path,
     hash_type::HashType,
-    infrastructure::is_not_found,
     ir::{Build, Configuration, DependencyStyle, Rule},
     parse::{parse_depfile, parse_dynamic},
     profile,
@@ -351,9 +350,8 @@ async fn build_discovered_dependencies(
         } else if context
             .application()
             .file_system()
-            .metadata(input.as_ref())
-            .await
-            .is_ok()
+            .exists(input.as_ref())
+            .await?
         {
             kept.push(input.clone());
         }
@@ -479,14 +477,17 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Vec<String>, Appl
     // there is nothing to clean up.
     if rule.dependency_style() == Some(&DependencyStyle::Gcc)
         && let Some(depfile) = rule.depfile()
-        && let Err(error) = context
+        && context
+            .application()
+            .file_system()
+            .exists(depfile.as_ref())
+            .await?
+    {
+        context
             .application()
             .file_system()
             .remove_file(depfile.as_ref())
-            .await
-        && !is_not_found(error.as_ref())
-    {
-        return Err(error.into());
+            .await?;
     }
 
     Ok(discovered_dependencies)
@@ -516,18 +517,24 @@ async fn read_rule_output(
 }
 
 async fn read_depfile(context: &RunContext, path: &str) -> Result<Vec<String>, ApplicationError> {
+    if !context
+        .application()
+        .file_system()
+        .exists(path.as_ref())
+        .await?
+    {
+        return Ok(vec![]);
+    }
+
     let mut source = String::new();
 
-    match context
+    context
         .application()
         .file_system()
         .read_file_to_string(path.as_ref(), &mut source)
-        .await
-    {
-        Ok(()) => Ok(parse_depfile(&source)?),
-        Err(error) if is_not_found(error.as_ref()) => Ok(vec![]),
-        Err(error) => Err(error.into()),
-    }
+        .await?;
+
+    Ok(parse_depfile(&source)?)
 }
 
 fn extract_show_includes(output: &[u8], prefix: &[u8]) -> (Vec<String>, Vec<u8>) {

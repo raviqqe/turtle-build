@@ -1,33 +1,31 @@
+use std::path::{Component, Path, PathBuf};
+
 // A pure, lexical equivalent of ninja's `CanonicalizePath`. It MUST NOT TOUCH
 // the file system (no symlink resolution, no existence check), since it also
 // applies to paths for files that may not exist yet (like... generated
 // headers).
 pub fn canonicalize_path(path: &str) -> String {
-    let absolute = path.starts_with('/');
-    let mut components: Vec<&str> = vec![];
-
-    for component in path.split('/') {
-        if component.is_empty() || component == "." {
-            continue;
-        } else if component == ".." {
-            if matches!(components.last(), Some(&last) if last != "..") {
-                components.pop();
-            } else if !absolute {
-                components.push("..");
+    let path = Path::new(path)
+        .components()
+        .fold(vec![], |mut components, component| {
+            match (components.last(), component) {
+                (_, Component::CurDir) => {}
+                (Some(Component::Normal(_)), Component::ParentDir) => {
+                    components.pop();
+                }
+                (Some(Component::Prefix(_) | Component::RootDir), Component::ParentDir) => {}
+                _ => components.push(component),
             }
-        } else {
-            components.push(component);
-        }
-    }
 
-    let joined = components.join("/");
+            components
+        })
+        .into_iter()
+        .collect::<PathBuf>();
 
-    if absolute {
-        format!("/{joined}")
-    } else if joined.is_empty() {
+    if path.as_os_str().is_empty() {
         ".".into()
     } else {
-        joined
+        path.to_string_lossy().into_owned()
     }
 }
 
@@ -46,6 +44,7 @@ mod tests {
     fn canonicalize_parent_directory_component() {
         assert_eq!(canonicalize_path("a/b/../c"), "a/c");
         assert_eq!(canonicalize_path("a/.."), ".");
+        assert_eq!(canonicalize_path("a/../.."), "..");
     }
 
     #[test]
@@ -74,6 +73,13 @@ mod tests {
             canonicalize_path("//usr/include/stdio.h"),
             "/usr/include/stdio.h"
         );
+        assert_eq!(canonicalize_path("/../usr/include"), "/usr/include");
+    }
+
+    #[test]
+    fn canonicalize_empty_path() {
+        assert_eq!(canonicalize_path(""), ".");
+        assert_eq!(canonicalize_path("."), ".");
     }
 
     #[test]

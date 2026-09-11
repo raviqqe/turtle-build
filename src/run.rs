@@ -524,7 +524,7 @@ async fn read_depfile(context: &RunContext, path: &str) -> Result<Vec<String>, A
         .read_file_to_string(path.as_ref(), &mut source)
         .await
     {
-        Ok(()) => Ok(parse_depfile(path, &source)?),
+        Ok(()) => Ok(parse_depfile(&source)?),
         Err(error) if is_not_found(error.as_ref()) => Ok(vec![]),
         Err(error) => Err(error.into()),
     }

@@ -77,8 +77,7 @@ fn rule(input: &str) -> IResult<&str, Rule> {
             many1(preceded(indent, variable_definition)),
         ),
         |(_, name, _, variables)| {
-            // Ninja takes the last definition when a rule variable is
-            // assigned more than once.
+            // TODO Allow duplicate fields at the AST level.
             let find = |key| {
                 variables
                     .iter()

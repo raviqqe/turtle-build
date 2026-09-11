@@ -12,7 +12,7 @@ use crate::{
     error::ApplicationError,
     file::canonicalize_path,
     hash_type::HashType,
-    ir::{Build, Configuration, DependencyStyle, Rule},
+    ir::{Build, Configuration, Dependency, Rule},
     parse::{parse_depfile, parse_dynamic},
     profile,
 };
@@ -470,7 +470,7 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Vec<String>, Appl
     // then deletes it. As turtle's database plays that role, a depfile is only
     // left on disk for a failed command. A command may also not write one at
     // all, in which case there is nothing to clean up.
-    if let Some(DependencyStyle::Gcc { path }) = rule.dependency_style()
+    if let Some(Dependency::Gcc { path }) = rule.dependency()
         && context
             .application()
             .file_system()
@@ -492,12 +492,12 @@ async fn read_rule_output(
     rule: &Rule,
     output: &mut Output,
 ) -> Result<Vec<String>, ApplicationError> {
-    let mut discovered_dependencies = match rule.dependency_style() {
+    let mut discovered_dependencies = match rule.dependency() {
         None => vec![],
-        Some(DependencyStyle::Depfile { path } | DependencyStyle::Gcc { path }) => {
+        Some(Dependency::Depfile { path } | Dependency::Gcc { path }) => {
             read_depfile(context, path).await?
         }
-        Some(DependencyStyle::Msvc { prefix }) => {
+        Some(Dependency::Msvc { prefix }) => {
             let (includes, stdout) = extract_show_includes(&output.stdout, prefix.as_bytes());
 
             output.stdout = stdout;

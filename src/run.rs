@@ -8,10 +8,11 @@ use crate::{
     build_graph::{BuildGraph, BuildGraphError},
     compile::compile_dynamic,
     context::Context,
-    debug,
+    debug, depfile,
     error::ApplicationError,
     hash_type::HashType,
-    ir::{Build, Configuration, Rule},
+    infrastructure::is_not_found,
+    ir::{Build, Configuration, DependencyStyle, Rule},
     parse::parse_dynamic,
     profile,
 };
@@ -19,7 +20,7 @@ use async_recursion::async_recursion;
 use futures::future::{FutureExt, Shared, try_join_all};
 use itertools::Itertools;
 pub use options::Options;
-use std::{future::Future, path::Path, pin::Pin, sync::Arc};
+use std::{future::Future, path::Path, pin::Pin, process::Output, sync::Arc};
 use tokio::{spawn, time::Instant, try_join};
 
 type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), ApplicationError>> + Send>>;
@@ -154,6 +155,38 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
 
         try_join_all(futures).await?;
 
+        // Only known outputs have a rule that could ever discover
+        // dependencies, so builds without one (e.g. phony builds) never have
+        // an entry to read back.
+        let stale_discovered_dependencies = if build.rule().is_some() {
+            context
+                .application()
+                .database()
+                .get_discovered_dependencies(build.id())?
+        } else {
+            vec![]
+        };
+
+        // A cycle through a dependency discovered on a previous run (e.g. a
+        // generated header that itself depends on this build's output) is
+        // invisible to the static graph, so gotta check before we
+        // start awaiting futures for it, or two builds would await each
+        // other forever.
+        if !stale_discovered_dependencies.is_empty() {
+            context
+                .build_graph()
+                .lock()
+                .await
+                .validate_discovered_dependencies(
+                    &build.outputs()[0],
+                    &stale_discovered_dependencies,
+                )
+                .map_err(|error| map_build_graph_error(&context, &error))?;
+        }
+
+        let mut discovered_dependencies =
+            build_discovered_dependencies(&context, &stale_discovered_dependencies).await?;
+
         let outputs_exist = try_join_all(
             build
                 .outputs()
@@ -163,18 +196,8 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         )
         .await
         .is_ok();
-        let (file_inputs, phony_inputs) = build
-            .inputs()
-            .iter()
-            .chain(dynamic_inputs)
-            .map(|string| string.as_ref())
-            .partition::<Vec<_>, _>(|&input| {
-                if let Some(build) = context.configuration().outputs().get(input) {
-                    build.rule().is_some()
-                } else {
-                    true
-                }
-            });
+        let (file_inputs, phony_inputs) =
+            classify_inputs(&context, &build, dynamic_inputs, &discovered_dependencies);
         let timestamp_hash =
             hash::calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
@@ -199,7 +222,11 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                     .get_hash(HashType::Content, build.id())?
         {
             return Ok(());
-        } else if let Some(rule) = build.rule() {
+        }
+
+        let mut discovered_dependencies_changed = false;
+
+        if let Some(rule) = build.rule() {
             try_join_all(
                 build
                     .outputs()
@@ -209,7 +236,27 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             )
             .await?;
 
-            run_rule(&context, rule).await?;
+            let new_discovered_dependencies = run_rule(&context, rule).await?;
+
+            if !new_discovered_dependencies.is_empty() {
+                context
+                    .build_graph()
+                    .lock()
+                    .await
+                    .validate_discovered_dependencies(
+                        &build.outputs()[0],
+                        &new_discovered_dependencies,
+                    )
+                    .map_err(|error| map_build_graph_error(&context, &error))?;
+            }
+
+            let new_discovered_dependencies =
+                build_discovered_dependencies(&context, &new_discovered_dependencies).await?;
+
+            context
+                .application()
+                .database()
+                .set_discovered_dependencies(build.id(), &new_discovered_dependencies)?;
 
             for output in build.outputs() {
                 context.application().database().set_output(output)?;
@@ -221,7 +268,27 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                         .set_source(output, source)?;
                 }
             }
+
+            discovered_dependencies_changed =
+                discovered_dependencies != new_discovered_dependencies;
+            discovered_dependencies = new_discovered_dependencies;
         }
+
+        // A rule is not expected to modify its own inputs, so hashes only
+        // need to be recomputed here when the discovered dependency set
+        // itself changed
+        let (timestamp_hash, content_hash) = if discovered_dependencies_changed {
+            let (file_inputs, phony_inputs) =
+                classify_inputs(&context, &build, dynamic_inputs, &discovered_dependencies);
+
+            (
+                hash::calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs)
+                    .await?,
+                hash::calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?,
+            )
+        } else {
+            (timestamp_hash, content_hash)
+        };
 
         context.application().database().set_hash(
             HashType::Timestamp,
@@ -254,6 +321,43 @@ async fn build_input(
             future.shared()
         },
     )
+}
+
+// Unlike `build_input`, a dependency discovered by a rule's own command (via
+// a depfile or `/showIncludes`) can't turn to hard error just
+// because it went missing.
+//
+// Against Ninja, it treats that as "this build is dirty," not
+// as a failure. A discovered dependency that is a known build output is
+// still built like any other input, since generated headers must exist
+// before their consumer's inputs are hashed.
+async fn build_discovered_dependencies(
+    context: &Arc<RunContext>,
+    inputs: &[String],
+) -> Result<Vec<String>, ApplicationError> {
+    let mut futures = vec![];
+    let mut kept = vec![];
+
+    for input in inputs {
+        if let Some(build) = context.configuration().outputs().get(input.as_str()) {
+            trigger_build(context.clone(), build).await?;
+
+            futures.push(context.build_futures().get(&build.id()).unwrap().clone());
+            kept.push(input.clone());
+        } else if context
+            .application()
+            .file_system()
+            .metadata(input.as_ref())
+            .await
+            .is_ok()
+        {
+            kept.push(input.clone());
+        }
+    }
+
+    try_join_all(futures).await?;
+
+    Ok(kept)
 }
 
 async fn check_file_existence(context: &RunContext, path: &str) -> Result<(), ApplicationError> {
@@ -291,8 +395,30 @@ async fn prepare_directory(
     Ok(())
 }
 
-async fn run_rule(context: &RunContext, rule: &Rule) -> Result<(), ApplicationError> {
-    let ((output, duration), mut console) = try_join!(
+fn classify_inputs<'a>(
+    context: &'a RunContext,
+    build: &'a Build,
+    dynamic_inputs: &'a [Arc<str>],
+    discovered_dependencies: &'a [String],
+) -> (Vec<&'a str>, Vec<&'a str>) {
+    build
+        .inputs()
+        .iter()
+        .chain(dynamic_inputs)
+        .map(|string| string.as_ref())
+        .chain(discovered_dependencies.iter().map(String::as_str))
+        .unique()
+        .partition::<Vec<_>, _>(|&input| {
+            if let Some(build) = context.configuration().outputs().get(input) {
+                build.rule().is_some()
+            } else {
+                true
+            }
+        })
+}
+
+async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Vec<String>, ApplicationError> {
+    let ((mut output, duration), mut console) = try_join!(
         async {
             let start_time = Instant::now();
             let output = context
@@ -316,6 +442,7 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<(), ApplicationEr
             Ok(console)
         }
     )?;
+    let discovered_dependencies = read_rule_output(context, rule, &mut output).await?;
 
     profile!(context, console, "duration: {}ms", duration.as_millis());
 
@@ -337,7 +464,88 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<(), ApplicationEr
         return Err(ApplicationError::Build);
     }
 
-    Ok(())
+    // Ninja absorbs a gcc-style depfile into its own dependency tracking and
+    // then deletes it, and since turtle's database plays that role instead., a
+    // depfile is only ever left on disk for a failed command, so that a
+    // retry can still read it.
+    //
+    // `deps = msvc` never touches `depfile` at all
+    // (matching real ninja, which silently ignores the combination). A
+    // command is allowed to not write a depfile at all (A1), in which case
+    // there is nothing to clean up.
+    if rule.dependency_style() == Some(&DependencyStyle::Gcc)
+        && let Some(depfile) = rule.depfile()
+        && let Err(error) = context
+            .application()
+            .file_system()
+            .remove_file(depfile.as_ref())
+            .await
+        && !is_not_found(error.as_ref())
+    {
+        return Err(error.into());
+    }
+
+    Ok(discovered_dependencies)
+}
+
+async fn read_rule_output(
+    context: &RunContext,
+    rule: &Rule,
+    output: &mut Output,
+) -> Result<Vec<String>, ApplicationError> {
+    let mut discovered_dependencies = vec![];
+
+    if let Some(DependencyStyle::Msvc { prefix }) = rule.dependency_style() {
+        let (includes, stdout) = extract_show_includes(&output.stdout, prefix.as_bytes());
+
+        discovered_dependencies = includes;
+        output.stdout = stdout;
+    } else if let Some(depfile) = rule.depfile() {
+        discovered_dependencies = read_depfile(context, depfile).await?;
+    }
+
+    for dependency in &mut discovered_dependencies {
+        *dependency = depfile::canonicalize_path(dependency);
+    }
+
+    Ok(discovered_dependencies)
+}
+
+async fn read_depfile(context: &RunContext, path: &str) -> Result<Vec<String>, ApplicationError> {
+    let mut source = String::new();
+
+    match context
+        .application()
+        .file_system()
+        .read_file_to_string(path.as_ref(), &mut source)
+        .await
+    {
+        Ok(()) => Ok(depfile::parse(path, &source)?),
+        Err(error) if is_not_found(error.as_ref()) => Ok(vec![]),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn extract_show_includes(output: &[u8], prefix: &[u8]) -> (Vec<String>, Vec<u8>) {
+    let mut filtered_output = vec![];
+    let mut includes = vec![];
+    let mut first_line = true;
+
+    for line in output.split(|&byte| byte == b'\n') {
+        if let Some(include) = line.strip_prefix(prefix) {
+            includes.push(String::from_utf8_lossy(include.trim_ascii()).into_owned());
+        } else {
+            if !first_line {
+                filtered_output.push(b'\n');
+            }
+
+            first_line = false;
+
+            filtered_output.extend_from_slice(line);
+        }
+    }
+
+    (includes, filtered_output)
 }
 
 fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> ApplicationError {
@@ -364,5 +572,76 @@ fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> Appli
                 Err(error) => error,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn extract_show_includes_with_no_output() {
+        assert_eq!(
+            extract_show_includes(b"", b"Note: including file: "),
+            (vec![], vec![])
+        );
+    }
+
+    #[test]
+    fn extract_show_includes_with_leading_blank_line() {
+        assert_eq!(
+            extract_show_includes(b"\nAAA\n\nBBB\n", b"Note: including file: "),
+            (vec![], b"\nAAA\n\nBBB\n".to_vec())
+        );
+    }
+
+    #[test]
+    fn extract_show_includes_with_only_includes() {
+        assert_eq!(
+            extract_show_includes(
+                b"Note: including file: foo.h\nNote: including file: bar.h\n",
+                b"Note: including file: "
+            ),
+            (vec!["foo.h".into(), "bar.h".into()], vec![])
+        );
+    }
+
+    #[test]
+    fn extract_show_includes_interleaved_with_output() {
+        assert_eq!(
+            extract_show_includes(
+                b"AAA\nNote: including file: foo.h\nBBB\n",
+                b"Note: including file: "
+            ),
+            (vec!["foo.h".into()], b"AAA\nBBB\n".to_vec())
+        );
+    }
+
+    #[test]
+    fn extract_show_includes_with_windows_line_endings() {
+        assert_eq!(
+            extract_show_includes(
+                b"Note: including file: foo.h\r\nAAA\r\n",
+                b"Note: including file: "
+            ),
+            (vec!["foo.h".into()], b"AAA\r\n".to_vec())
+        );
+    }
+
+    #[test]
+    fn extract_show_includes_with_indented_include() {
+        assert_eq!(
+            extract_show_includes(b"Note: including file:  foo.h\n", b"Note: including file: "),
+            (vec!["foo.h".into()], vec![])
+        );
+    }
+
+    #[test]
+    fn extract_show_includes_with_custom_prefix() {
+        assert_eq!(
+            extract_show_includes(b"Hinweis: foo.h\n", b"Hinweis: "),
+            (vec!["foo.h".into()], vec![])
+        );
     }
 }

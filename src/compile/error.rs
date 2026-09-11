@@ -6,6 +6,8 @@ use std::{
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CompileError {
+    InvalidDependencyStyle(String),
+    MissingDepfile(String),
     ModuleNotFound(PathBuf),
     RuleNotFound(String),
 }
@@ -15,6 +17,15 @@ impl Error for CompileError {}
 impl Display for CompileError {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
+            Self::InvalidDependencyStyle(style) => {
+                write!(formatter, "dependency style \"{style}\" not supported")
+            }
+            Self::MissingDepfile(rule) => {
+                write!(
+                    formatter,
+                    "rule \"{rule}\" has \"deps\" set to \"gcc\" but no \"depfile\""
+                )
+            }
             Self::ModuleNotFound(path) => {
                 write!(formatter, "module \"{}\" not found", path.display())
             }

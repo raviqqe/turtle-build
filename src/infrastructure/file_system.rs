@@ -27,6 +27,16 @@ pub trait FileSystem {
     async fn metadata(&self, path: &Path) -> Result<Metadata, Box<dyn Error>>;
     async fn create_directory(&self, path: &Path) -> Result<(), Box<dyn Error>>;
     async fn canonicalize_path(&self, path: &Path) -> Result<PathBuf, Box<dyn Error>>;
+    async fn remove_file(&self, path: &Path) -> Result<(), Box<dyn Error>>;
+}
+
+// Keeps `io::Error`'s `kind()` intact (e.g. `NotFound`) while still attaching
+// the path to the message, so callers can distinguish error causes instead of
+// pattern-matching on `Display` output.
+pub fn is_not_found(error: &(dyn Error + 'static)) -> bool {
+    error
+        .downcast_ref::<io::Error>()
+        .is_some_and(|error| error.kind() == io::ErrorKind::NotFound)
 }
 
 #[derive(Debug)]
@@ -69,8 +79,8 @@ impl OsFileSystem {
         Ok(())
     }
 
-    fn error(error: io::Error, path: &Path) -> String {
-        format!("{}: {}", error, path.display())
+    fn error(error: io::Error, path: &Path) -> io::Error {
+        io::Error::new(error.kind(), format!("{error}: {}", path.display()))
     }
 }
 
@@ -127,5 +137,13 @@ impl FileSystem for OsFileSystem {
         Ok(fs::canonicalize(path)
             .await
             .map_err(|error| Self::error(error, path))?)
+    }
+
+    async fn remove_file(&self, path: &Path) -> Result<(), Box<dyn Error>> {
+        fs::remove_file(path)
+            .await
+            .map_err(|error| Self::error(error, path))?;
+
+        Ok(())
     }
 }

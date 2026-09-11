@@ -7,9 +7,9 @@ use nom::{
     branch::alt,
     bytes::complete::tag,
     character::complete::{alpha1, alphanumeric1, line_ending, none_of, one_of, space1},
-    combinator::{all_consuming, into, map, not, opt, peek, recognize, value},
+    combinator::{all_consuming, into, map, map_opt, not, opt, peek, recognize, value},
     multi::{many0, many0_count, many1, many1_count},
-    sequence::{delimited, preceded, terminated},
+    sequence::{preceded, terminated},
 };
 
 const OPERATOR_CHARACTERS: &str = "|:";
@@ -69,23 +69,31 @@ fn dynamic_module_version(input: &str) -> IResult<&str, &str> {
 }
 
 fn rule(input: &str) -> IResult<&str, Rule> {
-    map(
+    map_opt(
         (
             keyword("rule"),
             identifier,
             line_break,
-            delimited(
-                (indent, keyword("command"), sign("=")),
-                string_line,
-                line_break,
-            ),
-            opt(delimited(
-                (indent, keyword("description"), sign("=")),
-                string_line,
-                line_break,
-            )),
+            many1(preceded(indent, variable_definition)),
         ),
-        |(_, name, _, command, description)| Rule::new(name, command, description.map(From::from)),
+        |(_, name, _, variables)| {
+            // Ninja takes the last definition when a rule variable is
+            // assigned more than once.
+            let find = |key| {
+                variables
+                    .iter()
+                    .rev()
+                    .find(|definition| definition.name() == key)
+                    .map(VariableDefinition::value)
+            };
+
+            Some(
+                Rule::new(name, find("command")?, find("description").map(Into::into))
+                    .with_depfile(find("depfile").map(Into::into))
+                    .with_deps(find("deps").map(Into::into))
+                    .with_msvc_deps_prefix(find("msvc_deps_prefix").map(Into::into)),
+            )
+        },
     )
     .parse(input)
 }
@@ -358,6 +366,29 @@ mod tests {
                 .unwrap()
                 .1,
             Rule::new("foo", "bar", Some("baz".into()))
+        );
+        assert_eq!(
+            rule("rule foo\n depfile = foo.d\n command = bar\n deps = gcc\n")
+                .unwrap()
+                .1,
+            Rule::new("foo", "bar", None)
+                .with_depfile(Some("foo.d".into()))
+                .with_deps(Some("gcc".into()))
+        );
+    }
+
+    #[test]
+    fn reject_rule_without_command() {
+        assert!(rule("rule foo\n description = bar\n").is_err());
+    }
+
+    #[test]
+    fn parse_rule_with_duplicate_command_takes_last() {
+        assert_eq!(
+            rule("rule foo\n command = bar\n command = baz\n")
+                .unwrap()
+                .1,
+            Rule::new("foo", "baz", None)
         );
     }
 

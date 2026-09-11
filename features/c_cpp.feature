@@ -230,6 +230,8 @@ Feature: C and C++ dependency discovery
     When I successfully run `turtle foo.o`
     Then the file named "foo.o" should exist
 
+  # TODO Remove this scenario once newly discovered dependencies are recorded
+  # without being built after the command that discovered them.
   @turtle
   Scenario: Build a depfile-discovered generated header on a clean checkout
     Given a file named "build.ninja" with:

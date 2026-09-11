@@ -251,6 +251,9 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                     .map_err(|error| map_build_graph_error(&context, &error))?;
             }
 
+            // TODO Record newly discovered dependencies without building them.
+            // The command has already run, so hashing generated headers built
+            // here marks this build up to date against inputs it never saw.
             let new_discovered_dependencies =
                 build_discovered_dependencies(&context, &new_discovered_dependencies).await?;
 

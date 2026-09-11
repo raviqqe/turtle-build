@@ -883,7 +883,7 @@ checksum = "bbd64c8891e46d52c4f174c3046bb868616648ed1aa2197e5a8dca717a07726c"
 
 [[package]]
 name = "turtle-build"
-version = "0.4.9"
+version = "0.4.10"
 dependencies = [
  "async-recursion",
  "async-trait",

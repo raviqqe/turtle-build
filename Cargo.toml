@@ -1,6 +1,6 @@
 [package]
 name = "turtle-build"
-version = "0.4.9"
+version = "0.4.10"
 edition = "2024"
 description = "Ninja-compatible build system for high-level programming languages"
 repository = "https://github.com/raviqqe/turtle"

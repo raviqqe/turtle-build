@@ -470,17 +470,17 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Vec<String>, Appl
     // then deletes it. As turtle's database plays that role, a depfile is only
     // left on disk for a failed command. A command may also not write one at
     // all, in which case there is nothing to clean up.
-    if let Some(DependencyStyle::Gcc { depfile }) = rule.dependency_style()
+    if let Some(DependencyStyle::Gcc { path }) = rule.dependency_style()
         && context
             .application()
             .file_system()
-            .exists(depfile.as_ref())
+            .exists(path.as_ref())
             .await?
     {
         context
             .application()
             .file_system()
-            .remove_file(depfile.as_ref())
+            .remove_file(path.as_ref())
             .await?;
     }
 
@@ -494,7 +494,7 @@ async fn read_rule_output(
 ) -> Result<Vec<String>, ApplicationError> {
     let mut discovered_dependencies = match rule.dependency_style() {
         None => vec![],
-        Some(DependencyStyle::Depfile { path } | DependencyStyle::Gcc { depfile: path }) => {
+        Some(DependencyStyle::Depfile { path } | DependencyStyle::Gcc { path }) => {
             read_depfile(context, path).await?
         }
         Some(DependencyStyle::Msvc { prefix }) => {

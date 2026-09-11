@@ -1,7 +1,7 @@
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum DependencyStyle {
     Depfile { path: String },
-    Gcc { depfile: String },
+    Gcc { path: String },
     Msvc { prefix: String },
 }
 

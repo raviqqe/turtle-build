@@ -206,7 +206,7 @@ fn compile_dependency_style(
     Ok(match (deps.as_deref(), depfile) {
         (None, None) => None,
         (None, Some(path)) => Some(DependencyStyle::Depfile { path }),
-        (Some("gcc"), Some(depfile)) => Some(DependencyStyle::Gcc { depfile }),
+        (Some("gcc"), Some(path)) => Some(DependencyStyle::Gcc { path }),
         (Some("gcc"), None) => return Err(CompileError::MissingDepfile(rule.name().into())),
         (Some("msvc"), _) => Some(DependencyStyle::Msvc {
             prefix: interpolate_variables(
@@ -928,7 +928,7 @@ mod tests {
                     ir_explicit_build(
                         vec!["bar".into()],
                         Rule::new("bar", None).with_dependency_style(Some(DependencyStyle::Gcc {
-                            depfile: "foo.d".into()
+                            path: "foo.d".into()
                         })),
                         vec![]
                     )

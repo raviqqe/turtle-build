@@ -8,8 +8,9 @@ use crate::{
     build_graph::{BuildGraph, BuildGraphError},
     compile::compile_dynamic,
     context::Context,
-    debug, depfile,
+    debug,
     error::ApplicationError,
+    file,
     hash_type::HashType,
     infrastructure::is_not_found,
     ir::{Build, Configuration, DependencyStyle, Rule},
@@ -505,7 +506,7 @@ async fn read_rule_output(
     }
 
     for dependency in &mut discovered_dependencies {
-        *dependency = depfile::canonicalize_path(dependency);
+        *dependency = file::canonicalize_path(dependency);
     }
 
     Ok(discovered_dependencies)

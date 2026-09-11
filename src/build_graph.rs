@@ -84,8 +84,8 @@ impl BuildGraph {
     // Dependencies discovered by a build's own command (say, a depfile)
     // are not known when the static graph is built, so let's cycle through one
     // (e.g. a generated header that in turn depends on this build's output)
-    // which would otherwise only surface as a deadlock between two futures awaiting
-    // each other.
+    // which would otherwise only surface as a deadlock between two futures
+    // awaiting each other.
     pub fn validate_discovered_dependencies(
         &mut self,
         output: &Arc<str>,

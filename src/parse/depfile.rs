@@ -1,6 +1,6 @@
-use super::error::DepfileError;
+use super::ParseError;
 
-pub fn parse(path: &str, source: &str) -> Result<Vec<String>, DepfileError> {
+pub fn parse_depfile(path: &str, source: &str) -> Result<Vec<String>, ParseError> {
     let mut parser = Parser::new(path, source);
     let mut dependencies = vec![];
 
@@ -18,10 +18,10 @@ pub fn parse(path: &str, source: &str) -> Result<Vec<String>, DepfileError> {
         }
 
         // A depfile may list many rules (like GCC's -MP phony targets for
-        // headers). here we harvest dependencies from every rule *regardless* of its
-        // target rather than only the one matching this build's output. That
-        // over-approximates the dependency set, which is only ever going to cause an
-        // extra, safe rebuild.
+        // headers). here we harvest dependencies from every rule *regardless*
+        // of its target rather than only the one matching this build's
+        // output. That over-approximates the dependency set, which is
+        // only ever going to cause an extra, safe rebuild.
         while let Some(token) = parser.read_token()? {
             dependencies.push(token.text);
         }
@@ -52,10 +52,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn error(&self, message: impl Into<String>) -> DepfileError {
+    fn error(&self, message: impl Into<String>) -> ParseError {
         let (line, column) = self.position();
 
-        DepfileError::new(self.path, line, column, message)
+        ParseError::new(format!("{}:{line}:{column}: {}", self.path, message.into()))
     }
 
     fn position(&self) -> (usize, usize) {
@@ -134,7 +134,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn read_token(&mut self) -> Result<Option<Token>, DepfileError> {
+    fn read_token(&mut self) -> Result<Option<Token>, ParseError> {
         self.skip_inline_spaces();
 
         let mut text = String::new();
@@ -187,68 +187,83 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
-    fn parse(source: &str) -> Result<Vec<String>, DepfileError> {
-        super::parse("foo.d", source)
+    fn parse_depfile(source: &str) -> Result<Vec<String>, ParseError> {
+        super::parse_depfile("foo.d", source)
     }
 
     #[test]
     fn parse_dependencies() {
         assert_eq!(
-            parse("foo.o: foo.c foo.h\n").unwrap(),
+            parse_depfile("foo.o: foo.c foo.h\n").unwrap(),
             vec!["foo.c", "foo.h"]
         );
         assert_eq!(
-            parse("foo.o: foo.c \\\n bar.h\n").unwrap(),
+            parse_depfile("foo.o: foo.c \\\n bar.h\n").unwrap(),
             vec!["foo.c", "bar.h"]
         );
-        assert_eq!(parse("foo.o : foo.c\r\n").unwrap(), vec!["foo.c"]);
-        assert_eq!(parse("foo.o: C:/foo.c\n").unwrap(), vec!["C:/foo.c"]);
-        assert_eq!(parse("foo.o:\nbar.o: bar.h\n").unwrap(), vec!["bar.h"]);
+        assert_eq!(parse_depfile("foo.o : foo.c\r\n").unwrap(), vec!["foo.c"]);
+        assert_eq!(
+            parse_depfile("foo.o: C:/foo.c\n").unwrap(),
+            vec!["C:/foo.c"]
+        );
+        assert_eq!(
+            parse_depfile("foo.o:\nbar.o: bar.h\n").unwrap(),
+            vec!["bar.h"]
+        );
     }
 
     #[test]
     fn parse_multiple_targets() {
-        assert_eq!(parse("foo.o bar.o: dep.h\n").unwrap(), vec!["dep.h"]);
+        assert_eq!(
+            parse_depfile("foo.o bar.o: dep.h\n").unwrap(),
+            vec!["dep.h"]
+        );
     }
 
     #[test]
     fn parse_escaped_space() {
-        assert_eq!(parse("foo.o: a\\ b.h\n").unwrap(), vec!["a b.h"]);
+        assert_eq!(parse_depfile("foo.o: a\\ b.h\n").unwrap(), vec!["a b.h"]);
     }
 
     #[test]
     fn parse_comment_line() {
-        assert_eq!(parse("foo.o: foo.c\n# comment\n").unwrap(), vec!["foo.c"]);
         assert_eq!(
-            parse("# leading comment\nfoo.o: foo.c\n").unwrap(),
+            parse_depfile("foo.o: foo.c\n# comment\n").unwrap(),
+            vec!["foo.c"]
+        );
+        assert_eq!(
+            parse_depfile("# leading comment\nfoo.o: foo.c\n").unwrap(),
             vec!["foo.c"]
         );
     }
 
     #[test]
     fn parse_target_without_space_before_colon() {
-        assert!(parse("foo.o:foo.c\n").is_err());
+        assert!(parse_depfile("foo.o:foo.c\n").is_err());
     }
 
     #[test]
     fn parse_colon_not_followed_by_whitespace() {
-        assert!(parse("foo.o :foo.c\n").is_err());
+        assert!(parse_depfile("foo.o :foo.c\n").is_err());
     }
 
     #[test]
     fn parse_missing_colon() {
-        assert!(parse("foo.o foo.c\n").is_err());
+        assert!(parse_depfile("foo.o foo.c\n").is_err());
     }
 
     #[test]
     fn parse_escaped_dollar() {
-        assert_eq!(parse("foo.o: a $$b.h\n").unwrap(), vec!["a", "$b.h"]);
+        assert_eq!(
+            parse_depfile("foo.o: a $$b.h\n").unwrap(),
+            vec!["a", "$b.h"]
+        );
     }
 
     #[test]
     fn parse_error_location() {
-        let error = parse("foo.o foo.c\n").unwrap_err();
+        let error = parse_depfile("foo.o foo.c\n").unwrap_err();
 
-        assert_eq!(error, DepfileError::new("foo.d", 1, 12, "expected ':'"));
+        assert_eq!(error, ParseError::new("foo.d:1:12: expected ':'"));
     }
 }

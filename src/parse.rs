@@ -1,8 +1,9 @@
+mod depfile;
 mod error;
-mod parser;
+mod ninja;
 
-pub use self::error::ParseError;
-use self::parser::{dynamic_module, module};
+use self::ninja::{dynamic_module, module};
+pub use self::{depfile::parse_depfile, error::ParseError};
 use crate::ast::{DynamicModule, Module};
 
 pub fn parse(source: &str) -> Result<Module, ParseError> {

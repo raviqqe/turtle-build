@@ -1,5 +1,5 @@
 use crate::{
-    build_graph::BuildGraphError, compile::CompileError, depfile::DepfileError, ir::Build,
+    build_graph::BuildGraphError, compile::CompileError, ir::Build,
     module_dependency::ModuleDependencyError, parse::ParseError,
 };
 use std::{
@@ -15,7 +15,6 @@ pub enum ApplicationError {
     BuildGraph(BuildGraphError),
     Compile(CompileError),
     DefaultOutputNotFound(Arc<str>),
-    Depfile(DepfileError),
     DynamicDependencyNotFound(Arc<Build>),
     FileNotFound(String),
     InputNotBuilt(String),
@@ -37,7 +36,6 @@ impl Display for ApplicationError {
             Self::DefaultOutputNotFound(output) => {
                 write!(formatter, "default output \"{output}\" not found")
             }
-            Self::Depfile(error) => write!(formatter, "{error}"),
             Self::DynamicDependencyNotFound(build) => {
                 write!(
                     formatter,
@@ -76,12 +74,6 @@ impl From<Box<dyn Error>> for ApplicationError {
 impl From<CompileError> for ApplicationError {
     fn from(error: CompileError) -> Self {
         Self::Compile(error)
-    }
-}
-
-impl From<DepfileError> for ApplicationError {
-    fn from(error: DepfileError) -> Self {
-        Self::Depfile(error)
     }
 }
 

@@ -1,13 +1,3 @@
-mod error;
-mod parser;
-
-pub use self::error::DepfileError;
-use self::parser::parse as parse_source;
-
-pub fn parse(path: &str, source: &str) -> Result<Vec<String>, DepfileError> {
-    parse_source(path, source)
-}
-
 // A pure, lexical equivalent of ninja's `CanonicalizePath`. It MUST NOT TOUCH
 // the file system (no symlink resolution, no existence check), since it also
 // applies to paths for files that may not exist yet (like... generated

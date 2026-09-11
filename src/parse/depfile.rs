@@ -8,6 +8,8 @@ use nom::{
     sequence::{preceded, terminated},
 };
 
+// cspell: ignore multispace
+
 pub fn depfile(input: &str) -> IResult<&str, Vec<String>> {
     map(
         all_consuming(preceded(blank, many0(terminated(rule, blank)))),

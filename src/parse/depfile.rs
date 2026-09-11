@@ -9,6 +9,8 @@ use nom::{
     sequence::{preceded, terminated},
 };
 
+// cspell: ignore multispace
+
 pub fn parse_depfile(path: &str, source: &str) -> Result<Vec<String>, ParseError> {
     depfile(source)
         .map(|(_, dependencies)| dependencies)

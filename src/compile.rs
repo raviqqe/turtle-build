@@ -134,7 +134,7 @@ fn compile_module<'a>(
                                     // a rule-block one, which in turn
                                     // shadows the built-in default.
                                     //
-                                    // Needed for a match against ninja's `BindinEnv`.
+                                    // Needed for a match against ninja's `BindingEnv`.
                                     variables
                                         .get(MSVC_DEPS_PREFIX_VARIABLE)
                                         .map(|value| value.as_ref())

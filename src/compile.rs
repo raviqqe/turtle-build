@@ -118,39 +118,6 @@ fn compile_module<'a>(
                             .get(build.rule())
                             .ok_or_else(|| CompileError::RuleNotFound(build.rule().into()))?;
 
-                        let dependency_style = match rule
-                            .deps()
-                            .map(|deps| interpolate_variables(deps, &variables))
-                        {
-                            None => None,
-                            Some(deps) => Some(parse_dependency_style(
-                                &deps,
-                                interpolate_variables(
-                                    // `msvc_deps_prefix` is a plain 'ol
-                                    // variable which resolves through the normal
-                                    // scope chain: a build- or file-level
-                                    // binding (both already folded into
-                                    // `variables`, build over file) shadows
-                                    // a rule-block one, which in turn
-                                    // shadows the built-in default.
-                                    //
-                                    // Needed for a match against ninja's `BindingEnv`.
-                                    variables
-                                        .get(MSVC_DEPS_PREFIX_VARIABLE)
-                                        .map(|value| value.as_ref())
-                                        .or_else(|| rule.msvc_deps_prefix())
-                                        .unwrap_or(DEFAULT_MSVC_DEPS_PREFIX),
-                                    &variables,
-                                ),
-                            )?),
-                        };
-
-                        if matches!(dependency_style, Some(DependencyStyle::Gcc))
-                            && rule.depfile().is_none()
-                        {
-                            return Err(CompileError::MissingDepfile(rule.name().into()));
-                        }
-
                         Some(
                             Rule::new(
                                 interpolate_variables(rule.command(), &variables),
@@ -158,11 +125,7 @@ fn compile_module<'a>(
                                     interpolate_variables(description, &variables)
                                 }),
                             )
-                            .with_depfile(
-                                rule.depfile()
-                                    .map(|depfile| interpolate_variables(depfile, &variables)),
-                            )
-                            .with_dependency_style(dependency_style),
+                            .with_dependency_style(compile_dependency_style(rule, &variables)?),
                         )
                     },
                     build
@@ -229,17 +192,43 @@ fn compile_module<'a>(
     Ok(())
 }
 
-fn parse_dependency_style(
-    style: &str,
-    msvc_deps_prefix: String,
-) -> Result<DependencyStyle, CompileError> {
-    match style {
-        "gcc" => Ok(DependencyStyle::Gcc),
-        "msvc" => Ok(DependencyStyle::Msvc {
-            prefix: msvc_deps_prefix,
+fn compile_dependency_style(
+    rule: &ast::Rule,
+    variables: &TrainMap<&str, Arc<str>>,
+) -> Result<Option<DependencyStyle>, CompileError> {
+    let deps = rule
+        .deps()
+        .map(|deps| interpolate_variables(deps, variables));
+    let depfile = rule
+        .depfile()
+        .map(|depfile| interpolate_variables(depfile, variables));
+
+    Ok(match (deps.as_deref(), depfile) {
+        (None, None) => None,
+        (None, Some(path)) => Some(DependencyStyle::Depfile { path }),
+        (Some("gcc"), Some(depfile)) => Some(DependencyStyle::Gcc { depfile }),
+        (Some("gcc"), None) => return Err(CompileError::MissingDepfile(rule.name().into())),
+        (Some("msvc"), _) => Some(DependencyStyle::Msvc {
+            prefix: interpolate_variables(
+                // `msvc_deps_prefix` is a plain 'ol
+                // variable which resolves through the normal
+                // scope chain: a build- or file-level
+                // binding (both already folded into
+                // `variables`, build over file) shadows
+                // a rule-block one, which in turn
+                // shadows the built-in default.
+                //
+                // Needed for a match against ninja's `BindingEnv`.
+                variables
+                    .get(MSVC_DEPS_PREFIX_VARIABLE)
+                    .map(|value| value.as_ref())
+                    .or_else(|| rule.msvc_deps_prefix())
+                    .unwrap_or(DEFAULT_MSVC_DEPS_PREFIX),
+                variables,
+            ),
         }),
-        _ => Err(CompileError::InvalidDependencyStyle(style.into())),
-    }
+        (Some(deps), _) => return Err(CompileError::InvalidDependencyStyle(deps.into())),
+    })
 }
 
 pub fn compile_dynamic(module: &ast::DynamicModule) -> Result<DynamicConfiguration, CompileError> {
@@ -876,6 +865,46 @@ mod tests {
     }
 
     #[test]
+    fn compile_depfile_without_dependency_style() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast::Rule::new("foo", "bar", None)
+                            .with_depfile(Some("foo.d".into()))
+                            .into(),
+                        ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_configuration(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(
+                        vec!["bar".into()],
+                        Rule::new("bar", None).with_dependency_style(Some(
+                            DependencyStyle::Depfile {
+                                path: "foo.d".into()
+                            }
+                        )),
+                        vec![]
+                    )
+                    .into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
     fn compile_gcc_dependency_style() {
         assert_eq!(
             compile(
@@ -900,9 +929,9 @@ mod tests {
                     "bar".into(),
                     ir_explicit_build(
                         vec!["bar".into()],
-                        Rule::new("bar", None)
-                            .with_depfile(Some("foo.d".into()))
-                            .with_dependency_style(Some(DependencyStyle::Gcc)),
+                        Rule::new("bar", None).with_dependency_style(Some(DependencyStyle::Gcc {
+                            depfile: "foo.d".into()
+                        })),
                         vec![]
                     )
                     .into()
@@ -937,6 +966,28 @@ mod tests {
     }
 
     #[test]
+    fn fail_to_compile_unknown_dependency_style() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast::Rule::new("foo", "bar", None)
+                            .with_deps(Some("clang".into()))
+                            .into(),
+                        ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            ),
+            Err(CompileError::InvalidDependencyStyle("clang".into()))
+        );
+    }
+
+    #[test]
     fn compile_msvc_dependency_style_with_default_prefix() {
         assert_eq!(
             compile(
@@ -944,6 +995,45 @@ mod tests {
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
                         ast::Rule::new("foo", "bar", None)
+                            .with_deps(Some("msvc".into()))
+                            .into(),
+                        ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_configuration(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(
+                        vec!["bar".into()],
+                        Rule::new("bar", None).with_dependency_style(Some(DependencyStyle::Msvc {
+                            prefix: "Note: including file: ".into()
+                        })),
+                        vec![]
+                    )
+                    .into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn compile_msvc_dependency_style_ignoring_depfile() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast::Rule::new("foo", "bar", None)
+                            .with_depfile(Some("foo.d".into()))
                             .with_deps(Some("msvc".into()))
                             .into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),

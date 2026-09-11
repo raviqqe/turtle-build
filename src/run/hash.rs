@@ -107,6 +107,5 @@ fn hash_command(build: &Build, hasher: &mut impl Hasher) {
     let rule = build.rule();
 
     rule.map(Rule::command).hash(hasher);
-    rule.and_then(Rule::depfile).hash(hasher);
     rule.and_then(Rule::dependency_style).hash(hasher);
 }

@@ -467,16 +467,10 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Vec<String>, Appl
     }
 
     // Ninja absorbs a gcc-style depfile into its own dependency tracking and
-    // then deletes it, and since turtle's database plays that role instead., a
-    // depfile is only ever left on disk for a failed command, so that a
-    // retry can still read it.
-    //
-    // `deps = msvc` never touches `depfile` at all
-    // (matching real ninja, which silently ignores the combination). A
-    // command is allowed to not write a depfile at all (A1), in which case
-    // there is nothing to clean up.
-    if rule.dependency_style() == Some(&DependencyStyle::Gcc)
-        && let Some(depfile) = rule.depfile()
+    // then deletes it. As turtle's database plays that role, a depfile is only
+    // left on disk for a failed command. A command may also not write one at
+    // all, in which case there is nothing to clean up.
+    if let Some(DependencyStyle::Gcc { depfile }) = rule.dependency_style()
         && context
             .application()
             .file_system()
@@ -498,16 +492,19 @@ async fn read_rule_output(
     rule: &Rule,
     output: &mut Output,
 ) -> Result<Vec<String>, ApplicationError> {
-    let mut discovered_dependencies = vec![];
+    let mut discovered_dependencies = match rule.dependency_style() {
+        None => vec![],
+        Some(DependencyStyle::Depfile { path } | DependencyStyle::Gcc { depfile: path }) => {
+            read_depfile(context, path).await?
+        }
+        Some(DependencyStyle::Msvc { prefix }) => {
+            let (includes, stdout) = extract_show_includes(&output.stdout, prefix.as_bytes());
 
-    if let Some(DependencyStyle::Msvc { prefix }) = rule.dependency_style() {
-        let (includes, stdout) = extract_show_includes(&output.stdout, prefix.as_bytes());
+            output.stdout = stdout;
 
-        discovered_dependencies = includes;
-        output.stdout = stdout;
-    } else if let Some(depfile) = rule.depfile() {
-        discovered_dependencies = read_depfile(context, depfile).await?;
-    }
+            includes
+        }
+    };
 
     for dependency in &mut discovered_dependencies {
         *dependency = canonicalize_path(dependency);

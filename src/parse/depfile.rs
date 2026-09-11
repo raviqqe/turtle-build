@@ -21,13 +21,12 @@ pub fn depfile(input: &str) -> IResult<&str, Vec<String>> {
 fn rule(input: &str) -> IResult<&str, Vec<String>> {
     map(
         (
-            not(eof),
             inline_blank,
             many0(terminated(token, inline_blank)),
             colon,
             terminated(many0(preceded(inline_blank, token)), inline_blank),
         ),
-        |(_, _, _, _, dependencies)| dependencies,
+        |(_, _, _, dependencies)| dependencies,
     )
     .parse(input)
 }
@@ -51,14 +50,7 @@ fn token_character(input: &str) -> IResult<&str, char> {
 }
 
 fn colon(input: &str) -> IResult<&str, ()> {
-    value(
-        (),
-        terminated(
-            tag(":"),
-            peek(alt((value((), one_of(" \t\r\n")), value((), eof)))),
-        ),
-    )
-    .parse(input)
+    value((), terminated(tag(":"), peek(alt((multispace1, eof))))).parse(input)
 }
 
 fn inline_blank(input: &str) -> IResult<&str, ()> {
@@ -123,12 +115,20 @@ mod tests {
             depfile("foo.o: foo.h bar.o: bar.h\n").unwrap().1,
             vec!["foo.h", "bar.o", "bar.h"]
         );
+        assert_eq!(
+            depfile("foo.o: foo.h : bar.h\n").unwrap().1,
+            vec!["foo.h", "bar.h"]
+        );
     }
 
     #[test]
     fn parse_line_continuation() {
         assert_eq!(
             depfile("foo.o: foo.h \\\r\n bar.h\r\n").unwrap().1,
+            vec!["foo.h", "bar.h"]
+        );
+        assert_eq!(
+            depfile("foo.o: foo.h \\\r bar.h\r").unwrap().1,
             vec!["foo.h", "bar.h"]
         );
         assert_eq!(depfile("foo.o: foo.h \\\n\n").unwrap().1, vec!["foo.h"]);

@@ -210,13 +210,11 @@ fn compile_dependency_style(
         (Some("gcc"), None) => return Err(CompileError::MissingDepfile(rule.name().into())),
         (Some("msvc"), _) => Some(DependencyStyle::Msvc {
             prefix: interpolate_variables(
-                // `msvc_deps_prefix` is a plain 'ol
-                // variable which resolves through the normal
-                // scope chain: a build- or file-level
-                // binding (both already folded into
-                // `variables`, build over file) shadows
-                // a rule-block one, which in turn
-                // shadows the built-in default.
+                // `msvc_deps_prefix` is a plain 'ol variable which resolves
+                // through the normal scope chain: a build- or file-level
+                // binding (both already folded into `variables`, build over
+                // file) shadows a rule-block one, which in turn shadows the
+                // built-in default.
                 //
                 // Needed for a match against ninja's `BindingEnv`.
                 variables
@@ -865,7 +863,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_depfile_without_dependency_style() {
+    fn compile_depfile_dependency_style() {
         assert_eq!(
             compile(
                 &[(

@@ -210,13 +210,6 @@ fn compile_dependency(
         (Some("gcc"), None) => return Err(CompileError::MissingDepfile(rule.name().into())),
         (Some("msvc"), _) => Some(Dependency::Msvc {
             prefix: interpolate_variables(
-                // `msvc_deps_prefix` is a plain 'ol variable which resolves
-                // through the normal scope chain: a build- or file-level
-                // binding (both already folded into `variables`, build over
-                // file) shadows a rule-block one, which in turn shadows the
-                // built-in default.
-                //
-                // Needed for a match against ninja's `BindingEnv`.
                 variables
                     .get(MSVC_DEPS_PREFIX_VARIABLE)
                     .map(|value| value.as_ref())

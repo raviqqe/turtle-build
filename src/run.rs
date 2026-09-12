@@ -343,16 +343,14 @@ fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> Appli
             match outputs
                 .iter()
                 .map(|output| {
-                    Ok::<_, ApplicationError>(
-                        context
-                            .application()
-                            .database()
-                            .get_source(output)?
-                            .map(|string| string.into())
-                            .unwrap_or_else(|| output.clone()),
-                    )
+                    Ok(context
+                        .application()
+                        .database()
+                        .get_source(output)?
+                        .map(|string| string.into())
+                        .unwrap_or_else(|| output.clone()))
                 })
-                .collect::<Result<Vec<_>, _>>()
+                .collect::<Result<Vec<_>, ApplicationError>>()
             {
                 Ok(outputs) => {
                     BuildGraphError::CircularDependency(outputs.into_iter().dedup().collect())

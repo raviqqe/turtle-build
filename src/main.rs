@@ -47,10 +47,13 @@ async fn main() {
         OsConsole::new(),
         OsDatabase::new(),
         OsFileSystem::new(
-            usize::try_from(open_file_limit())
-                .unwrap_or(usize::MAX)
-                .saturating_sub(DEFAULT_FILE_COUNT_PER_PROCESS * (job_limit + 1))
-                .max(1),
+            usize::try_from(cfg_select! {
+                unix => Resource::NOFILE.get_soft().unwrap(),
+                _ => u64::MAX,
+            })
+            .unwrap_or(usize::MAX)
+            .saturating_sub(DEFAULT_FILE_COUNT_PER_PROCESS * (job_limit + 1))
+            .max(1),
         ),
     )
     .into();
@@ -189,14 +192,4 @@ async fn resolve_submodule_path(
             .canonicalize_path(&module_path.parent().unwrap().join(submodule_path))
             .await?,
     ))
-}
-
-#[cfg(unix)]
-fn open_file_limit() -> u64 {
-    Resource::NOFILE.get_soft().unwrap()
-}
-
-#[cfg(not(unix))]
-fn open_file_limit() -> u64 {
-    u64::MAX
 }

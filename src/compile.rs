@@ -125,7 +125,7 @@ fn compile_module<'a>(
                                     interpolate_variables(description, &variables)
                                 }),
                             )
-                            .with_dependency(compile_dependency(rule, &variables)?),
+                            .with_dependency(compile_dependency(build, rule, &variables)?),
                         )
                     },
                     build
@@ -193,6 +193,7 @@ fn compile_module<'a>(
 }
 
 fn compile_dependency(
+    build: &ast::Build,
     rule: &ast::Rule,
     variables: &TrainMap<&str, Arc<str>>,
 ) -> Result<Option<Dependency>, CompileError> {
@@ -209,17 +210,34 @@ fn compile_dependency(
         (Some("gcc"), Some(path)) => Some(Dependency::Gcc { path }),
         (Some("gcc"), None) => return Err(CompileError::MissingDepfile(rule.name().into())),
         (Some("msvc"), _) => Some(Dependency::Msvc {
-            prefix: interpolate_variables(
-                variables
-                    .get(MSVC_DEPS_PREFIX_VARIABLE)
-                    .map(|value| value.as_ref())
-                    .or_else(|| rule.msvc_deps_prefix())
-                    .unwrap_or(DEFAULT_MSVC_DEPS_PREFIX),
-                variables,
-            ),
+            prefix: compile_msvc_deps_prefix(build, rule, variables),
         }),
         (Some(deps), _) => return Err(CompileError::InvalidDependencyStyle(deps.into())),
     })
+}
+
+// Variables are resolved in the order of build, rule, and file scopes, and an
+// empty prefix falls back to the default one, both like ninja.
+fn compile_msvc_deps_prefix(
+    build: &ast::Build,
+    rule: &ast::Rule,
+    variables: &TrainMap<&str, Arc<str>>,
+) -> String {
+    build
+        .variable_definitions()
+        .iter()
+        .rev()
+        .find(|definition| definition.name() == MSVC_DEPS_PREFIX_VARIABLE)
+        .map(ast::VariableDefinition::value)
+        .or_else(|| rule.msvc_deps_prefix())
+        .or_else(|| {
+            variables
+                .get(MSVC_DEPS_PREFIX_VARIABLE)
+                .map(|value| value.as_ref())
+        })
+        .map(|prefix| interpolate_variables(prefix, variables))
+        .filter(|prefix| !prefix.is_empty())
+        .unwrap_or_else(|| DEFAULT_MSVC_DEPS_PREFIX.into())
 }
 
 pub fn compile_dynamic(module: &ast::DynamicModule) -> Result<DynamicConfiguration, CompileError> {
@@ -1054,6 +1072,45 @@ mod tests {
     }
 
     #[test]
+    fn compile_msvc_dependency_with_empty_prefix() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast::Rule::new("foo", "bar", None)
+                            .with_deps(Some("msvc".into()))
+                            .with_msvc_deps_prefix(Some("".into()))
+                            .into(),
+                        ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_configuration(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(
+                        vec!["bar".into()],
+                        Rule::new("bar", None).with_dependency(Some(Dependency::Msvc {
+                            prefix: "Note: including file: ".into()
+                        })),
+                        vec![]
+                    )
+                    .into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
     fn compile_msvc_dependency_with_custom_prefix() {
         assert_eq!(
             compile(
@@ -1136,11 +1193,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_msvc_dependency_with_global_prefix_shadowing_rule_prefix() {
-        // Ninja resolves `msvc_deps_prefix` as an ordinary variable:
-        // build-level binding, then file scope, then the rule -- a rule
-        // binding is only consulted when neither the build statement nor
-        // its enclosing file scope define the variable.
+    fn compile_msvc_dependency_with_rule_prefix_shadowing_global_prefix() {
         assert_eq!(
             compile(
                 &[(
@@ -1166,7 +1219,7 @@ mod tests {
                     ir_explicit_build(
                         vec!["bar".into()],
                         Rule::new("bar", None).with_dependency(Some(Dependency::Msvc {
-                            prefix: "global prefix: ".into()
+                            prefix: "rule prefix: ".into()
                         })),
                         vec![]
                     )

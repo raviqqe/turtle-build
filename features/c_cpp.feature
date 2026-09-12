@@ -72,7 +72,7 @@ Feature: C and C++ dependency discovery
       rule cc
         command = printf 'Remarque : inclusion du fichier : header.h\ncompiled\n' && cp $in $out
         deps = msvc
-        msvc_deps_prefix = Remarque : inclusion du fichier : 
+        msvc_deps_prefix = Remarque : inclusion du fichier :
 
       build foo.o: cc source.c
 
@@ -91,7 +91,7 @@ Feature: C and C++ dependency discovery
   Scenario: Discover a header via a custom msvc_deps_prefix declared at the top level
     Given a file named "build.ninja" with:
       """
-      msvc_deps_prefix = Remarque : inclusion du fichier : 
+      msvc_deps_prefix = Remarque : inclusion du fichier :
 
       rule cc
         command = printf 'Remarque : inclusion du fichier : header.h\ncompiled\n' && cp $in $out
@@ -117,10 +117,35 @@ Feature: C and C++ dependency discovery
       rule cc
         command = printf 'Remarque : inclusion du fichier : header.h\ncompiled\n' && cp $in $out
         deps = msvc
-        msvc_deps_prefix = WRONG: 
+        msvc_deps_prefix = WRONG:
 
       build foo.o: cc source.c
-        msvc_deps_prefix = Remarque : inclusion du fichier : 
+        msvc_deps_prefix = Remarque : inclusion du fichier :
+
+      """
+    And a file named "source.c" with "int main(void) { return 0; }"
+    And a file named "header.h" with "#define FOO 1"
+    When I successfully run `turtle`
+    And a file named "header.h" with "#define FOO 2"
+    And I successfully run `turtle`
+    Then the stdout should contain exactly:
+      """
+      compiled
+      compiled
+      """
+
+  Scenario: Prefer a rule-level msvc_deps_prefix over a conflicting top-level one
+    Given a file named "build.ninja" with:
+      """
+      msvc_deps_prefix = WRONG:
+
+      rule cc
+        command = printf 'Remarque : inclusion du fichier : header.h\ncompiled\n' && cp $in $out
+        deps = msvc
+        msvc_deps_prefix = Remarque : inclusion du fichier :
+
+      build foo.o: cc source.c
+        cflags = -O2
 
       """
     And a file named "source.c" with "int main(void) { return 0; }"
@@ -253,9 +278,9 @@ Feature: C and C++ dependency discovery
     When I successfully run `turtle foo.o`
     Then the file named "foo.o" should exist
 
+  @turtle
   # TODO Remove this scenario once newly discovered dependencies are recorded
   # without being built after the command that discovered them.
-  @turtle
   Scenario: Build a depfile-discovered generated header on a clean checkout
     Given a file named "build.ninja" with:
       """

@@ -203,23 +203,24 @@ fn compile_dependency(
     rule: &ast::Rule,
     variables: &TrainMap<&str, Arc<str>>,
 ) -> Result<Option<Dependency>, CompileError> {
-    let deps = rule
-        .deps()
-        .map(|deps| interpolate_variables(deps, variables));
-    let depfile = rule
-        .depfile()
-        .map(|depfile| interpolate_variables(depfile, variables));
-
-    Ok(match (deps.as_deref(), depfile) {
-        (None, None) => None,
-        (None, Some(path)) => Some(Dependency::Depfile { path }),
-        (Some("gcc"), Some(path)) => Some(Dependency::Gcc { path }),
-        (Some("gcc"), None) => return Err(CompileError::MissingDepfile(rule.name().into())),
-        (Some("msvc"), _) => Some(Dependency::Msvc {
-            prefix: compile_msvc_deps_prefix(build, rule, variables),
-        }),
-        (Some(deps), _) => return Err(CompileError::InvalidDependencyStyle(deps.into())),
-    })
+    Ok(
+        match (
+            rule.deps()
+                .map(|deps| interpolate_variables(deps, variables))
+                .as_deref(),
+            rule.depfile()
+                .map(|depfile| interpolate_variables(depfile, variables)),
+        ) {
+            (None, None) => None,
+            (None, Some(path)) => Some(Dependency::Depfile { path }),
+            (Some("gcc"), Some(path)) => Some(Dependency::Gcc { path }),
+            (Some("gcc"), None) => return Err(CompileError::MissingDepfile(rule.name().into())),
+            (Some("msvc"), _) => Some(Dependency::Msvc {
+                prefix: compile_msvc_deps_prefix(build, rule, variables),
+            }),
+            (Some(deps), _) => return Err(CompileError::InvalidDependencyStyle(deps.into())),
+        },
+    )
 }
 
 // Variables are resolved in the order of build, rule, and file scopes, and an

@@ -4,7 +4,10 @@ mod header_dependency;
 mod log;
 mod options;
 
-use self::{context::Context as RunContext, header_dependency::read_rule_output};
+use self::{
+    context::Context as RunContext,
+    header_dependency::{exclude_show_includes, read_rule_output},
+};
 use crate::{
     build_graph::{BuildGraph, BuildGraphError},
     compile::compile_dynamic,
@@ -20,7 +23,7 @@ use async_recursion::async_recursion;
 use futures::future::{FutureExt, Shared, try_join_all};
 use itertools::Itertools;
 pub use options::Options;
-use std::{future::Future, path::Path, pin::Pin, sync::Arc};
+use std::{future::Future, path::Path, pin::Pin, process::Output, sync::Arc};
 use tokio::{spawn, time::Instant, try_join};
 
 type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<(), ApplicationError>> + Send>>>;
@@ -229,7 +232,8 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             )
             .await?;
 
-            let new_header_dependencies = run_rule(&context, rule).await?;
+            let new_header_dependencies =
+                read_rule_output(&context, rule, &run_rule(&context, rule).await?).await?;
 
             if !new_header_dependencies.is_empty() {
                 context
@@ -411,8 +415,8 @@ fn classify_inputs<'a>(
         })
 }
 
-async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Vec<String>, ApplicationError> {
-    let ((mut output, duration), mut console) = try_join!(
+async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, ApplicationError> {
+    let ((output, duration), mut console) = try_join!(
         async {
             let start_time = Instant::now();
             let output = context
@@ -437,11 +441,11 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Vec<String>, Appl
         }
     )?;
 
-    let dependencies = read_rule_output(context, rule, &mut output).await?;
-
     profile!(context, console, "duration: {} ms", duration.as_millis());
 
-    console.write_stdout(&output.stdout).await?;
+    console
+        .write_stdout(&exclude_show_includes(rule, &output.stdout))
+        .await?;
     console.write_stderr(&output.stderr).await?;
 
     if !output.status.success() {
@@ -459,7 +463,7 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Vec<String>, Appl
         return Err(ApplicationError::Build);
     }
 
-    Ok(dependencies)
+    Ok(output)
 }
 
 fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> ApplicationError {

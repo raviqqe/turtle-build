@@ -5,12 +5,12 @@ use crate::{
     ir::{HeaderDependency, Rule},
     parse::parse_depfile,
 };
-use std::process::Output;
+use std::{borrow::Cow, process::Output};
 
 pub async fn read_rule_output(
     context: &Context,
     rule: &Rule,
-    output: &mut Output,
+    output: &Output,
 ) -> Result<Vec<String>, ApplicationError> {
     let mut dependencies = match rule.header_dependency() {
         None => vec![],
@@ -18,11 +18,7 @@ pub async fn read_rule_output(
             read_depfile(context, path).await?
         }
         Some(HeaderDependency::Msvc { prefix }) => {
-            let (includes, stdout) = extract_show_includes(&output.stdout, prefix.as_bytes());
-
-            output.stdout = stdout;
-
-            includes
+            extract_show_includes(&output.stdout, prefix.as_bytes()).0
         }
     };
 
@@ -45,6 +41,14 @@ pub async fn read_rule_output(
     }
 
     Ok(dependencies)
+}
+
+pub fn exclude_show_includes<'a>(rule: &Rule, output: &'a [u8]) -> Cow<'a, [u8]> {
+    if let Some(HeaderDependency::Msvc { prefix }) = rule.header_dependency() {
+        extract_show_includes(output, prefix.as_bytes()).1.into()
+    } else {
+        output.into()
+    }
 }
 
 async fn read_depfile(context: &Context, path: &str) -> Result<Vec<String>, ApplicationError> {
@@ -157,6 +161,27 @@ mod tests {
         assert_eq!(
             extract_show_includes(b"Hinweis: foo.h\n", b"Hinweis: "),
             (vec!["foo.h".into()], vec![])
+        );
+    }
+
+    #[test]
+    fn exclude_show_includes_without_msvc_header_dependency() {
+        assert_eq!(
+            exclude_show_includes(&Rule::new("", None), b"Note: including file: foo.h\nAAA\n"),
+            b"Note: including file: foo.h\nAAA\n".to_vec()
+        );
+    }
+
+    #[test]
+    fn exclude_show_includes_with_msvc_header_dependency() {
+        assert_eq!(
+            exclude_show_includes(
+                &Rule::new("", None).with_header_dependency(Some(HeaderDependency::Msvc {
+                    prefix: "Note: including file: ".into()
+                })),
+                b"Note: including file: foo.h\nAAA\n"
+            ),
+            b"AAA\n".to_vec()
         );
     }
 }

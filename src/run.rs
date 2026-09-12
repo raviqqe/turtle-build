@@ -106,6 +106,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             futures.push(build_input(context.clone(), input).await?);
         }
 
+        // TODO Merge these with dynamic ones?
         try_join_all(futures).await?;
 
         // TODO Consider caching dynamic modules.

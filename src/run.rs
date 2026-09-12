@@ -254,6 +254,7 @@ async fn build_input(
     )
 }
 
+// TODO Use `FileSystem::exists`?
 async fn check_file_existence(context: &RunContext, path: &str) -> Result<(), ApplicationError> {
     if context
         .application()

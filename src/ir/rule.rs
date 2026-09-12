@@ -1,15 +1,10 @@
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub enum Dependency {
-    Depfile { path: String },
-    Gcc { path: String },
-    Msvc { prefix: String },
-}
+use super::HeaderDependency;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rule {
     command: String,
     description: Option<String>,
-    dependency: Option<Dependency>,
+    header_dependency: Option<HeaderDependency>,
 }
 
 impl Rule {
@@ -17,12 +12,12 @@ impl Rule {
         Self {
             command: command.into(),
             description,
-            dependency: None,
+            header_dependency: None,
         }
     }
 
-    pub fn with_dependency(mut self, dependency: Option<Dependency>) -> Self {
-        self.dependency = dependency;
+    pub fn with_header_dependency(mut self, header_dependency: Option<HeaderDependency>) -> Self {
+        self.header_dependency = header_dependency;
         self
     }
 
@@ -34,7 +29,7 @@ impl Rule {
         self.description.as_deref()
     }
 
-    pub fn dependency(&self) -> Option<&Dependency> {
-        self.dependency.as_ref()
+    pub fn header_dependency(&self) -> Option<&HeaderDependency> {
+        self.header_dependency.as_ref()
     }
 }

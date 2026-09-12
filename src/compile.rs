@@ -7,7 +7,7 @@ pub use self::error::CompileError;
 use self::{context::Context, global_state::GlobalState, module_state::ModuleState};
 use crate::{
     ast,
-    ir::{Build, Configuration, Dependency, DynamicBuild, DynamicConfiguration, Rule},
+    ir::{Build, Configuration, DynamicBuild, DynamicConfiguration, HeaderDependency, Rule},
     module_dependency::ModuleDependencyMap,
 };
 use once_cell::sync::Lazy;
@@ -129,7 +129,9 @@ fn compile_module<'a>(
                                     interpolate_variables(description, &variables)
                                 }),
                             )
-                            .with_dependency(compile_dependency(build, rule, &variables)?),
+                            .with_header_dependency(
+                                compile_header_dependency(build, rule, &variables)?,
+                            ),
                         )
                     },
                     build
@@ -199,11 +201,11 @@ fn compile_module<'a>(
     Ok(())
 }
 
-fn compile_dependency(
+fn compile_header_dependency(
     build: &ast::Build,
     rule: &ast::Rule,
     variables: &TrainMap<&str, Arc<str>>,
-) -> Result<Option<Dependency>, CompileError> {
+) -> Result<Option<HeaderDependency>, CompileError> {
     Ok(
         match (
             rule.deps()
@@ -213,10 +215,10 @@ fn compile_dependency(
                 .map(|depfile| interpolate_variables(depfile, variables)),
         ) {
             (None, None) => None,
-            (None, Some(path)) => Some(Dependency::Depfile { path }),
-            (Some("gcc"), Some(path)) => Some(Dependency::Gcc { path }),
+            (None, Some(path)) => Some(HeaderDependency::Depfile { path }),
+            (Some("gcc"), Some(path)) => Some(HeaderDependency::Gcc { path }),
             (Some("gcc"), None) => return Err(CompileError::MissingDepfile(rule.name().into())),
-            (Some("msvc"), _) => Some(Dependency::Msvc {
+            (Some("msvc"), _) => Some(HeaderDependency::Msvc {
                 prefix: compile_msvc_deps_prefix(build, rule, variables),
             }),
             (Some(deps), _) => return Err(CompileError::InvalidDependencyStyle(deps.into())),
@@ -881,7 +883,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_depfile_dependency() {
+    fn compile_depfile_header_dependency() {
         assert_eq!(
             compile(
                 &[(
@@ -904,9 +906,11 @@ mod tests {
                     "bar".into(),
                     ir_explicit_build(
                         vec!["bar".into()],
-                        Rule::new("bar", None).with_dependency(Some(Dependency::Depfile {
-                            path: "foo.d".into()
-                        })),
+                        Rule::new("bar", None).with_header_dependency(Some(
+                            HeaderDependency::Depfile {
+                                path: "foo.d".into()
+                            }
+                        )),
                         vec![]
                     )
                     .into()
@@ -919,7 +923,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_gcc_dependency() {
+    fn compile_gcc_header_dependency() {
         assert_eq!(
             compile(
                 &[(
@@ -943,9 +947,11 @@ mod tests {
                     "bar".into(),
                     ir_explicit_build(
                         vec!["bar".into()],
-                        Rule::new("bar", None).with_dependency(Some(Dependency::Gcc {
-                            path: "foo.d".into()
-                        })),
+                        Rule::new("bar", None).with_header_dependency(Some(
+                            HeaderDependency::Gcc {
+                                path: "foo.d".into()
+                            }
+                        )),
                         vec![]
                     )
                     .into()
@@ -958,7 +964,7 @@ mod tests {
     }
 
     #[test]
-    fn fail_to_compile_gcc_dependency_without_depfile() {
+    fn fail_to_compile_gcc_header_dependency_without_depfile() {
         assert_eq!(
             compile(
                 &[(
@@ -980,7 +986,7 @@ mod tests {
     }
 
     #[test]
-    fn fail_to_compile_unknown_dependency() {
+    fn fail_to_compile_unknown_header_dependency() {
         assert_eq!(
             compile(
                 &[(
@@ -1002,7 +1008,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_msvc_dependency_with_default_prefix() {
+    fn compile_msvc_header_dependency_with_default_prefix() {
         assert_eq!(
             compile(
                 &[(
@@ -1025,9 +1031,11 @@ mod tests {
                     "bar".into(),
                     ir_explicit_build(
                         vec!["bar".into()],
-                        Rule::new("bar", None).with_dependency(Some(Dependency::Msvc {
-                            prefix: "Note: including file: ".into()
-                        })),
+                        Rule::new("bar", None).with_header_dependency(Some(
+                            HeaderDependency::Msvc {
+                                prefix: "Note: including file: ".into()
+                            }
+                        )),
                         vec![]
                     )
                     .into()
@@ -1040,7 +1048,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_msvc_dependency_ignoring_depfile() {
+    fn compile_msvc_header_dependency_ignoring_depfile() {
         assert_eq!(
             compile(
                 &[(
@@ -1064,9 +1072,11 @@ mod tests {
                     "bar".into(),
                     ir_explicit_build(
                         vec!["bar".into()],
-                        Rule::new("bar", None).with_dependency(Some(Dependency::Msvc {
-                            prefix: "Note: including file: ".into()
-                        })),
+                        Rule::new("bar", None).with_header_dependency(Some(
+                            HeaderDependency::Msvc {
+                                prefix: "Note: including file: ".into()
+                            }
+                        )),
                         vec![]
                     )
                     .into()
@@ -1079,7 +1089,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_msvc_dependency_with_empty_prefix() {
+    fn compile_msvc_header_dependency_with_empty_prefix() {
         assert_eq!(
             compile(
                 &[(
@@ -1103,9 +1113,11 @@ mod tests {
                     "bar".into(),
                     ir_explicit_build(
                         vec!["bar".into()],
-                        Rule::new("bar", None).with_dependency(Some(Dependency::Msvc {
-                            prefix: "Note: including file: ".into()
-                        })),
+                        Rule::new("bar", None).with_header_dependency(Some(
+                            HeaderDependency::Msvc {
+                                prefix: "Note: including file: ".into()
+                            }
+                        )),
                         vec![]
                     )
                     .into()
@@ -1118,7 +1130,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_msvc_dependency_with_custom_prefix() {
+    fn compile_msvc_header_dependency_with_custom_prefix() {
         assert_eq!(
             compile(
                 &[(
@@ -1142,9 +1154,11 @@ mod tests {
                     "bar".into(),
                     ir_explicit_build(
                         vec!["bar".into()],
-                        Rule::new("bar", None).with_dependency(Some(Dependency::Msvc {
-                            prefix: "Hinweis: Einlesen der Datei ".into()
-                        })),
+                        Rule::new("bar", None).with_header_dependency(Some(
+                            HeaderDependency::Msvc {
+                                prefix: "Hinweis: Einlesen der Datei ".into()
+                            }
+                        )),
                         vec![]
                     )
                     .into()
@@ -1157,7 +1171,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_msvc_dependency_with_global_prefix() {
+    fn compile_msvc_header_dependency_with_global_prefix() {
         assert_eq!(
             compile(
                 &[(
@@ -1185,9 +1199,11 @@ mod tests {
                     "bar".into(),
                     ir_explicit_build(
                         vec!["bar".into()],
-                        Rule::new("bar", None).with_dependency(Some(Dependency::Msvc {
-                            prefix: "Hinweis: Einlesen der Datei ".into()
-                        })),
+                        Rule::new("bar", None).with_header_dependency(Some(
+                            HeaderDependency::Msvc {
+                                prefix: "Hinweis: Einlesen der Datei ".into()
+                            }
+                        )),
                         vec![]
                     )
                     .into()
@@ -1200,7 +1216,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_msvc_dependency_with_rule_prefix_shadowing_global_prefix() {
+    fn compile_msvc_header_dependency_with_rule_prefix_shadowing_global_prefix() {
         assert_eq!(
             compile(
                 &[(
@@ -1225,9 +1241,11 @@ mod tests {
                     "bar".into(),
                     ir_explicit_build(
                         vec!["bar".into()],
-                        Rule::new("bar", None).with_dependency(Some(Dependency::Msvc {
-                            prefix: "rule prefix: ".into()
-                        })),
+                        Rule::new("bar", None).with_header_dependency(Some(
+                            HeaderDependency::Msvc {
+                                prefix: "rule prefix: ".into()
+                            }
+                        )),
                         vec![]
                     )
                     .into()
@@ -1240,7 +1258,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_msvc_dependency_with_build_level_prefix_shadowing_rule_prefix() {
+    fn compile_msvc_header_dependency_with_build_level_prefix_shadowing_rule_prefix() {
         assert_eq!(
             compile(
                 &[(
@@ -1273,9 +1291,11 @@ mod tests {
                     "bar".into(),
                     ir_explicit_build(
                         vec!["bar".into()],
-                        Rule::new("bar", None).with_dependency(Some(Dependency::Msvc {
-                            prefix: "build prefix: ".into()
-                        })),
+                        Rule::new("bar", None).with_header_dependency(Some(
+                            HeaderDependency::Msvc {
+                                prefix: "build prefix: ".into()
+                            }
+                        )),
                         vec![]
                     )
                     .into()

@@ -81,7 +81,7 @@ impl BuildGraph {
         self.validate()
     }
 
-    pub fn validate_discovered_dependencies(
+    pub fn validate_header_dependencies(
         &mut self,
         output: &Arc<str>,
         dependencies: &[String],
@@ -339,7 +339,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_with_discovered_dependencies() {
+    fn validate_with_header_dependencies() {
         let mut graph = BuildGraph::new(
             &[
                 (
@@ -358,7 +358,7 @@ mod tests {
         graph.validate().unwrap();
 
         assert_eq!(
-            graph.validate_discovered_dependencies(&"bar".into(), &["foo".into()]),
+            graph.validate_header_dependencies(&"bar".into(), &["foo".into()]),
             Err(BuildGraphError::CircularDependency(vec![
                 "foo".into(),
                 "bar".into(),
@@ -367,7 +367,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_without_discovered_dependencies() {
+    fn validate_without_header_dependencies() {
         let mut graph = BuildGraph::new(
             &[(
                 "foo".into(),
@@ -380,7 +380,7 @@ mod tests {
         graph.validate().unwrap();
 
         assert_eq!(
-            graph.validate_discovered_dependencies(&"foo".into(), &[]),
+            graph.validate_header_dependencies(&"foo".into(), &[]),
             Ok(())
         );
     }

@@ -1,6 +1,6 @@
-Feature: C and C++ dependency discovery
+Feature: C and C++ header dependencies
 
-  Scenario: Rebuild from a depfile-discovered header
+  Scenario: Rebuild after a header dependency from a depfile is updated
     Given a file named "build.ninja" with:
       """
       rule cc
@@ -23,7 +23,7 @@ Feature: C and C++ dependency discovery
       """
     And the file named "foo.o.d" should not exist
 
-  Scenario: Rebuild from a header discovered by a depfile without deps
+  Scenario: Rebuild after a header dependency from a depfile without deps is updated
     Given a file named "build.ninja" with:
       """
       rule cc
@@ -45,7 +45,7 @@ Feature: C and C++ dependency discovery
       """
     And the file named "foo.o.d" should exist
 
-  Scenario: Rebuild from an MSVC-discovered header
+  Scenario: Rebuild after a header dependency from MSVC is updated
     Given a file named "build.ninja" with:
       """
       rule cc
@@ -66,7 +66,7 @@ Feature: C and C++ dependency discovery
       compiled
       """
 
-  Scenario: Discover a header via a custom msvc_deps_prefix declared on the rule
+  Scenario: Read a header dependency with a custom msvc_deps_prefix declared on the rule
     Given a file named "build.ninja" with:
       """
       rule cc
@@ -88,7 +88,7 @@ Feature: C and C++ dependency discovery
       compiled
       """
 
-  Scenario: Discover a header via a custom msvc_deps_prefix declared at the top level
+  Scenario: Read a header dependency with a custom msvc_deps_prefix declared at the top level
     Given a file named "build.ninja" with:
       """
       msvc_deps_prefix = Remarque : inclusion du fichier :
@@ -159,7 +159,7 @@ Feature: C and C++ dependency discovery
       compiled
       """
 
-  Scenario: Do not rebuild a gcc-discovered header when nothing changes
+  Scenario: Do not rebuild with unchanged header dependencies from gcc
     Given a file named "build.ninja" with:
       """
       rule cc
@@ -179,7 +179,7 @@ Feature: C and C++ dependency discovery
       building
       """
 
-  Scenario: Do not rebuild an MSVC-discovered header when nothing changes
+  Scenario: Do not rebuild with unchanged header dependencies from MSVC
     Given a file named "build.ninja" with:
       """
       rule cc
@@ -213,7 +213,7 @@ Feature: C and C++ dependency discovery
     When I successfully run `turtle`
     Then the file named "foo.o" should exist
 
-  Scenario: Recover after a discovered header is deleted
+  Scenario: Recover after a header dependency is deleted
     Given a file named "build.ninja" with:
       """
       rule cc
@@ -236,7 +236,7 @@ Feature: C and C++ dependency discovery
       """
 
   @turtle
-  Scenario: Stabilize after a discovered header is deleted
+  Scenario: Stabilize after a header dependency is deleted
     Given a file named "build.ninja" with:
       """
       rule cc
@@ -279,9 +279,9 @@ Feature: C and C++ dependency discovery
     Then the file named "foo.o" should exist
 
   @turtle
-  # TODO Remove this scenario once newly discovered dependencies are recorded
-  # without being built after the command that discovered them.
-  Scenario: Build a depfile-discovered generated header on a clean checkout
+  # TODO Remove this scenario once new header dependencies are recorded without
+  # being built after the command which produces them.
+  Scenario: Build a generated header dependency from a depfile on a clean checkout
     Given a file named "build.ninja" with:
       """
       rule gen
@@ -302,7 +302,7 @@ Feature: C and C++ dependency discovery
     And the file named "gen.h" should exist
 
   @turtle
-  Scenario: Report an error for a cycle through a discovered dependency instead of hanging
+  Scenario: Report an error for a cycle through a header dependency instead of hanging
     Given a file named "build.ninja" with:
       """
       rule gen

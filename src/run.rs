@@ -12,7 +12,7 @@ use crate::{
     error::ApplicationError,
     file::canonicalize_path,
     hash_type::HashType,
-    ir::{Build, Configuration, Dependency, Rule},
+    ir::{Build, Configuration, HeaderDependency, Rule},
     parse::{parse_depfile, parse_dynamic},
     profile,
 };
@@ -151,37 +151,34 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
 
         try_join_all(futures).await?;
 
-        // Only known outputs have a rule that could ever discover
+        // Only known outputs have a rule that could ever produce header
         // dependencies, so builds without one (e.g. phony builds) never have
         // an entry to read back.
-        let stale_discovered_dependencies = if build.rule().is_some() {
+        let stale_header_dependencies = if build.rule().is_some() {
             context
                 .application()
                 .database()
-                .get_discovered_dependencies(build.id())?
+                .get_header_dependencies(build.id())?
         } else {
             vec![]
         };
 
-        // A cycle through a dependency discovered on a previous run (e.g. a
+        // A cycle through a header dependency from a previous run (e.g. a
         // generated header that itself depends on this build's output) is
         // invisible to the static graph, so gotta check before we
         // start awaiting futures for it, or two builds would await each
         // other forever.
-        if !stale_discovered_dependencies.is_empty() {
+        if !stale_header_dependencies.is_empty() {
             context
                 .build_graph()
                 .lock()
                 .await
-                .validate_discovered_dependencies(
-                    &build.outputs()[0],
-                    &stale_discovered_dependencies,
-                )
+                .validate_header_dependencies(&build.outputs()[0], &stale_header_dependencies)
                 .map_err(|error| map_build_graph_error(&context, &error))?;
         }
 
-        let mut discovered_dependencies =
-            build_discovered_dependencies(&context, &stale_discovered_dependencies).await?;
+        let mut header_dependencies =
+            build_header_dependencies(&context, &stale_header_dependencies).await?;
 
         let outputs_exist = try_join_all(
             build
@@ -193,7 +190,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         .await
         .is_ok();
         let (phony_inputs, file_inputs) =
-            classify_inputs(&context, &build, dynamic_inputs, &discovered_dependencies);
+            classify_inputs(&context, &build, dynamic_inputs, &header_dependencies);
         let timestamp_hash =
             hash::calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
@@ -220,7 +217,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             return Ok(());
         }
 
-        let mut discovered_dependencies_changed = false;
+        let mut header_dependencies_changed = false;
 
         if let Some(rule) = build.rule() {
             try_join_all(
@@ -232,30 +229,27 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             )
             .await?;
 
-            let new_discovered_dependencies = run_rule(&context, rule).await?;
+            let new_header_dependencies = run_rule(&context, rule).await?;
 
-            if !new_discovered_dependencies.is_empty() {
+            if !new_header_dependencies.is_empty() {
                 context
                     .build_graph()
                     .lock()
                     .await
-                    .validate_discovered_dependencies(
-                        &build.outputs()[0],
-                        &new_discovered_dependencies,
-                    )
+                    .validate_header_dependencies(&build.outputs()[0], &new_header_dependencies)
                     .map_err(|error| map_build_graph_error(&context, &error))?;
             }
 
-            // TODO Record newly discovered dependencies without building them.
+            // TODO Record new header dependencies without building them.
             // The command has already run, so hashing generated headers built
             // here marks this build up to date against inputs it never saw.
-            let new_discovered_dependencies =
-                build_discovered_dependencies(&context, &new_discovered_dependencies).await?;
+            let new_header_dependencies =
+                build_header_dependencies(&context, &new_header_dependencies).await?;
 
             context
                 .application()
                 .database()
-                .set_discovered_dependencies(build.id(), &new_discovered_dependencies)?;
+                .set_header_dependencies(build.id(), &new_header_dependencies)?;
 
             for output in build.outputs() {
                 context.application().database().set_output(output)?;
@@ -268,17 +262,16 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                 }
             }
 
-            discovered_dependencies_changed =
-                discovered_dependencies != new_discovered_dependencies;
-            discovered_dependencies = new_discovered_dependencies;
+            header_dependencies_changed = header_dependencies != new_header_dependencies;
+            header_dependencies = new_header_dependencies;
         }
 
         // A rule is not expected to modify its own inputs, so hashes only
-        // need to be recomputed here when the discovered dependency set
+        // need to be recomputed here when the header dependency set
         // itself changed
-        let (timestamp_hash, content_hash) = if discovered_dependencies_changed {
+        let (timestamp_hash, content_hash) = if header_dependencies_changed {
             let (phony_inputs, file_inputs) =
-                classify_inputs(&context, &build, dynamic_inputs, &discovered_dependencies);
+                classify_inputs(&context, &build, dynamic_inputs, &header_dependencies);
 
             (
                 hash::calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs)
@@ -324,15 +317,15 @@ async fn build_input(
     )
 }
 
-// Unlike `build_input`, a dependency discovered by a rule's own command (via
-// a depfile or `/showIncludes`) can't turn to hard error just
+// Unlike `build_input`, a header dependency reported by a rule's own command
+// (via a depfile or `/showIncludes`) can't turn to hard error just
 // because it went missing.
 //
 // Against Ninja, it treats that as "this build is dirty," not
-// as a failure. A discovered dependency that is a known build output is
+// as a failure. A header dependency that is a known build output is
 // still built like any other input, since generated headers must exist
 // before their consumer's inputs are hashed.
-async fn build_discovered_dependencies(
+async fn build_header_dependencies(
     context: &Arc<RunContext>,
     inputs: &[String],
 ) -> Result<Vec<String>, ApplicationError> {
@@ -400,14 +393,14 @@ fn classify_inputs<'a>(
     context: &'a RunContext,
     build: &'a Build,
     dynamic_inputs: &'a [Arc<str>],
-    discovered_dependencies: &'a [String],
+    header_dependencies: &'a [String],
 ) -> (Vec<&'a str>, Vec<&'a str>) {
     build
         .inputs()
         .iter()
         .chain(dynamic_inputs)
         .map(AsRef::as_ref)
-        .chain(discovered_dependencies.iter().map(String::as_str))
+        .chain(header_dependencies.iter().map(String::as_str))
         .unique()
         .partition::<Vec<_>, _>(|&input| {
             context
@@ -470,7 +463,7 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Vec<String>, Appl
     // then deletes it. As turtle's database plays that role, a depfile is only
     // left on disk for a failed command. A command may also not write one at
     // all, in which case there is nothing to clean up.
-    if let Some(Dependency::Gcc { path }) = rule.dependency()
+    if let Some(HeaderDependency::Gcc { path }) = rule.header_dependency()
         && context
             .application()
             .file_system()
@@ -492,12 +485,12 @@ async fn read_rule_output(
     rule: &Rule,
     output: &mut Output,
 ) -> Result<Vec<String>, ApplicationError> {
-    let mut discovered_dependencies = match rule.dependency() {
+    let mut dependencies = match rule.header_dependency() {
         None => vec![],
-        Some(Dependency::Depfile { path } | Dependency::Gcc { path }) => {
+        Some(HeaderDependency::Depfile { path } | HeaderDependency::Gcc { path }) => {
             read_depfile(context, path).await?
         }
-        Some(Dependency::Msvc { prefix }) => {
+        Some(HeaderDependency::Msvc { prefix }) => {
             let (includes, stdout) = extract_show_includes(&output.stdout, prefix.as_bytes());
 
             output.stdout = stdout;
@@ -506,11 +499,11 @@ async fn read_rule_output(
         }
     };
 
-    for dependency in &mut discovered_dependencies {
+    for dependency in &mut dependencies {
         *dependency = canonicalize_path(dependency);
     }
 
-    Ok(discovered_dependencies)
+    Ok(dependencies)
 }
 
 async fn read_depfile(context: &RunContext, path: &str) -> Result<Vec<String>, ApplicationError> {

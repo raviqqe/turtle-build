@@ -106,6 +106,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             futures.push(build_input(context.clone(), input).await?);
         }
 
+        // TODO Merge these with dynamic ones?
         try_join_all(futures).await?;
 
         // TODO Consider caching dynamic modules.
@@ -158,17 +159,17 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         )
         .await
         .is_ok();
-        let (file_inputs, phony_inputs) = build
+        let (phony_inputs, file_inputs) = build
             .inputs()
             .iter()
             .chain(dynamic_inputs)
-            .map(|string| string.as_ref())
+            .map(AsRef::as_ref)
             .partition::<Vec<_>, _>(|&input| {
-                if let Some(build) = context.configuration().outputs().get(input) {
-                    build.rule().is_some()
-                } else {
-                    true
-                }
+                context
+                    .configuration()
+                    .outputs()
+                    .get(input)
+                    .map_or_default(|build| build.rule().is_none())
             });
         let timestamp_hash =
             hash::calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
@@ -233,6 +234,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
     .await?
 }
 
+// TODO Wait for the build input?
 async fn build_input(
     context: Arc<RunContext>,
     input: &str,
@@ -252,6 +254,7 @@ async fn build_input(
     )
 }
 
+// TODO Use `FileSystem::exists`?
 async fn check_file_existence(context: &RunContext, path: &str) -> Result<(), ApplicationError> {
     if context
         .application()
@@ -313,7 +316,7 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<(), ApplicationEr
         }
     )?;
 
-    profile!(context, console, "duration: {}ms", duration.as_millis());
+    profile!(context, console, "duration: {} ms", duration.as_millis());
 
     console.write_stdout(&output.stdout).await?;
     console.write_stderr(&output.stderr).await?;
@@ -342,16 +345,14 @@ fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> Appli
             match outputs
                 .iter()
                 .map(|output| {
-                    Ok::<_, ApplicationError>(
-                        context
-                            .application()
-                            .database()
-                            .get_source(output)?
-                            .map(|string| string.into())
-                            .unwrap_or_else(|| output.clone()),
-                    )
+                    Ok(context
+                        .application()
+                        .database()
+                        .get_source(output)?
+                        .map(|string| string.into())
+                        .unwrap_or_else(|| output.clone()))
                 })
-                .collect::<Result<Vec<_>, _>>()
+                .collect::<Result<Vec<_>, ApplicationError>>()
             {
                 Ok(outputs) => {
                     BuildGraphError::CircularDependency(outputs.into_iter().dedup().collect())

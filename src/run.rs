@@ -459,10 +459,6 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Vec<String>, Appl
         return Err(ApplicationError::Build);
     }
 
-    // Ninja absorbs a gcc-style depfile into its own dependency tracking and
-    // then deletes it. As turtle's database plays that role, a depfile is only
-    // left on disk for a failed command. A command may also not write one at
-    // all, in which case there is nothing to clean up.
     if let Some(HeaderDependency::Gcc { path }) = rule.header_dependency()
         && context
             .application()

@@ -39,7 +39,7 @@ impl OsFileSystem {
     pub fn new(open_file_limit: usize) -> Self {
         Self {
             path_lock: DashSet::default(),
-            semaphore: Semaphore::new(open_file_limit),
+            semaphore: Semaphore::new(open_file_limit.min(Semaphore::MAX_PERMITS)),
         }
     }
 
@@ -127,5 +127,23 @@ impl FileSystem for OsFileSystem {
         Ok(fs::canonicalize(path)
             .await
             .map_err(|error| Self::error(error, path))?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn limit_open_files() {
+        assert_eq!(OsFileSystem::new(42).semaphore.available_permits(), 42);
+    }
+
+    #[test]
+    fn limit_open_files_to_maximum_permits() {
+        assert_eq!(
+            OsFileSystem::new(usize::MAX).semaphore.available_permits(),
+            Semaphore::MAX_PERMITS
+        );
     }
 }

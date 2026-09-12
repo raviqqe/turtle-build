@@ -17,11 +17,14 @@ use ast::{Module, Statement};
 use clap::Parser;
 use compile::compile;
 use context::Context;
+use core::error::Error;
 use error::ApplicationError;
 use futures::future::try_join_all;
 use infrastructure::{OsCommandRunner, OsConsole, OsDatabase, OsFileSystem};
 use module_dependency::ModuleDependencyMap;
 use parse::parse;
+#[cfg(unix)]
+use rlimit::Resource;
 use std::{
     collections::HashMap,
     env::set_current_dir,
@@ -34,11 +37,10 @@ use tokio::time::sleep;
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
 const DATABASE_DIRECTORY: &str = ".turtle";
-const OPEN_FILE_LIMIT: usize = if cfg!(target_os = "macos") { 256 } else { 1024 };
 const DEFAULT_FILE_COUNT_PER_PROCESS: usize = 3; // stdin, stdout, and stderr
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn Error>> {
     let arguments = Arguments::parse();
     let job_limit = arguments.job_limit.unwrap_or_else(num_cpus::get);
     let context = Context::new(
@@ -46,9 +48,12 @@ async fn main() {
         OsConsole::new(),
         OsDatabase::new(),
         OsFileSystem::new(
-            OPEN_FILE_LIMIT
-                .saturating_sub(DEFAULT_FILE_COUNT_PER_PROCESS * (job_limit + 1))
-                .max(1),
+            cfg_select! {
+                unix => usize::try_from(Resource::NOFILE.get_soft()?)?,
+                _ => usize::MAX,
+            }
+            .saturating_sub(DEFAULT_FILE_COUNT_PER_PROCESS * (job_limit + 1))
+            .max(1),
         ),
     )
     .into();
@@ -80,6 +85,8 @@ async fn main() {
 
         exit(1)
     }
+
+    Ok(())
 }
 
 async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), ApplicationError> {

@@ -159,17 +159,17 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         )
         .await
         .is_ok();
-        let (file_inputs, phony_inputs) = build
+        let (phony_inputs, file_inputs) = build
             .inputs()
             .iter()
             .chain(dynamic_inputs)
             .map(AsRef::as_ref)
             .partition::<Vec<_>, _>(|&input| {
-                if let Some(build) = context.configuration().outputs().get(input) {
-                    build.rule().is_some()
-                } else {
-                    true
-                }
+                context
+                    .configuration()
+                    .outputs()
+                    .get(input)
+                    .map_or_default(|build| build.rule().is_none())
             });
         let timestamp_hash =
             hash::calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;

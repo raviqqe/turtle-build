@@ -316,7 +316,7 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<(), ApplicationEr
         }
     )?;
 
-    profile!(context, console, "duration: {}ms", duration.as_millis());
+    profile!(context, console, "duration: {} ms", duration.as_millis());
 
     console.write_stdout(&output.stdout).await?;
     console.write_stderr(&output.stderr).await?;

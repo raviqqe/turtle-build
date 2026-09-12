@@ -24,6 +24,8 @@
     "petgraph",
     "raviqqe",
     "reimplementation",
+    "restat",
+    "rspfile",
     "rsplit",
     "rustfmt",
     "serde",

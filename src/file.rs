@@ -1,9 +1,8 @@
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, MAIN_SEPARATOR, Path, PathBuf};
 
-// A pure, lexical equivalent of ninja's `CanonicalizePath`. It MUST NOT TOUCH
-// the file system (no symlink resolution, no existence check), since it also
-// applies to paths for files that may not exist yet (like... generated
-// headers).
+// Paths are canonicalized lexically like ninja does, and never through the
+// file system, because they may point to files which do not exist yet, like
+// generated headers.
 pub fn canonicalize_path(path: &str) -> String {
     let path = Path::new(path)
         .components()
@@ -13,7 +12,7 @@ pub fn canonicalize_path(path: &str) -> String {
                 (Some(Component::Normal(_)), Component::ParentDir) => {
                     components.pop();
                 }
-                (Some(Component::Prefix(_) | Component::RootDir), Component::ParentDir) => {}
+                (Some(Component::RootDir), Component::ParentDir) => {}
                 _ => components.push(component),
             }
 
@@ -25,7 +24,7 @@ pub fn canonicalize_path(path: &str) -> String {
     if path.as_os_str().is_empty() {
         ".".into()
     } else {
-        path.to_string_lossy().into_owned()
+        path.to_string_lossy().replace(MAIN_SEPARATOR, "/")
     }
 }
 
@@ -33,6 +32,12 @@ pub fn canonicalize_path(path: &str) -> String {
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
+
+    #[test]
+    fn canonicalize_empty_path() {
+        assert_eq!(canonicalize_path(""), ".");
+        assert_eq!(canonicalize_path("."), ".");
+    }
 
     #[test]
     fn canonicalize_current_directory_component() {
@@ -74,16 +79,24 @@ mod tests {
             "/usr/include/stdio.h"
         );
         assert_eq!(canonicalize_path("/../usr/include"), "/usr/include");
-    }
-
-    #[test]
-    fn canonicalize_empty_path() {
-        assert_eq!(canonicalize_path(""), ".");
-        assert_eq!(canonicalize_path("."), ".");
+        assert_eq!(canonicalize_path("/"), "/");
     }
 
     #[test]
     fn canonicalize_unchanged_path() {
         assert_eq!(canonicalize_path("foo.c"), "foo.c");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn canonicalize_windows_path() {
+        assert_eq!(canonicalize_path("a\\b/../c"), "a/c");
+        assert_eq!(canonicalize_path("C:\\a\\..\\b"), "C:/b");
+        assert_eq!(canonicalize_path("C:..\\a"), "C:../a");
+        assert_eq!(canonicalize_path("\\a\\b"), "/a/b");
+        assert_eq!(
+            canonicalize_path("\\\\server\\share\\a\\..\\b"),
+            "//server/share/b"
+        );
     }
 }

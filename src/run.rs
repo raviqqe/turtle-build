@@ -23,8 +23,7 @@ pub use options::Options;
 use std::{future::Future, path::Path, pin::Pin, process::Output, sync::Arc};
 use tokio::{spawn, time::Instant, try_join};
 
-type RawBuildFuture = Pin<Box<dyn Future<Output = Result<(), ApplicationError>> + Send>>;
-type BuildFuture = Shared<RawBuildFuture>;
+type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<(), ApplicationError>> + Send>>>;
 
 pub async fn run(
     context: &Arc<Context>,
@@ -95,11 +94,7 @@ async fn trigger_build(
     context
         .build_futures()
         .entry(build.id())
-        .or_insert_with(|| {
-            let future: RawBuildFuture = Box::pin(spawn_build(context.clone(), build.clone()));
-
-            future.shared()
-        });
+        .or_insert_with(|| spawn_build(context.clone(), build.clone()).boxed().shared());
 
     Ok(())
 }
@@ -319,9 +314,10 @@ async fn build_input(
             context.build_futures().get(&build.id()).unwrap().clone()
         } else {
             let input = input.to_owned();
-            let future: RawBuildFuture =
-                Box::pin(async move { check_file_existence(&context, &input).await });
-            future.shared()
+
+            async move { check_file_existence(&context, &input).await }
+                .boxed()
+                .shared()
         },
     )
 }

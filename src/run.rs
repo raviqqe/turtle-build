@@ -444,6 +444,8 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Vec<String>, Appl
         }
     )?;
 
+    let dependencies = read_rule_output(context, rule, &mut output).await?;
+
     profile!(context, console, "duration: {} ms", duration.as_millis());
 
     console.write_stdout(&output.stdout).await?;
@@ -463,8 +465,6 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Vec<String>, Appl
 
         return Err(ApplicationError::Build);
     }
-
-    let dependencies = read_rule_output(context, rule, &mut output).await?;
 
     // Ninja absorbs a gcc-style depfile into its own dependency tracking and
     // then deletes it. As turtle's database plays that role, a depfile is only

@@ -18,7 +18,7 @@ pub async fn read_rule_output(
             read_depfile(context, path).await?
         }
         Some(HeaderDependency::Msvc { prefix }) => {
-            extract_show_includes(&output.stdout, prefix.as_bytes()).0
+            extract_show_includes(&output.stdout, prefix.as_bytes())
         }
     };
 
@@ -45,7 +45,12 @@ pub async fn read_rule_output(
 
 pub fn exclude_show_includes<'a>(rule: &Rule, output: &'a [u8]) -> Cow<'a, [u8]> {
     if let Some(HeaderDependency::Msvc { prefix }) = rule.header_dependency() {
-        extract_show_includes(output, prefix.as_bytes()).1.into()
+        output
+            .split(|&byte| byte == b'\n')
+            .filter(|line| !line.starts_with(prefix.as_bytes()))
+            .collect::<Vec<_>>()
+            .join(&b'\n')
+            .into()
     } else {
         output.into()
     }
@@ -72,26 +77,12 @@ async fn read_depfile(context: &Context, path: &str) -> Result<Vec<String>, Appl
     Ok(parse_depfile(&source)?)
 }
 
-fn extract_show_includes(output: &[u8], prefix: &[u8]) -> (Vec<String>, Vec<u8>) {
-    let mut filtered_output = vec![];
-    let mut includes = vec![];
-    let mut first_line = true;
-
-    for line in output.split(|&byte| byte == b'\n') {
-        if let Some(include) = line.strip_prefix(prefix) {
-            includes.push(String::from_utf8_lossy(include.trim_ascii()).into_owned());
-        } else {
-            if !first_line {
-                filtered_output.push(b'\n');
-            }
-
-            first_line = false;
-
-            filtered_output.extend_from_slice(line);
-        }
-    }
-
-    (includes, filtered_output)
+fn extract_show_includes(output: &[u8], prefix: &[u8]) -> Vec<String> {
+    output
+        .split(|&byte| byte == b'\n')
+        .filter_map(|line| line.strip_prefix(prefix))
+        .map(|include| String::from_utf8_lossy(include.trim_ascii()).into_owned())
+        .collect()
 }
 
 #[cfg(test)]
@@ -99,11 +90,17 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
+    fn msvc_rule(prefix: &str) -> Rule {
+        Rule::new("", None).with_header_dependency(Some(HeaderDependency::Msvc {
+            prefix: prefix.into(),
+        }))
+    }
+
     #[test]
     fn extract_show_includes_with_no_output() {
         assert_eq!(
             extract_show_includes(b"", b"Note: including file: "),
-            (vec![], vec![])
+            Vec::<String>::new()
         );
     }
 
@@ -111,7 +108,7 @@ mod tests {
     fn extract_show_includes_with_leading_blank_line() {
         assert_eq!(
             extract_show_includes(b"\nAAA\n\nBBB\n", b"Note: including file: "),
-            (vec![], b"\nAAA\n\nBBB\n".to_vec())
+            Vec::<String>::new()
         );
     }
 
@@ -122,7 +119,7 @@ mod tests {
                 b"Note: including file: foo.h\nNote: including file: bar.h\n",
                 b"Note: including file: "
             ),
-            (vec!["foo.h".into(), "bar.h".into()], vec![])
+            vec!["foo.h", "bar.h"]
         );
     }
 
@@ -133,7 +130,7 @@ mod tests {
                 b"AAA\nNote: including file: foo.h\nBBB\n",
                 b"Note: including file: "
             ),
-            (vec!["foo.h".into()], b"AAA\nBBB\n".to_vec())
+            vec!["foo.h"]
         );
     }
 
@@ -144,7 +141,7 @@ mod tests {
                 b"Note: including file: foo.h\r\nAAA\r\n",
                 b"Note: including file: "
             ),
-            (vec!["foo.h".into()], b"AAA\r\n".to_vec())
+            vec!["foo.h"]
         );
     }
 
@@ -152,7 +149,7 @@ mod tests {
     fn extract_show_includes_with_indented_include() {
         assert_eq!(
             extract_show_includes(b"Note: including file:  foo.h\n", b"Note: including file: "),
-            (vec!["foo.h".into()], vec![])
+            vec!["foo.h"]
         );
     }
 
@@ -160,7 +157,7 @@ mod tests {
     fn extract_show_includes_with_custom_prefix() {
         assert_eq!(
             extract_show_includes(b"Hinweis: foo.h\n", b"Hinweis: "),
-            (vec!["foo.h".into()], vec![])
+            vec!["foo.h"]
         );
     }
 
@@ -173,15 +170,70 @@ mod tests {
     }
 
     #[test]
-    fn exclude_show_includes_with_msvc_header_dependency() {
+    fn exclude_show_includes_with_no_output() {
+        assert_eq!(
+            exclude_show_includes(&msvc_rule("Note: including file: "), b""),
+            b"".to_vec()
+        );
+    }
+
+    #[test]
+    fn exclude_show_includes_with_leading_blank_line() {
+        assert_eq!(
+            exclude_show_includes(&msvc_rule("Note: including file: "), b"\nAAA\n\nBBB\n"),
+            b"\nAAA\n\nBBB\n".to_vec()
+        );
+    }
+
+    #[test]
+    fn exclude_show_includes_with_only_includes() {
         assert_eq!(
             exclude_show_includes(
-                &Rule::new("", None).with_header_dependency(Some(HeaderDependency::Msvc {
-                    prefix: "Note: including file: ".into()
-                })),
-                b"Note: including file: foo.h\nAAA\n"
+                &msvc_rule("Note: including file: "),
+                b"Note: including file: foo.h\nNote: including file: bar.h\n"
             ),
-            b"AAA\n".to_vec()
+            b"".to_vec()
+        );
+    }
+
+    #[test]
+    fn exclude_show_includes_interleaved_with_output() {
+        assert_eq!(
+            exclude_show_includes(
+                &msvc_rule("Note: including file: "),
+                b"AAA\nNote: including file: foo.h\nBBB\n"
+            ),
+            b"AAA\nBBB\n".to_vec()
+        );
+    }
+
+    #[test]
+    fn exclude_show_includes_with_windows_line_endings() {
+        assert_eq!(
+            exclude_show_includes(
+                &msvc_rule("Note: including file: "),
+                b"Note: including file: foo.h\r\nAAA\r\n"
+            ),
+            b"AAA\r\n".to_vec()
+        );
+    }
+
+    #[test]
+    fn exclude_show_includes_with_indented_include() {
+        assert_eq!(
+            exclude_show_includes(
+                &msvc_rule("Note: including file: "),
+                b"Note: including file:  foo.h\n"
+            ),
+            b"".to_vec()
+        );
+    }
+
+    #[test]
+    fn exclude_show_includes_with_custom_prefix() {
+        assert_eq!(
+            exclude_show_includes(&msvc_rule("Hinweis: "), b"Hinweis: foo.h\n"),
+            b"".to_vec()
         );
     }
 }

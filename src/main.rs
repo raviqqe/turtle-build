@@ -22,6 +22,8 @@ use futures::future::try_join_all;
 use infrastructure::{OsCommandRunner, OsConsole, OsDatabase, OsFileSystem};
 use module_dependency::ModuleDependencyMap;
 use parse::parse;
+#[cfg(unix)]
+use rlimit::Resource;
 use std::{
     collections::HashMap,
     env::set_current_dir,
@@ -34,7 +36,6 @@ use tokio::time::sleep;
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
 const DATABASE_DIRECTORY: &str = ".turtle";
-const OPEN_FILE_LIMIT: usize = if cfg!(target_os = "macos") { 256 } else { 1024 };
 const DEFAULT_FILE_COUNT_PER_PROCESS: usize = 3; // stdin, stdout, and stderr
 
 #[tokio::main]
@@ -46,7 +47,8 @@ async fn main() {
         OsConsole::new(),
         OsDatabase::new(),
         OsFileSystem::new(
-            OPEN_FILE_LIMIT
+            usize::try_from(open_file_limit())
+                .unwrap_or(usize::MAX)
                 .saturating_sub(DEFAULT_FILE_COUNT_PER_PROCESS * (job_limit + 1))
                 .max(1),
         ),
@@ -187,4 +189,14 @@ async fn resolve_submodule_path(
             .canonicalize_path(&module_path.parent().unwrap().join(submodule_path))
             .await?,
     ))
+}
+
+#[cfg(unix)]
+fn open_file_limit() -> u64 {
+    Resource::NOFILE.get_soft().unwrap()
+}
+
+#[cfg(not(unix))]
+fn open_file_limit() -> u64 {
+    u64::MAX
 }

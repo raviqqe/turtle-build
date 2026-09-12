@@ -120,7 +120,8 @@ fn compile_module<'a>(
 
                         // TODO Resolve command, description, depfile, deps, and
                         // dyndep through build, rule, and file scopes in this
-                        // order like ninja.
+                        // order like ninja by inserting rule variables into the
+                        // variable scope between file and build ones.
                         Some(
                             Rule::new(
                                 interpolate_variables(rule.command(), &variables),
@@ -223,8 +224,7 @@ fn compile_dependency(
     )
 }
 
-// Variables are resolved in the order of build, rule, and file scopes, and an
-// empty prefix falls back to the default one, both like ninja.
+// TODO Look up the variable scope directly once it includes rule variables.
 fn compile_msvc_deps_prefix(
     build: &ast::Build,
     rule: &ast::Rule,

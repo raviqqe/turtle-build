@@ -163,7 +163,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             .inputs()
             .iter()
             .chain(dynamic_inputs)
-            .map(|string| string.as_ref())
+            .map(AsRef::as_ref)
             .partition::<Vec<_>, _>(|&input| {
                 if let Some(build) = context.configuration().outputs().get(input) {
                     build.rule().is_some()

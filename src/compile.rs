@@ -24,7 +24,7 @@ const BUILD_DIRECTORY_VARIABLE: &str = "builddir";
 const DYNAMIC_MODULE_VARIABLE: &str = "dyndep";
 const SOURCE_VARIABLE_NAME: &str = "srcdep";
 const MSVC_DEPS_PREFIX_VARIABLE: &str = "msvc_deps_prefix";
-// Matches the default prefix of cl.exe's own /showIncludes output.
+// Matches the default prefix of `cl.exe`'s own `/showIncludes` output.
 const DEFAULT_MSVC_DEPS_PREFIX: &str = "Note: including file: ";
 
 static VARIABLE_PATTERN: Lazy<Regex> =

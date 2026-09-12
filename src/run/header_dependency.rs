@@ -26,6 +26,20 @@ pub async fn read_rule_output(
         }
     };
 
+    if let Some(HeaderDependency::Gcc { path }) = rule.header_dependency()
+        && context
+            .application()
+            .file_system()
+            .exists(path.as_ref())
+            .await?
+    {
+        context
+            .application()
+            .file_system()
+            .remove_file(path.as_ref())
+            .await?;
+    }
+
     for dependency in &mut dependencies {
         *dependency = canonicalize_path(dependency);
     }

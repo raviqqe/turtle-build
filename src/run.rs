@@ -12,7 +12,7 @@ use crate::{
     debug,
     error::ApplicationError,
     hash_type::HashType,
-    ir::{Build, Configuration, HeaderDependency, Rule},
+    ir::{Build, Configuration, Rule},
     parse::parse_dynamic,
     profile,
 };
@@ -457,20 +457,6 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Vec<String>, Appl
         );
 
         return Err(ApplicationError::Build);
-    }
-
-    if let Some(HeaderDependency::Gcc { path }) = rule.header_dependency()
-        && context
-            .application()
-            .file_system()
-            .exists(path.as_ref())
-            .await?
-    {
-        context
-            .application()
-            .file_system()
-            .remove_file(path.as_ref())
-            .await?;
     }
 
     Ok(dependencies)

@@ -213,6 +213,22 @@ Feature: C and C++ header dependencies
     When I successfully run `turtle`
     Then the file named "foo.o" should exist
 
+  Scenario: Delete a depfile of a failed command
+    Given a file named "build.ninja" with:
+      """
+      rule cc
+        command = printf '$out: $in\n' > $out.d && false
+        depfile = $out.d
+        deps = gcc
+
+      build foo.o: cc source.c
+
+      """
+    And a file named "source.c" with "int main(void) { return 0; }"
+    When I run `turtle`
+    Then the exit status should not be 0
+    And the file named "foo.o.d" should not exist
+
   Scenario: Recover after a header dependency is deleted
     Given a file named "build.ninja" with:
       """

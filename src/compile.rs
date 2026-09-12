@@ -118,6 +118,9 @@ fn compile_module<'a>(
                             .get(build.rule())
                             .ok_or_else(|| CompileError::RuleNotFound(build.rule().into()))?;
 
+                        // TODO Resolve command, description, depfile, deps, and
+                        // dyndep through build, rule, and file scopes in this
+                        // order like ninja.
                         Some(
                             Rule::new(
                                 interpolate_variables(rule.command(), &variables),
@@ -182,6 +185,9 @@ fn compile_module<'a>(
                 )?;
             }
             ast::Statement::VariableDefinition(definition) => {
+                // TODO Expand values on definition like ninja so that nested
+                // references are expanded and later redefinitions do not
+                // affect earlier uses.
                 module_state
                     .variables
                     .insert(definition.name(), definition.value().into());

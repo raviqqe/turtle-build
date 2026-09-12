@@ -78,6 +78,9 @@ fn rule(input: &str) -> IResult<&str, Rule> {
         ),
         |(_, name, _, variables)| {
             // TODO Allow duplicate fields at the AST level.
+            // TODO Reject unknown rule variables and keep the other reserved
+            // ones of generator, pool, restat, rspfile, and rspfile_content
+            // like ninja.
             let find = |key| {
                 variables
                     .iter()

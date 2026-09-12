@@ -280,7 +280,7 @@ Feature: C and C++ header dependencies
 
   @turtle
   # TODO Remove this scenario once new header dependencies are recorded without
-  # being built after the command which produces them.
+  # being built after the command which reports them.
   Scenario: Build a generated header dependency from a depfile on a clean checkout
     Given a file named "build.ninja" with:
       """

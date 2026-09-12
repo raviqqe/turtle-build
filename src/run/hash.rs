@@ -9,7 +9,7 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-const BUFFER_CAPACITY: usize = 2 << 10;
+const BUFFER_CAPACITY: usize = 1 << 10;
 
 pub async fn calculate_timestamp_hash(
     context: &Context,

@@ -233,6 +233,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
     .await?
 }
 
+// TODO Wait for the build input?
 async fn build_input(
     context: Arc<RunContext>,
     input: &str,

@@ -298,27 +298,18 @@ async fn build_header_dependencies(
     inputs: &[String],
 ) -> Result<Vec<String>, ApplicationError> {
     let mut futures = vec![];
-    let mut kept = vec![];
 
     for input in inputs {
         if let Some(build) = context.configuration().outputs().get(input.as_str()) {
             trigger_build(context.clone(), build).await?;
 
             futures.push(context.build_futures().get(&build.id()).unwrap().clone());
-            kept.push(input.clone());
-        } else if context
-            .application()
-            .file_system()
-            .exists(input.as_ref())
-            .await?
-        {
-            kept.push(input.clone());
         }
     }
 
     try_join_all(futures).await?;
 
-    Ok(kept)
+    filter_existing_header_dependencies(context, inputs).await
 }
 
 async fn filter_existing_header_dependencies(
@@ -329,15 +320,10 @@ async fn filter_existing_header_dependencies(
 
     for dependency in dependencies {
         if context
-            .configuration()
-            .outputs()
-            .get(dependency.as_str())
-            .is_none_or(|build| build.rule().is_some())
-            && context
-                .application()
-                .file_system()
-                .exists(dependency.as_ref())
-                .await?
+            .application()
+            .file_system()
+            .exists(dependency.as_ref())
+            .await?
         {
             existing_dependencies.push(dependency.clone());
         }
@@ -388,12 +374,11 @@ fn classify_inputs<'a>(
     dynamic_inputs: &'a [Arc<str>],
     header_dependencies: &'a [String],
 ) -> (Vec<&'a str>, Vec<&'a str>) {
-    build
+    let (phony_inputs, file_inputs): (Vec<&str>, Vec<&str>) = build
         .inputs()
         .iter()
         .chain(dynamic_inputs)
         .map(AsRef::as_ref)
-        .chain(header_dependencies.iter().map(String::as_str))
         .unique()
         .partition(|&input| {
             context
@@ -401,7 +386,16 @@ fn classify_inputs<'a>(
                 .outputs()
                 .get(input)
                 .map_or_default(|build| build.rule().is_none())
-        })
+        });
+
+    (
+        phony_inputs,
+        file_inputs
+            .into_iter()
+            .chain(header_dependencies.iter().map(String::as_str))
+            .unique()
+            .collect(),
+    )
 }
 
 async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, ApplicationError> {

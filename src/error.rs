@@ -23,7 +23,6 @@ pub enum ApplicationError {
     Other(String),
     OutputNotFound(String),
     Parse(ParseError),
-    Sled(sled::Error),
 }
 
 impl Error for ApplicationError {}
@@ -59,7 +58,6 @@ impl Display for ApplicationError {
                 write!(formatter, "output \"{output}\" not found")
             }
             Self::Parse(error) => write!(formatter, "{error}"),
-            Self::Sled(error) => write!(formatter, "{error}"),
             Self::BuildGraph(error) => write!(formatter, "{error}"),
         }
     }
@@ -98,12 +96,6 @@ impl From<ModuleDependencyError> for ApplicationError {
 impl From<ParseError> for ApplicationError {
     fn from(error: ParseError) -> Self {
         Self::Parse(error)
-    }
-}
-
-impl From<sled::Error> for ApplicationError {
-    fn from(error: sled::Error) -> Self {
-        Self::Sled(error)
     }
 }
 

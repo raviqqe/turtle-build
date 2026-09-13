@@ -104,7 +104,7 @@ Currently, Turtle uses a topological sort algorithm only to detect dependency cy
 Turtle is powered by the following neat projects and others!
 
 - [tokio: Asynchronous runtime for Rust](https://github.com/tokio-rs/tokio)
-- [sled: Embedded database in Rust](https://github.com/spacejam/sled)
+- [fjall: Log-structured embeddable key-value storage engine in Rust](https://github.com/fjall-rs/fjall)
 - [petgraph: Graph algorithms in Rust](https://github.com/petgraph/petgraph)
 
 ## Similar projects

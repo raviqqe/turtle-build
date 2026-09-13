@@ -15,6 +15,7 @@
     "depfile",
     "dyndep",
     "einlesen",
+    "fjall",
     "goreleaser",
     "hasher",
     "hinweis",

@@ -23,6 +23,12 @@ impl OsConsole {
     }
 }
 
+impl Default for OsConsole {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl Console for OsConsole {
     async fn write_stdout(&mut self, src: &[u8]) -> Result<(), Box<dyn Error>> {

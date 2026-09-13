@@ -19,6 +19,7 @@ static BINCODE_CONFIGURATION: LazyLock<bincode::config::Configuration> = LazyLoc
     >::default()
 });
 
+#[derive(Default)]
 pub struct FjallDatabase {
     database: OnceCell<FjallDatabaseInner>,
 }

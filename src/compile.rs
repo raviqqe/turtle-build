@@ -190,17 +190,10 @@ fn compile_module<'a>(
             ast::Statement::Rule(rule) => {
                 module_state.rules.insert(
                     rule.name(),
-                    [
-                        (COMMAND_VARIABLE, Some(rule.command())),
-                        (DESCRIPTION_VARIABLE, rule.description()),
-                        (DEPFILE_VARIABLE, rule.depfile()),
-                        (DEPS_VARIABLE, rule.deps()),
-                        (DYNAMIC_MODULE_VARIABLE, rule.dyndep()),
-                        (MSVC_DEPS_PREFIX_VARIABLE, rule.msvc_deps_prefix()),
-                    ]
-                    .into_iter()
-                    .filter_map(|(name, value)| Some((name, value?.into())))
-                    .collect(),
+                    rule.variable_definitions()
+                        .iter()
+                        .map(|definition| (definition.name(), definition.value().into()))
+                        .collect(),
                 );
             }
             ast::Statement::Submodule(submodule) => {

@@ -167,17 +167,18 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
 
         try_join_all(futures).await?;
 
-        let old_header_dependencies = if build.rule().is_some() {
-            context
-                .application()
-                .database()
-                .get_header_dependencies(build.id())?
-        } else {
-            vec![]
-        };
-
-        let mut header_dependencies =
-            build_header_dependencies(&context, &old_header_dependencies).await?;
+        let mut header_dependencies = build_header_dependencies(
+            &context,
+            &if build.rule().is_some() {
+                context
+                    .application()
+                    .database()
+                    .get_header_dependencies(build.id())?
+            } else {
+                vec![]
+            },
+        )
+        .await?;
 
         let outputs_exist = try_join_all(
             build

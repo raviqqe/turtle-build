@@ -35,6 +35,7 @@
     "srcdep",
     "stackless",
     "subninja",
+    "swatinem",
     "tempdir",
     "tempfile",
     "toposort",

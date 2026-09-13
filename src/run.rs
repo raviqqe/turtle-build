@@ -321,14 +321,11 @@ async fn build_input(
     )
 }
 
-// Unlike `build_input`, a header dependency reported by a rule's own command
-// (via a depfile or `/showIncludes`) can't turn to hard error just
-// because it went missing.
-//
-// Against Ninja, it treats that as "this build is dirty," not
-// as a failure. A header dependency that is a known build output is
-// still built like any other input, since generated headers must exist
-// before their consumer's inputs are hashed.
+// Unlike `build_input`, a header dependency that no longer exists is dropped
+// instead of failing the build. Like ninja, this only makes the build out of
+// date, since its inputs no longer match the stored hashes. A header
+// dependency that is a build output is built like any other input so that
+// generated headers exist before the inputs of this build are hashed.
 async fn build_header_dependencies(
     context: &Arc<RunContext>,
     inputs: &[String],

@@ -12,7 +12,7 @@ pub async fn read_rule_output(
     rule: &Rule,
     output: &Output,
 ) -> Result<Vec<String>, ApplicationError> {
-    let mut dependencies = match rule.header_dependency() {
+    let dependencies = match rule.header_dependency() {
         None => vec![],
         Some(HeaderDependency::Depfile { path } | HeaderDependency::Gcc { path }) => {
             read_depfile(context, path).await?
@@ -36,11 +36,10 @@ pub async fn read_rule_output(
             .await?;
     }
 
-    for dependency in &mut dependencies {
-        *dependency = canonicalize_path(dependency);
-    }
-
-    Ok(dependencies)
+    Ok(dependencies
+        .into_iter()
+        .map(|path| canonicalize_path(&path))
+        .collect())
 }
 
 pub fn exclude_show_includes<'a>(rule: &Rule, output: &'a [u8]) -> Cow<'a, [u8]> {

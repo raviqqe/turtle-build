@@ -323,6 +323,38 @@ Feature: C and C++ header dependencies
     When I run `turtle foo.o`
     Then the exit status should not be 0
 
+  Scenario: Report an error for a cycle through a header dependency from a previous run
+    Given a file named "build.ninja" with:
+      """
+      rule cc
+        command = printf '$out: $in gen.h\n' > $out.d && cp $in $out
+        depfile = $out.d
+        deps = gcc
+
+      build foo.o: cc source.c
+
+      """
+    And a file named "source.c" with "int main(void) { return 0; }"
+    And a file named "gen.h" with "#define G 1"
+    When I successfully run `turtle`
+    And a file named "build.ninja" with:
+      """
+      rule gen
+        command = cp $in $out
+
+      rule cc
+        command = printf '$out: $in gen.h\n' > $out.d && cp $in $out
+        depfile = $out.d
+        deps = gcc
+
+      build gen.h: gen foo.o
+      build foo.o: cc source.c
+
+      """
+    And I run `turtle foo.o`
+    Then the exit status should not be 0
+    And the stderr should contain "dependency cycle"
+
   Scenario: Accept a header path with an escaped space in a depfile
     Given a file named "build.ninja" with:
       """

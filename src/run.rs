@@ -34,7 +34,20 @@ pub async fn run(
     outputs: &[String],
     options: Options,
 ) -> Result<(), ApplicationError> {
-    let graph = BuildGraph::new(configuration.outputs());
+    let mut graph = BuildGraph::new(configuration.outputs());
+
+    for build in configuration
+        .outputs()
+        .values()
+        .filter(|build| build.rule().is_some())
+        .unique_by(|build| build.id())
+    {
+        graph.add_header_dependencies(
+            &build.outputs()[0],
+            &context.database().get_header_dependencies(build.id())?,
+        );
+    }
+
     let context = Arc::new(RunContext::new(
         context.clone(),
         configuration,
@@ -162,20 +175,6 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         } else {
             vec![]
         };
-
-        // A cycle through a header dependency from a previous run (e.g. a
-        // generated header that itself depends on this build's output) is
-        // invisible to the static graph, so gotta check before we
-        // start awaiting futures for it, or two builds would await each
-        // other forever.
-        if !old_header_dependencies.is_empty() {
-            context
-                .build_graph()
-                .lock()
-                .await
-                .validate_header_dependencies(&build.outputs()[0], &old_header_dependencies)
-                .map_err(|error| map_build_graph_error(&context, &error))?;
-        }
 
         let mut header_dependencies =
             build_header_dependencies(&context, &old_header_dependencies).await?;

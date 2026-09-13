@@ -278,79 +278,46 @@ Feature: C and C++ header dependencies
     When I successfully run `turtle foo.o`
     Then the file named "foo.o" should exist
 
-  @turtle
-  # TODO Remove this scenario once new header dependencies are recorded without
-  # being built after the command which reports them.
-  Scenario: Build a generated header dependency from a depfile on a clean checkout
+  Scenario: Rebuild after a generated header dependency is updated
     Given a file named "build.ninja" with:
       """
       rule gen
-        command = printf '#define G 1\n' > $out
+        command = cp $in $out
 
       rule cc
-        command = printf 'building\n' && printf '$out: $in gen.h\n' > $out.d && cp $in $out
+        command = printf '$out: $in gen.h\n' > $out.d && cat $in gen.h > $out
         depfile = $out.d
         deps = gcc
 
-      build gen.h: gen
+      build gen.h: gen gen.h.in
+      build foo.o: cc foo.c
+
+      """
+    And a file named "foo.c" with "int main(void) { return 0; }"
+    And a file named "gen.h.in" with "#define G 1"
+    When I successfully run `turtle gen.h`
+    And a file named "gen.h.in" with "#define G 2"
+    And I successfully run `turtle foo.o`
+    And I successfully run `turtle foo.o`
+    Then the file named "foo.o" should contain "#define G 2"
+
+  Scenario: Report an error for a cycle through a header dependency on the next run
+    Given a file named "build.ninja" with:
+      """
+      rule gen
+        command = cp $in $out
+
+      rule cc
+        command = printf '$out: $in gen.h\n' > $out.d && cp $in $out
+        depfile = $out.d
+        deps = gcc
+
+      build gen.h: gen foo.o
       build foo.o: cc source.c
 
       """
     And a file named "source.c" with "int main(void) { return 0; }"
     When I successfully run `turtle foo.o`
-    Then the file named "foo.o" should exist
-    And the file named "gen.h" should exist
-
-  @turtle
-  Scenario: Report an error for a cycle through a header dependency instead of hanging
-    Given a file named "build.ninja" with:
-      """
-      rule gen
-        command = cp $in $out
-
-      rule cc
-        command = printf '$out: $in gen.h\n' > $out.d && cp $in $out
-        depfile = $out.d
-        deps = gcc
-
-      build gen.h: gen foo.o
-      build foo.o: cc source.c
-
-      """
-    And a file named "source.c" with "int main(void) { return 0; }"
-    When I run `turtle foo.o`
-    Then the exit status should not be 0
-    When I run `turtle foo.o`
-    Then the exit status should not be 0
-
-  Scenario: Report an error for a cycle through a header dependency from a previous run
-    Given a file named "build.ninja" with:
-      """
-      rule cc
-        command = printf '$out: $in gen.h\n' > $out.d && cp $in $out
-        depfile = $out.d
-        deps = gcc
-
-      build foo.o: cc source.c
-
-      """
-    And a file named "source.c" with "int main(void) { return 0; }"
-    And a file named "gen.h" with "#define G 1"
-    When I successfully run `turtle`
-    And a file named "build.ninja" with:
-      """
-      rule gen
-        command = cp $in $out
-
-      rule cc
-        command = printf '$out: $in gen.h\n' > $out.d && cp $in $out
-        depfile = $out.d
-        deps = gcc
-
-      build gen.h: gen foo.o
-      build foo.o: cc source.c
-
-      """
     And I run `turtle foo.o`
     Then the exit status should not be 0
     And the stderr should contain "dependency cycle"

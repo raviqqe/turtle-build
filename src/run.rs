@@ -232,21 +232,6 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             let new_header_dependencies =
                 read_header_dependencies(&context, rule, &run_rule(&context, rule).await?).await?;
 
-            if !new_header_dependencies.is_empty() {
-                context
-                    .build_graph()
-                    .lock()
-                    .await
-                    .validate_header_dependencies(&build.outputs()[0], &new_header_dependencies)
-                    .map_err(|error| map_build_graph_error(&context, &error))?;
-            }
-
-            // TODO Record new header dependencies without building them.
-            // The command has already run, so hashing generated headers built
-            // here marks this build up to date against inputs it never saw.
-            let new_header_dependencies =
-                build_header_dependencies(&context, &new_header_dependencies).await?;
-
             context
                 .application()
                 .database()
@@ -271,6 +256,8 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         // need to be recomputed here when the header dependency set
         // itself changed
         let (timestamp_hash, content_hash) = if header_dependencies_changed {
+            let header_dependencies =
+                filter_existing_header_dependencies(&context, &header_dependencies).await?;
             let (phony_inputs, file_inputs) =
                 classify_inputs(&context, &build, dynamic_inputs, &header_dependencies);
 
@@ -349,6 +336,31 @@ async fn build_header_dependencies(
     try_join_all(futures).await?;
 
     Ok(kept)
+}
+
+async fn filter_existing_header_dependencies(
+    context: &RunContext,
+    dependencies: &[String],
+) -> Result<Vec<String>, ApplicationError> {
+    let mut existing_dependencies = vec![];
+
+    for dependency in dependencies {
+        if context
+            .configuration()
+            .outputs()
+            .get(dependency.as_str())
+            .is_none_or(|build| build.rule().is_some())
+            && context
+                .application()
+                .file_system()
+                .exists(dependency.as_ref())
+                .await?
+        {
+            existing_dependencies.push(dependency.clone());
+        }
+    }
+
+    Ok(existing_dependencies)
 }
 
 // TODO Use `FileSystem::exists`?

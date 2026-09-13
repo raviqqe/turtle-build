@@ -374,13 +374,13 @@ fn classify_inputs<'a>(
     dynamic_inputs: &'a [Arc<str>],
     header_dependencies: &'a [String],
 ) -> (Vec<&'a str>, Vec<&'a str>) {
-    let (phony_inputs, file_inputs): (Vec<&str>, Vec<&str>) = build
+    let (phony_inputs, file_inputs) = build
         .inputs()
         .iter()
         .chain(dynamic_inputs)
         .map(AsRef::as_ref)
         .unique()
-        .partition(|&input| {
+        .partition::<Vec<_>, _>(|&input| {
             context
                 .configuration()
                 .outputs()

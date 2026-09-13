@@ -132,7 +132,7 @@ fn compile_module<'a>(
                         .iter()
                         .map(|string| string.as_str().into())
                         .collect(),
-                    if rule_variables.is_some() {
+                    if build.rule() != PHONY_RULE {
                         Some(
                             Rule::new(
                                 resolve_variable(COMMAND_VARIABLE, &variables).unwrap_or_default(),

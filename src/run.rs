@@ -16,7 +16,7 @@ use crate::{
     debug,
     error::BuildError,
     hash_type::HashType,
-    ir::{Build, Configuration, Rule},
+    ir::{Build, Config, Rule},
     parse::parse_dynamic,
     profile,
 };
@@ -31,13 +31,13 @@ type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<(), BuildError>> + 
 
 pub async fn run(
     context: &Arc<Context>,
-    configuration: Arc<Configuration>,
+    config: Arc<Config>,
     outputs: &[String],
     options: Options,
 ) -> Result<(), BuildError> {
-    let mut graph = BuildGraph::new(configuration.outputs());
+    let mut graph = BuildGraph::new(config.outputs());
 
-    for build in configuration
+    for build in config
         .outputs()
         .values()
         .filter(|build| build.rule().is_some())
@@ -49,12 +49,7 @@ pub async fn run(
         );
     }
 
-    let context = Arc::new(RunContext::new(
-        context.clone(),
-        configuration,
-        graph,
-        options,
-    ));
+    let context = Arc::new(RunContext::new(context.clone(), config, graph, options));
 
     context
         .build_graph()
@@ -64,11 +59,11 @@ pub async fn run(
         .map_err(|error| map_build_graph_error(&context, &error))?;
 
     if outputs.is_empty() {
-        for output in context.configuration().default_outputs() {
+        for output in context.config().default_outputs() {
             trigger_build(
                 context.clone(),
                 context
-                    .configuration()
+                    .config()
                     .outputs()
                     .get(output.as_ref())
                     .ok_or_else(|| BuildError::DefaultOutputNotFound(output.clone()))?,
@@ -80,7 +75,7 @@ pub async fn run(
             trigger_build(
                 context.clone(),
                 context
-                    .configuration()
+                    .config()
                     .outputs()
                     .get(output.as_str())
                     .ok_or_else(|| BuildError::OutputNotFound(output.clone()))?,
@@ -125,32 +120,32 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         try_join_all(futures).await?;
 
         // TODO Consider caching dynamic modules.
-        let dynamic_configuration = if let Some(dynamic_module) = build.dynamic_module() {
+        let dynamic_config = if let Some(dynamic_module) = build.dynamic_module() {
             let mut source = String::new();
             context
                 .application()
                 .file_system()
                 .read_file_to_string(dynamic_module.as_ref().as_ref(), &mut source)
                 .await?;
-            let configuration = compile_dynamic(&parse_dynamic(&source)?)?;
+            let config = compile_dynamic(&parse_dynamic(&source)?)?;
 
             context
                 .build_graph()
                 .lock()
                 .await
-                .validate_dynamic(&configuration)
+                .validate_dynamic(&config)
                 .map_err(|error| map_build_graph_error(&context, &error))?;
 
-            Some(configuration)
+            Some(config)
         } else {
             None
         };
 
-        let dynamic_inputs = if let Some(configuration) = &dynamic_configuration {
+        let dynamic_inputs = if let Some(config) = &dynamic_config {
             build
                 .outputs()
                 .iter()
-                .find_map(|output| configuration.outputs().get(output.as_ref()))
+                .find_map(|output| config.outputs().get(output.as_ref()))
                 .map(|build| build.inputs())
                 .ok_or_else(|| BuildError::DynamicDependencyNotFound(build.clone()))?
         } else {
@@ -234,7 +229,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             for output in build.outputs() {
                 context.application().database().set_output(output)?;
 
-                if let Some(source) = context.configuration().source_map().get(output) {
+                if let Some(source) = context.config().source_map().get(output) {
                     context
                         .application()
                         .database()
@@ -272,19 +267,17 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
 
 // TODO Wait for the build input?
 async fn build_input(context: Arc<RunContext>, input: &str) -> Result<BuildFuture, BuildError> {
-    Ok(
-        if let Some(build) = context.configuration().outputs().get(input) {
-            trigger_build(context.clone(), build).await?;
+    Ok(if let Some(build) = context.config().outputs().get(input) {
+        trigger_build(context.clone(), build).await?;
 
-            context.build_futures().get(&build.id()).unwrap().clone()
-        } else {
-            let input = input.to_owned();
+        context.build_futures().get(&build.id()).unwrap().clone()
+    } else {
+        let input = input.to_owned();
 
-            async move { check_file_existence(&context, &input).await }
-                .boxed()
-                .shared()
-        },
-    )
+        async move { check_file_existence(&context, &input).await }
+            .boxed()
+            .shared()
+    })
 }
 
 async fn build_header_dependencies(
@@ -294,7 +287,7 @@ async fn build_header_dependencies(
     let mut futures = vec![];
 
     for input in inputs {
-        if let Some(build) = context.configuration().outputs().get(input.as_str()) {
+        if let Some(build) = context.config().outputs().get(input.as_str()) {
             trigger_build(context.clone(), build).await?;
 
             futures.push(context.build_futures().get(&build.id()).unwrap().clone());
@@ -371,7 +364,7 @@ fn classify_inputs<'a>(
         .unique()
         .partition::<Vec<_>, _>(|&input| {
             context
-                .configuration()
+                .config()
                 .outputs()
                 .get(input)
                 .map_or_default(|build| build.rule().is_none())

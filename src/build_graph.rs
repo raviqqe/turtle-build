@@ -1,4 +1,4 @@
-use crate::ir::{Build, DynamicConfiguration};
+use crate::ir::{Build, DynamicConfig};
 use itertools::Itertools;
 use petgraph::{
     Graph,
@@ -68,11 +68,8 @@ impl BuildGraph {
         Ok(())
     }
 
-    pub fn validate_dynamic(
-        &mut self,
-        configuration: &DynamicConfiguration,
-    ) -> Result<(), BuildGraphError> {
-        for (output, build) in configuration.outputs() {
+    pub fn validate_dynamic(&mut self, config: &DynamicConfig) -> Result<(), BuildGraphError> {
+        for (output, build) in config.outputs() {
             for input in build.inputs() {
                 self.add_edge(self.primary_outputs[output].clone(), input.clone());
             }
@@ -301,7 +298,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_with_dynamic_configuration() {
+    fn validate_with_dynamic_config() {
         let mut graph = BuildGraph::new(
             &[
                 (
@@ -320,7 +317,7 @@ mod tests {
         graph.validate().unwrap();
 
         assert_eq!(
-            graph.validate_dynamic(&DynamicConfiguration::new(
+            graph.validate_dynamic(&DynamicConfig::new(
                 [("bar".into(), DynamicBuild::new(vec!["foo".into()]))]
                     .into_iter()
                     .collect(),
@@ -393,7 +390,7 @@ mod tests {
         graph.validate().unwrap();
 
         assert_eq!(
-            graph.validate_dynamic(&DynamicConfiguration::new(
+            graph.validate_dynamic(&DynamicConfig::new(
                 [("bar".into(), DynamicBuild::new(vec!["foo".into()]))]
                     .into_iter()
                     .collect(),
@@ -415,7 +412,7 @@ mod tests {
         graph.validate().unwrap();
 
         assert_eq!(
-            graph.validate_dynamic(&DynamicConfiguration::new(
+            graph.validate_dynamic(&DynamicConfig::new(
                 [("foo".into(), DynamicBuild::new(vec!["bar".into()]))]
                     .into_iter()
                     .collect(),

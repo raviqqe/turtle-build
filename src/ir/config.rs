@@ -5,14 +5,14 @@ use std::{
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Configuration {
+pub struct Config {
     outputs: HashMap<Arc<str>, Arc<Build>>,
     default_outputs: HashSet<Arc<str>>,
     source_map: HashMap<Arc<str>, Arc<str>>,
     build_directory: Option<Arc<str>>,
 }
 
-impl Configuration {
+impl Config {
     pub fn new(
         outputs: HashMap<Arc<str>, Arc<Build>>,
         default_outputs: HashSet<Arc<str>>,

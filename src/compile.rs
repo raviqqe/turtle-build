@@ -7,7 +7,7 @@ pub use self::error::CompileError;
 use self::{context::Context, global_state::GlobalState, module_state::ModuleState};
 use crate::{
     ast,
-    ir::{Build, Configuration, DynamicBuild, DynamicConfiguration, HeaderDependency, Rule},
+    ir::{Build, Config, DynamicBuild, DynamicConfig, HeaderDependency, Rule},
     module_dependency::ModuleDependencyMap,
 };
 use once_cell::sync::Lazy;
@@ -39,7 +39,7 @@ pub fn compile(
     modules: &HashMap<PathBuf, ast::Module>,
     dependencies: &ModuleDependencyMap,
     root_module_path: &Path,
-) -> Result<Configuration, CompileError> {
+) -> Result<Config, CompileError> {
     let context = Context::new(modules, dependencies);
 
     let mut global_state = GlobalState {
@@ -65,7 +65,7 @@ pub fn compile(
         global_state.default_outputs
     };
 
-    Ok(Configuration::new(
+    Ok(Config::new(
         global_state.outputs,
         default_outputs,
         global_state.source_map,
@@ -231,8 +231,8 @@ fn compile_header_dependency(
     )
 }
 
-pub fn compile_dynamic(module: &ast::DynamicModule) -> Result<DynamicConfiguration, CompileError> {
-    Ok(DynamicConfiguration::new(
+pub fn compile_dynamic(module: &ast::DynamicModule) -> Result<DynamicConfig, CompileError> {
+    Ok(DynamicConfig::new(
         module
             .builds()
             .iter()
@@ -330,11 +330,11 @@ mod tests {
         Build::new(outputs, vec![], rule.into(), inputs, vec![], None)
     }
 
-    fn create_simple_configuration(
+    fn create_simple_config(
         outputs: HashMap<Arc<str>, Arc<Build>>,
         default_outputs: HashSet<Arc<str>>,
-    ) -> Configuration {
-        Configuration::new(outputs, default_outputs, Default::default(), None)
+    ) -> Config {
+        Config::new(outputs, default_outputs, Default::default(), None)
     }
 
     #[test]
@@ -348,7 +348,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(Default::default(), Default::default())
+            create_simple_config(Default::default(), Default::default())
         );
     }
 
@@ -370,7 +370,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()
@@ -401,7 +401,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("1 2", None), vec![]).into()
@@ -431,7 +431,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()
@@ -460,7 +460,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("$", None), vec![]).into()
@@ -490,7 +490,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("$x", None), vec![]).into()
@@ -521,7 +521,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()
@@ -553,7 +553,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("1", None), vec![]).into()
@@ -584,7 +584,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("1 2", None), vec![]).into()
@@ -615,7 +615,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("$y", None), vec![]).into()
@@ -645,7 +645,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("$$", None), vec![]).into()
@@ -675,7 +675,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(
@@ -718,7 +718,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(
@@ -752,7 +752,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("bar", None), vec![]).into()
@@ -799,7 +799,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [("baz".into(), build.clone()), ("bar".into(), build)]
                     .into_iter()
                     .collect(),
@@ -834,7 +834,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     Build::new(
@@ -872,7 +872,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [
                     (
                         "bar".into(),
@@ -913,7 +913,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()
@@ -946,7 +946,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "baz".into(),
                     ir_explicit_build(
@@ -980,7 +980,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("second", None), vec![]).into()
@@ -1015,7 +1015,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("build", None), vec![]).into()
@@ -1045,7 +1045,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(
@@ -1088,7 +1088,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            Configuration::new(
+            Config::new(
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("foo", None), vec![]).into()
@@ -1119,7 +1119,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "foo".into(),
                     Build::new(
@@ -1153,7 +1153,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            Configuration::new(
+            Config::new(
                 Default::default(),
                 Default::default(),
                 Default::default(),
@@ -1179,7 +1179,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            Configuration::new(
+            Config::new(
                 Default::default(),
                 Default::default(),
                 Default::default(),
@@ -1210,7 +1210,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "foo".into(),
                     Build::new(
@@ -1247,7 +1247,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     Build::new(
@@ -1290,7 +1290,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     Build::new(
@@ -1327,7 +1327,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(
@@ -1369,7 +1369,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(
@@ -1413,7 +1413,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(
@@ -1457,7 +1457,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(
@@ -1505,7 +1505,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(
@@ -1583,7 +1583,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(
@@ -1625,7 +1625,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(
@@ -1671,7 +1671,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(
@@ -1717,7 +1717,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(
@@ -1760,7 +1760,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(
@@ -1807,7 +1807,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(
@@ -1862,7 +1862,7 @@ mod tests {
                 &ROOT_MODULE_PATH
             )
             .unwrap(),
-            create_simple_configuration(
+            create_simple_config(
                 [(
                     "bar".into(),
                     ir_explicit_build(
@@ -1923,7 +1923,7 @@ mod tests {
                     &ROOT_MODULE_PATH
                 )
                 .unwrap(),
-                create_simple_configuration(
+                create_simple_config(
                     [(
                         "bar".into(),
                         ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()
@@ -1971,7 +1971,7 @@ mod tests {
                     &ROOT_MODULE_PATH
                 )
                 .unwrap(),
-                create_simple_configuration(
+                create_simple_config(
                     [(
                         "bar".into(),
                         ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()
@@ -2018,7 +2018,7 @@ mod tests {
                     &ROOT_MODULE_PATH
                 )
                 .unwrap(),
-                create_simple_configuration(
+                create_simple_config(
                     [(
                         "bar".into(),
                         ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()

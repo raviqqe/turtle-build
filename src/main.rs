@@ -126,10 +126,10 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Bu
 
     validate_module_dependencies(&dependencies)?;
 
-    let configuration = Arc::new(compile(&modules, &dependencies, &root_module_path)?);
+    let config = Arc::new(compile(&modules, &dependencies, &root_module_path)?);
 
     context.database().initialize(
-        &configuration
+        &config
             .build_directory()
             .map(|string| string.as_ref().as_ref())
             .unwrap_or_else(|| root_module_path.parent().unwrap())
@@ -139,12 +139,12 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Bu
 
     if let Some(tool) = &arguments.tool {
         match tool {
-            Tool::CleanDead => clean_dead(context, &configuration).await?,
+            Tool::CleanDead => clean_dead(context, &config).await?,
         }
     } else {
         run(
             context,
-            configuration.clone(),
+            config.clone(),
             &arguments.outputs,
             RunOptions {
                 debug: arguments.debug,

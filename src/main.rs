@@ -21,7 +21,7 @@ use context::Context;
 use core::error::Error;
 use error::ApplicationError;
 use futures::future::try_join_all;
-use infrastructure::{OsCommandRunner, OsConsole, OsDatabase, OsFileSystem};
+use infrastructure::{FjallDatabase, OsCommandRunner, OsConsole, OsFileSystem};
 use module_dependency::ModuleDependencyMap;
 use parse::parse;
 #[cfg(unix)]
@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let context = Context::new(
         OsCommandRunner::new(job_limit),
         OsConsole::new(),
-        OsDatabase::new(),
+        FjallDatabase::new(),
         OsFileSystem::new(
             cfg_select! {
                 unix => usize::try_from(Resource::NOFILE.get_soft()?)?,

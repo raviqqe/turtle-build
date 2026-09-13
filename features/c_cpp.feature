@@ -278,6 +278,23 @@ Feature: C and C++ header dependencies
     When I successfully run `turtle foo.o`
     Then the file named "foo.o" should exist
 
+  Scenario: Accept a header dependency that is a phony output
+    Given a file named "build.ninja" with:
+      """
+      rule cc
+        command = printf 'building\n' && printf '$out: $in header.h\n' > $out.d && cp $in $out
+        depfile = $out.d
+        deps = gcc
+
+      build header.h: phony
+      build foo.o: cc source.c
+
+      """
+    And a file named "source.c" with "int main(void) { return 0; }"
+    And a file named "header.h" with "#define FOO 1"
+    When I successfully run `turtle foo.o`
+    Then the file named "foo.o" should exist
+
   Scenario: Rebuild after a generated header dependency is updated
     Given a file named "build.ninja" with:
       """

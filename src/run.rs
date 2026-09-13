@@ -154,10 +154,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
 
         try_join_all(futures).await?;
 
-        // Only known outputs have a rule that could ever produce header
-        // dependencies, so builds without one (e.g. phony builds) never have
-        // an entry to read back.
-        let stale_header_dependencies = if build.rule().is_some() {
+        let old_header_dependencies = if build.rule().is_some() {
             context
                 .application()
                 .database()
@@ -171,17 +168,17 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         // invisible to the static graph, so gotta check before we
         // start awaiting futures for it, or two builds would await each
         // other forever.
-        if !stale_header_dependencies.is_empty() {
+        if !old_header_dependencies.is_empty() {
             context
                 .build_graph()
                 .lock()
                 .await
-                .validate_header_dependencies(&build.outputs()[0], &stale_header_dependencies)
+                .validate_header_dependencies(&build.outputs()[0], &old_header_dependencies)
                 .map_err(|error| map_build_graph_error(&context, &error))?;
         }
 
         let mut header_dependencies =
-            build_header_dependencies(&context, &stale_header_dependencies).await?;
+            build_header_dependencies(&context, &old_header_dependencies).await?;
 
         let outputs_exist = try_join_all(
             build

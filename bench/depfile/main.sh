@@ -10,7 +10,7 @@ headers=$(seq -f %g.h 0 $header_count)
 touch $headers
 echo headers = $headers >build.ninja
 
-cat <<'EOF' >>build.ninja
+cat <<EOF >>build.ninja
 rule cc
   command = printf '$out: $in $headers\n' > $out.d && cp $in $out
   depfile = $out.d

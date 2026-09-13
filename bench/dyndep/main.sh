@@ -6,7 +6,7 @@ build_count=1000
 
 touch 0.in
 
-cat <<'EOF' >build.ninja
+cat <<EOF >build.ninja
 rule cp
   command = cp $in $out
   description = run faster
@@ -21,7 +21,7 @@ EOF
 for index in $(seq $build_count); do
   touch $index.in
   echo build $index.dd.out: dyndep $index.in
-  echo "" output = $index.out
-  echo build $index.out: cp $index.in "||" $index.dd.out
-  echo "" dyndep = $index.dd.out
+  echo '' output = $index.out
+  echo build $index.out: cp $index.in '||' $index.dd.out
+  echo '' dyndep = $index.dd.out
 done >>build.ninja

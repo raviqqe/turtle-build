@@ -406,7 +406,7 @@ fn classify_inputs<'a>(
         .map(AsRef::as_ref)
         .chain(header_dependencies.iter().map(String::as_str))
         .unique()
-        .partition::<Vec<_>, _>(|&input| {
+        .partition(|&input| {
             context
                 .configuration()
                 .outputs()

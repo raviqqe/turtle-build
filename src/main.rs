@@ -1,29 +1,8 @@
-mod arguments;
-mod ast;
-mod build_graph;
-mod compile;
-mod context;
-mod error;
-mod file;
-mod hash_type;
-mod infrastructure;
-mod ir;
-mod module_dependency;
-mod parse;
-mod run;
-mod tool;
+#![doc = include_str!("../README.md")]
 
-use arguments::{Arguments, Tool};
-use ast::{Module, Statement};
-use clap::Parser;
-use compile::compile;
-use context::Context;
+use clap::{Parser, ValueEnum};
 use core::error::Error;
-use error::ApplicationError;
 use futures::future::try_join_all;
-use infrastructure::{FjallDatabase, OsCommandRunner, OsConsole, OsFileSystem};
-use module_dependency::ModuleDependencyMap;
-use parse::parse;
 #[cfg(unix)]
 use rlimit::Resource;
 use rlimit::increase_nofile_limit;
@@ -36,10 +15,44 @@ use std::{
     time::Duration,
 };
 use tokio::time::sleep;
+use turtle_build::{
+    ApplicationError, Context, FjallDatabase, Module, ModuleDependencyMap, OsCommandRunner,
+    OsConsole, OsFileSystem, RunOptions, Statement, clean_dead, compile, parse, run,
+    validate_module_dependencies,
+};
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
 const DATABASE_DIRECTORY: &str = ".turtle";
 const DEFAULT_FILE_COUNT_PER_PROCESS: usize = 3; // stdin, stdout, and stderr
+
+#[derive(Parser)]
+#[clap(about = "The Ninja build system clone written in Rust", version)]
+struct Arguments {
+    #[clap(help = "Specify outputs")]
+    outputs: Vec<String>,
+    #[clap(short, help = "Set a root build file")]
+    file: Option<String>,
+    #[clap(short = 'C', help = "Set a working directory")]
+    directory: Option<String>,
+    #[clap(short, help = "Set a job limit")]
+    job_limit: Option<usize>,
+    #[clap(long, help = "Set a log prefix")]
+    log_prefix: Option<String>,
+    #[clap(long, help = "Show no message on failure of build jobs")]
+    quiet: bool,
+    #[clap(long, help = "Show debug logs", env = "TURTLE_DEBUG")]
+    debug: bool,
+    #[clap(long, help = "Show profile timings", env = "TURTLE_PROFILE")]
+    profile: bool,
+    #[clap(short, help = "Use a complementary tool")]
+    tool: Option<Tool>,
+}
+
+#[derive(Clone, ValueEnum)]
+#[clap(rename_all = "lower")]
+enum Tool {
+    CleanDead,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -111,7 +124,7 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Ap
         .await?;
     let (modules, dependencies) = parse_modules(context, &root_module_path).await?;
 
-    module_dependency::validate(&dependencies)?;
+    validate_module_dependencies(&dependencies)?;
 
     let configuration = Arc::new(compile(&modules, &dependencies, &root_module_path)?);
 
@@ -126,14 +139,14 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Ap
 
     if let Some(tool) = &arguments.tool {
         match tool {
-            Tool::CleanDead => tool::clean_dead(context, &configuration).await?,
+            Tool::CleanDead => clean_dead(context, &configuration).await?,
         }
     } else {
-        run::run(
+        run(
             context,
             configuration.clone(),
             &arguments.outputs,
-            run::Options {
+            RunOptions {
                 debug: arguments.debug,
                 profile: arguments.profile,
             },

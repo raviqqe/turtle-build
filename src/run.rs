@@ -167,7 +167,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
 
         try_join_all(futures).await?;
 
-        let mut header_dependencies = build_header_dependencies(
+        let header_dependencies = build_header_dependencies(
             &context,
             &if build.rule().is_some() {
                 context
@@ -191,7 +191,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         .is_ok();
         let (phony_inputs, file_inputs) =
             classify_inputs(&context, &build, dynamic_inputs, &header_dependencies);
-        let timestamp_hash =
+        let mut timestamp_hash =
             hash::calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
         if outputs_exist
@@ -204,7 +204,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             return Ok(());
         }
 
-        let content_hash =
+        let mut content_hash =
             hash::calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
         if outputs_exist
@@ -216,8 +216,6 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         {
             return Ok(());
         }
-
-        let mut header_dependencies_changed = false;
 
         if let Some(rule) = build.rule() {
             try_join_all(
@@ -248,24 +246,20 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                 }
             }
 
-            header_dependencies_changed = header_dependencies != new_header_dependencies;
-            header_dependencies = new_header_dependencies;
+            if header_dependencies != new_header_dependencies {
+                let header_dependencies =
+                    filter_existing_header_dependencies(&context, &new_header_dependencies).await?;
+                let (phony_inputs, file_inputs) =
+                    classify_inputs(&context, &build, dynamic_inputs, &header_dependencies);
+
+                timestamp_hash =
+                    hash::calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs)
+                        .await?;
+                content_hash =
+                    hash::calculate_content_hash(&context, &build, &file_inputs, &phony_inputs)
+                        .await?;
+            }
         }
-
-        let (timestamp_hash, content_hash) = if header_dependencies_changed {
-            let header_dependencies =
-                filter_existing_header_dependencies(&context, &header_dependencies).await?;
-            let (phony_inputs, file_inputs) =
-                classify_inputs(&context, &build, dynamic_inputs, &header_dependencies);
-
-            (
-                hash::calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs)
-                    .await?,
-                hash::calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?,
-            )
-        } else {
-            (timestamp_hash, content_hash)
-        };
 
         context.application().database().set_hash(
             HashType::Timestamp,

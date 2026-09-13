@@ -26,6 +26,7 @@ use module_dependency::ModuleDependencyMap;
 use parse::parse;
 #[cfg(unix)]
 use rlimit::Resource;
+use rlimit::increase_nofile_limit;
 use std::{
     collections::HashMap,
     env::set_current_dir,
@@ -44,6 +45,9 @@ const DEFAULT_FILE_COUNT_PER_PROCESS: usize = 3; // stdin, stdout, and stderr
 async fn main() -> Result<(), Box<dyn Error>> {
     let arguments = Arguments::parse();
     let job_limit = arguments.job_limit.unwrap_or_else(num_cpus::get);
+
+    increase_nofile_limit(u64::MAX)?;
+
     let context = Context::new(
         OsCommandRunner::new(job_limit),
         OsConsole::new(),

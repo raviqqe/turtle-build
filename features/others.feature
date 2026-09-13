@@ -70,3 +70,19 @@ Feature: Others
       """
     When I successfully run `turtle foo`
     Then the stdout should contain exactly "hello"
+
+  @turtle
+  Scenario: Increase an open file limit
+    Given a file named "build.ninja" with:
+      """
+      rule ulimit
+        command = ulimit -Sn > $out
+
+      build foo: ulimit
+
+      """
+    When I successfully run `sh -c 'ulimit -Sn 256 && turtle'`
+    Then the file named "foo" should not contain exactly:
+      """
+      256
+      """

@@ -110,14 +110,14 @@ async fn trigger_build(context: Arc<RunContext>, build: &Arc<Build>) -> Result<(
 
 async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), BuildError> {
     spawn(async move {
-        let mut futures = vec![];
-
-        for input in build.inputs().iter().chain(build.order_only_inputs()) {
-            futures.push(build_input(context.clone(), input).await?);
-        }
-
-        // TODO Merge these with dynamic ones?
-        try_join_all(futures).await?;
+        try_join_all(
+            build
+                .inputs()
+                .iter()
+                .chain(build.order_only_inputs())
+                .map(|input| build_input(context.clone(), input)),
+        )
+        .await?;
 
         // TODO Consider caching dynamic modules.
         let dynamic_config = if let Some(dynamic_module) = build.dynamic_module() {
@@ -152,13 +152,12 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             &[]
         };
 
-        let mut futures = vec![];
-
-        for input in dynamic_inputs {
-            futures.push(build_input(context.clone(), input).await?);
-        }
-
-        try_join_all(futures).await?;
+        try_join_all(
+            dynamic_inputs
+                .iter()
+                .map(|input| build_input(context.clone(), input)),
+        )
+        .await?;
 
         let header_dependencies = build_header_dependencies(
             &context,
@@ -265,19 +264,17 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
     .await?
 }
 
-// TODO Wait for the build input?
-async fn build_input(context: Arc<RunContext>, input: &str) -> Result<BuildFuture, BuildError> {
-    Ok(if let Some(build) = context.config().outputs().get(input) {
+async fn build_input(context: Arc<RunContext>, input: &str) -> Result<(), BuildError> {
+    if let Some(build) = context.config().outputs().get(input) {
         trigger_build(context.clone(), build).await?;
 
-        context.build_futures().get(&build.id()).unwrap().clone()
-    } else {
-        let input = input.to_owned();
+        // Do not inline this to avoid holding a lock of build futures across an await point.
+        let future = context.build_futures().get(&build.id()).unwrap().clone();
 
-        async move { check_file_existence(&context, &input).await }
-            .boxed()
-            .shared()
-    })
+        future.await
+    } else {
+        check_file_existence(&context, input).await
+    }
 }
 
 async fn build_header_dependencies(

@@ -142,6 +142,22 @@ Feature: Build statement
       hello
       """
 
+  Scenario: Build an output from multiple outputs of a build
+    Given a file named "build.ninja" with:
+      """
+      rule touch
+        command = touch $out
+
+      rule cat
+        command = cat $in > $out
+
+      build foo bar: touch
+      build baz: cat foo bar
+
+      """
+    When I successfully run `turtle baz`
+    Then the file named "baz" should exist
+
   Scenario: Do not rebuild an up-to-date output
     Given a file named "build.ninja" with:
       """

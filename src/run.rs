@@ -14,7 +14,7 @@ use crate::{
     compile::compile_dynamic,
     context::Context,
     debug,
-    error::ApplicationError,
+    error::BuildError,
     hash_type::HashType,
     ir::{Build, Configuration, Rule},
     parse::parse_dynamic,
@@ -27,14 +27,14 @@ pub use options::Options;
 use std::{future::Future, path::Path, pin::Pin, process::Output, sync::Arc};
 use tokio::{spawn, time::Instant, try_join};
 
-type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<(), ApplicationError>> + Send>>>;
+type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<(), BuildError>> + Send>>>;
 
 pub async fn run(
     context: &Arc<Context>,
     configuration: Arc<Configuration>,
     outputs: &[String],
     options: Options,
-) -> Result<(), ApplicationError> {
+) -> Result<(), BuildError> {
     let mut graph = BuildGraph::new(configuration.outputs());
 
     for build in configuration
@@ -71,7 +71,7 @@ pub async fn run(
                     .configuration()
                     .outputs()
                     .get(output.as_ref())
-                    .ok_or_else(|| ApplicationError::DefaultOutputNotFound(output.clone()))?,
+                    .ok_or_else(|| BuildError::DefaultOutputNotFound(output.clone()))?,
             )
             .await?;
         }
@@ -83,7 +83,7 @@ pub async fn run(
                     .configuration()
                     .outputs()
                     .get(output.as_str())
-                    .ok_or_else(|| ApplicationError::OutputNotFound(output.clone()))?,
+                    .ok_or_else(|| BuildError::OutputNotFound(output.clone()))?,
             )
             .await?;
         }
@@ -104,10 +104,7 @@ pub async fn run(
 }
 
 #[async_recursion]
-async fn trigger_build(
-    context: Arc<RunContext>,
-    build: &Arc<Build>,
-) -> Result<(), ApplicationError> {
+async fn trigger_build(context: Arc<RunContext>, build: &Arc<Build>) -> Result<(), BuildError> {
     context
         .build_futures()
         .entry(build.id())
@@ -116,7 +113,7 @@ async fn trigger_build(
     Ok(())
 }
 
-async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), ApplicationError> {
+async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), BuildError> {
     spawn(async move {
         let mut futures = vec![];
 
@@ -155,7 +152,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                 .iter()
                 .find_map(|output| configuration.outputs().get(output.as_ref()))
                 .map(|build| build.inputs())
-                .ok_or_else(|| ApplicationError::DynamicDependencyNotFound(build.clone()))?
+                .ok_or_else(|| BuildError::DynamicDependencyNotFound(build.clone()))?
         } else {
             &[]
         };
@@ -274,10 +271,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
 }
 
 // TODO Wait for the build input?
-async fn build_input(
-    context: Arc<RunContext>,
-    input: &str,
-) -> Result<BuildFuture, ApplicationError> {
+async fn build_input(context: Arc<RunContext>, input: &str) -> Result<BuildFuture, BuildError> {
     Ok(
         if let Some(build) = context.configuration().outputs().get(input) {
             trigger_build(context.clone(), build).await?;
@@ -296,7 +290,7 @@ async fn build_input(
 async fn build_header_dependencies(
     context: &Arc<RunContext>,
     inputs: &[String],
-) -> Result<Vec<String>, ApplicationError> {
+) -> Result<Vec<String>, BuildError> {
     let mut futures = vec![];
 
     for input in inputs {
@@ -315,7 +309,7 @@ async fn build_header_dependencies(
 async fn filter_existing_header_dependencies(
     context: &RunContext,
     dependencies: &[String],
-) -> Result<Vec<String>, ApplicationError> {
+) -> Result<Vec<String>, BuildError> {
     let mut existing_dependencies = vec![];
 
     for dependency in dependencies {
@@ -332,14 +326,14 @@ async fn filter_existing_header_dependencies(
     Ok(existing_dependencies)
 }
 
-async fn check_file_existence(context: &RunContext, path: &str) -> Result<(), ApplicationError> {
+async fn check_file_existence(context: &RunContext, path: &str) -> Result<(), BuildError> {
     if !context
         .application()
         .file_system()
         .exists(path.as_ref())
         .await?
     {
-        return Err(ApplicationError::FileNotFound(
+        return Err(BuildError::FileNotFound(
             context
                 .application()
                 .database()
@@ -351,10 +345,7 @@ async fn check_file_existence(context: &RunContext, path: &str) -> Result<(), Ap
     Ok(())
 }
 
-async fn prepare_directory(
-    context: &RunContext,
-    path: impl AsRef<Path>,
-) -> Result<(), ApplicationError> {
+async fn prepare_directory(context: &RunContext, path: impl AsRef<Path>) -> Result<(), BuildError> {
     if let Some(directory) = path.as_ref().parent() {
         context
             .application()
@@ -396,7 +387,7 @@ fn classify_inputs<'a>(
     )
 }
 
-async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, ApplicationError> {
+async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildError> {
     let ((output, duration), mut console) = try_join!(
         async {
             let start_time = Instant::now();
@@ -406,7 +397,7 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, Applicati
                 .run(rule.command())
                 .await?;
 
-            Ok::<_, ApplicationError>((output, Instant::now() - start_time))
+            Ok::<_, BuildError>((output, Instant::now() - start_time))
         },
         async {
             let mut console = context.application().console().lock().await;
@@ -441,13 +432,13 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, Applicati
                 .unwrap_or_else(|| "-".into())
         );
 
-        return Err(ApplicationError::Build);
+        return Err(BuildError::Build);
     }
 
     Ok(output)
 }
 
-fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> ApplicationError {
+fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> BuildError {
     match error {
         BuildGraphError::CircularDependency(outputs) => {
             match outputs
@@ -460,7 +451,7 @@ fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> Appli
                         .map(|string| string.into())
                         .unwrap_or_else(|| output.clone()))
                 })
-                .collect::<Result<Vec<_>, ApplicationError>>()
+                .collect::<Result<Vec<_>, BuildError>>()
             {
                 Ok(outputs) => {
                     BuildGraphError::CircularDependency(outputs.into_iter().dedup().collect())

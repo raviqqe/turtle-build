@@ -1,6 +1,6 @@
 use super::context::Context;
 use crate::{
-    error::ApplicationError,
+    error::BuildError,
     hash_type::HashType,
     ir::{Build, Rule},
 };
@@ -16,7 +16,7 @@ pub async fn calculate_timestamp_hash(
     build: &Build,
     file_inputs: &[&str],
     phony_inputs: &[&str],
-) -> Result<u64, ApplicationError> {
+) -> Result<u64, BuildError> {
     if let Some(hash) = calculate_phony_hash(build, file_inputs, phony_inputs) {
         return Ok(hash);
     }
@@ -47,7 +47,7 @@ pub async fn calculate_content_hash(
     build: &Build,
     file_inputs: &[&str],
     phony_inputs: &[&str],
-) -> Result<u64, ApplicationError> {
+) -> Result<u64, BuildError> {
     if let Some(hash) = calculate_phony_hash(build, file_inputs, phony_inputs) {
         return Ok(hash);
     }
@@ -75,11 +75,7 @@ pub async fn calculate_content_hash(
     Ok(hasher.finish())
 }
 
-fn get_build_hash(
-    context: &Context,
-    r#type: HashType,
-    input: &str,
-) -> Result<u64, ApplicationError> {
+fn get_build_hash(context: &Context, r#type: HashType, input: &str) -> Result<u64, BuildError> {
     context
         .application()
         .database()
@@ -89,10 +85,10 @@ fn get_build_hash(
                 .configuration()
                 .outputs()
                 .get(input)
-                .ok_or_else(|| ApplicationError::InputNotFound(input.into()))?
+                .ok_or_else(|| BuildError::InputNotFound(input.into()))?
                 .id(),
         )?
-        .ok_or_else(|| ApplicationError::InputNotBuilt(input.into()))
+        .ok_or_else(|| BuildError::InputNotBuilt(input.into()))
 }
 
 fn calculate_phony_hash(build: &Build, file_inputs: &[&str], phony_inputs: &[&str]) -> Option<u64> {

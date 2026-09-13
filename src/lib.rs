@@ -18,7 +18,7 @@ pub use self::{
     ast::{Module, Statement},
     compile::compile,
     context::Context,
-    error::ApplicationError,
+    error::BuildError,
     infrastructure::{FjallDatabase, OsCommandRunner, OsConsole, OsFileSystem},
     module_dependency::{ModuleDependencyMap, validate as validate_module_dependencies},
     parse::parse,

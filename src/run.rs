@@ -110,6 +110,15 @@ async fn trigger_build(context: Arc<RunContext>, build: &Arc<Build>) -> Result<(
 
 async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), BuildError> {
     spawn(async move {
+        try_join_all(
+            build
+                .inputs()
+                .iter()
+                .chain(build.order_only_inputs())
+                .map(|input| build_input(context.clone(), input)),
+        )
+        .await?;
+
         // TODO Consider caching dynamic modules.
         let dynamic_config = if let Some(dynamic_module) = build.dynamic_module() {
             let mut source = String::new();
@@ -144,11 +153,8 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         };
 
         try_join_all(
-            build
-                .inputs()
+            dynamic_inputs
                 .iter()
-                .chain(build.order_only_inputs())
-                .chain(dynamic_inputs)
                 .map(|input| build_input(context.clone(), input)),
         )
         .await?;
@@ -262,18 +268,12 @@ async fn build_input(context: Arc<RunContext>, input: &str) -> Result<(), BuildE
     if let Some(build) = context.config().outputs().get(input) {
         trigger_build(context.clone(), build).await?;
 
-        context
-            .build_futures()
-            .get(&build.id())
-            .unwrap()
-            .clone()
-            .await?;
+        // Do not inline this to avoid holding a lock of build futures across an await point.
+        let future = context.build_futures().get(&build.id()).unwrap().clone();
 
-        Ok(())
+        future.await
     } else {
-        let input = input.to_owned();
-
-        check_file_existence(&context, &input).await
+        check_file_existence(&context, input).await
     }
 }
 

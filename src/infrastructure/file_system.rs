@@ -1,7 +1,6 @@
 mod metadata;
 
 use async_trait::async_trait;
-use dashmap::DashSet;
 use metadata::Metadata;
 use std::{
     error::Error,
@@ -13,7 +12,6 @@ use tokio::{
     fs::{self, File},
     io::AsyncReadExt,
     sync::Semaphore,
-    task::yield_now,
 };
 
 #[async_trait]
@@ -33,14 +31,12 @@ pub trait FileSystem {
 
 #[derive(Debug)]
 pub struct OsFileSystem {
-    path_lock: DashSet<PathBuf>,
     semaphore: Semaphore,
 }
 
 impl OsFileSystem {
     pub fn new(open_file_limit: usize) -> Self {
         Self {
-            path_lock: DashSet::default(),
             semaphore: Semaphore::new(open_file_limit.min(Semaphore::MAX_PERMITS)),
         }
     }
@@ -79,17 +75,9 @@ impl OsFileSystem {
 #[async_trait]
 impl FileSystem for OsFileSystem {
     async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
-        while !self.path_lock.insert(path.into()) {
-            yield_now().await;
-        }
+        let _permit = self.semaphore.acquire().await?;
 
-        let permit = self.semaphore.acquire().await?;
-        let result = self.read_file(path, buffer).await;
-        drop(permit);
-
-        self.path_lock.remove(path);
-
-        result
+        self.read_file(path, buffer).await
     }
 
     async fn read_file_to_string(
@@ -97,17 +85,9 @@ impl FileSystem for OsFileSystem {
         path: &Path,
         buffer: &mut String,
     ) -> Result<(), Box<dyn Error>> {
-        while !self.path_lock.insert(path.into()) {
-            yield_now().await;
-        }
+        let _permit = self.semaphore.acquire().await?;
 
-        let permit = self.semaphore.acquire().await?;
-        let result = self.read_file_to_string(path, buffer).await;
-        drop(permit);
-
-        self.path_lock.remove(path);
-
-        result
+        self.read_file_to_string(path, buffer).await
     }
 
     async fn exists(&self, path: &Path) -> Result<bool, Box<dyn Error>> {

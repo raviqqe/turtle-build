@@ -1,6 +1,6 @@
 use super::context::Context;
 use crate::{
-    error::ApplicationError,
+    error::BuildError,
     file::canonicalize_path,
     ir::{HeaderDependency, Rule},
     parse::parse_depfile,
@@ -11,7 +11,7 @@ pub async fn read_header_dependencies(
     context: &Context,
     rule: &Rule,
     output: &Output,
-) -> Result<Vec<String>, ApplicationError> {
+) -> Result<Vec<String>, BuildError> {
     let dependencies = match rule.header_dependency() {
         None => vec![],
         Some(HeaderDependency::Make { path } | HeaderDependency::Gcc { path }) => {
@@ -55,7 +55,7 @@ pub fn exclude_show_includes<'a>(rule: &Rule, output: &'a [u8]) -> Cow<'a, [u8]>
     }
 }
 
-async fn read_depfile(context: &Context, path: &str) -> Result<Vec<String>, ApplicationError> {
+async fn read_depfile(context: &Context, path: &str) -> Result<Vec<String>, BuildError> {
     if !context
         .application()
         .file_system()

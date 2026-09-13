@@ -10,7 +10,7 @@ use std::{
 use tokio::{io, task::JoinError};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ApplicationError {
+pub enum BuildError {
     Build,
     BuildGraph(BuildGraphError),
     Compile(CompileError),
@@ -25,9 +25,9 @@ pub enum ApplicationError {
     Parse(ParseError),
 }
 
-impl Error for ApplicationError {}
+impl Error for BuildError {}
 
-impl Display for ApplicationError {
+impl Display for BuildError {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
             Self::Build => write!(formatter, "build failed"),
@@ -63,43 +63,43 @@ impl Display for ApplicationError {
     }
 }
 
-impl From<Box<dyn Error>> for ApplicationError {
+impl From<Box<dyn Error>> for BuildError {
     fn from(error: Box<dyn Error>) -> Self {
         Self::Other(error.to_string())
     }
 }
 
-impl From<CompileError> for ApplicationError {
+impl From<CompileError> for BuildError {
     fn from(error: CompileError) -> Self {
         Self::Compile(error)
     }
 }
 
-impl From<io::Error> for ApplicationError {
+impl From<io::Error> for BuildError {
     fn from(error: io::Error) -> Self {
         Self::Other(error.to_string())
     }
 }
 
-impl From<JoinError> for ApplicationError {
+impl From<JoinError> for BuildError {
     fn from(error: JoinError) -> Self {
         Self::Other(error.to_string())
     }
 }
 
-impl From<ModuleDependencyError> for ApplicationError {
+impl From<ModuleDependencyError> for BuildError {
     fn from(error: ModuleDependencyError) -> Self {
         Self::ModuleDependency(error)
     }
 }
 
-impl From<ParseError> for ApplicationError {
+impl From<ParseError> for BuildError {
     fn from(error: ParseError) -> Self {
         Self::Parse(error)
     }
 }
 
-impl From<BuildGraphError> for ApplicationError {
+impl From<BuildGraphError> for BuildError {
     fn from(error: BuildGraphError) -> Self {
         Self::BuildGraph(error)
     }

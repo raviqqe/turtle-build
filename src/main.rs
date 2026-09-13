@@ -16,8 +16,8 @@ use std::{
 };
 use tokio::time::sleep;
 use turtle_build::{
-    ApplicationError, Context, FjallDatabase, Module, ModuleDependencyMap, OsCommandRunner,
-    OsConsole, OsFileSystem, RunOptions, Statement, clean_dead, compile, parse, run,
+    BuildError, Context, FjallDatabase, Module, ModuleDependencyMap, OsCommandRunner, OsConsole,
+    OsFileSystem, RunOptions, Statement, clean_dead, compile, parse, run,
     validate_module_dependencies,
 };
 
@@ -77,7 +77,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .into();
 
     if let Err(error) = execute(&context, &arguments).await {
-        if !arguments.quiet || !matches!(error, ApplicationError::Build) {
+        if !arguments.quiet || !matches!(error, BuildError::Build) {
             context
                 .console()
                 .lock()
@@ -107,7 +107,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), ApplicationError> {
+async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), BuildError> {
     if let Some(directory) = &arguments.directory {
         set_current_dir(directory)?;
     }
@@ -160,7 +160,7 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Ap
 async fn parse_modules(
     context: &Context,
     path: &Path,
-) -> Result<(HashMap<PathBuf, Module>, ModuleDependencyMap), ApplicationError> {
+) -> Result<(HashMap<PathBuf, Module>, ModuleDependencyMap), BuildError> {
     let mut paths = vec![context.file_system().canonicalize_path(path).await?];
     let mut modules = HashMap::new();
     let mut dependencies = HashMap::new();
@@ -204,7 +204,7 @@ async fn resolve_submodule_path(
     context: &Context,
     module_path: &Path,
     submodule_path: &str,
-) -> Result<(String, PathBuf), ApplicationError> {
+) -> Result<(String, PathBuf), BuildError> {
     Ok((
         submodule_path.into(),
         context

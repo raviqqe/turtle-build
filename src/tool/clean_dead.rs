@@ -1,6 +1,6 @@
 use crate::{context::Context, ir::Configuration};
+use core::error::Error;
 use futures::future::try_join_all;
-use std::error::Error;
 
 pub async fn clean_dead(
     context: &Context,

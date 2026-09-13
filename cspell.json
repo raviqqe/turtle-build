@@ -21,6 +21,7 @@
     "hasher",
     "hinweis",
     "itertools",
+    "keyspace",
     "kosaraju",
     "msvc",
     "muffy",

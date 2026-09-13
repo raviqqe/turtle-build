@@ -12,6 +12,31 @@ Feature: Rule statement
     When I successfully run `turtle`
     Then the stdout should contain exactly "hello"
 
+  Scenario: Fail to parse a rule without a command
+    Given a file named "build.ninja" with:
+      """
+      rule hello
+        description = hello
+
+      build foo: hello
+
+      """
+    When I run `turtle`
+    Then the exit status should not be 0
+
+  Scenario: Use the last command when it is assigned more than once
+    Given a file named "build.ninja" with:
+      """
+      rule hello
+        command = echo first
+        command = echo second
+
+      build foo: hello
+
+      """
+    When I successfully run `turtle`
+    Then the stdout should contain exactly "second"
+
   Scenario: Run a rule with an input
     Given a file named "build.ninja" with:
       """

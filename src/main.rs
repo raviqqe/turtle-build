@@ -4,6 +4,7 @@ mod build_graph;
 mod compile;
 mod context;
 mod error;
+mod file;
 mod hash_type;
 mod infrastructure;
 mod ir;

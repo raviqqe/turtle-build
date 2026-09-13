@@ -1,9 +1,14 @@
 mod context;
 mod hash;
+mod header_dependency;
 mod log;
 mod options;
 
-use self::context::Context as RunContext;
+use self::{
+    context::Context as RunContext,
+    hash::{calculate_content_hash, calculate_timestamp_hash},
+    header_dependency::{exclude_show_includes, read_header_dependencies},
+};
 use crate::{
     build_graph::{BuildGraph, BuildGraphError},
     compile::compile_dynamic,
@@ -19,7 +24,7 @@ use async_recursion::async_recursion;
 use futures::future::{FutureExt, Shared, try_join_all};
 use itertools::Itertools;
 pub use options::Options;
-use std::{future::Future, path::Path, pin::Pin, sync::Arc};
+use std::{future::Future, path::Path, pin::Pin, process::Output, sync::Arc};
 use tokio::{spawn, time::Instant, try_join};
 
 type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<(), ApplicationError>> + Send>>>;
@@ -30,7 +35,20 @@ pub async fn run(
     outputs: &[String],
     options: Options,
 ) -> Result<(), ApplicationError> {
-    let graph = BuildGraph::new(configuration.outputs());
+    let mut graph = BuildGraph::new(configuration.outputs());
+
+    for build in configuration
+        .outputs()
+        .values()
+        .filter(|build| build.rule().is_some())
+        .unique_by(|build| build.id())
+    {
+        graph.add_header_dependencies(
+            &build.outputs()[0],
+            &context.database().get_header_dependencies(build.id())?,
+        );
+    }
+
     let context = Arc::new(RunContext::new(
         context.clone(),
         configuration,
@@ -150,6 +168,19 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
 
         try_join_all(futures).await?;
 
+        let header_dependencies = build_header_dependencies(
+            &context,
+            &if build.rule().is_some() {
+                context
+                    .application()
+                    .database()
+                    .get_header_dependencies(build.id())?
+            } else {
+                vec![]
+            },
+        )
+        .await?;
+
         let outputs_exist = try_join_all(
             build
                 .outputs()
@@ -159,20 +190,10 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         )
         .await
         .is_ok();
-        let (phony_inputs, file_inputs) = build
-            .inputs()
-            .iter()
-            .chain(dynamic_inputs)
-            .map(AsRef::as_ref)
-            .partition::<Vec<_>, _>(|&input| {
-                context
-                    .configuration()
-                    .outputs()
-                    .get(input)
-                    .map_or_default(|build| build.rule().is_none())
-            });
-        let timestamp_hash =
-            hash::calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
+        let (phony_inputs, file_inputs) =
+            classify_inputs(&context, &build, dynamic_inputs, &header_dependencies);
+        let mut timestamp_hash =
+            calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
         if outputs_exist
             && Some(timestamp_hash)
@@ -184,8 +205,8 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             return Ok(());
         }
 
-        let content_hash =
-            hash::calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
+        let mut content_hash =
+            calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
         if outputs_exist
             && Some(content_hash)
@@ -205,7 +226,13 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             )
             .await?;
 
-            run_rule(&context, rule).await?;
+            let output = run_rule(&context, rule).await?;
+            let new_header_dependencies = read_header_dependencies(&context, rule, &output).await?;
+
+            context
+                .application()
+                .database()
+                .set_header_dependencies(build.id(), &new_header_dependencies)?;
 
             for output in build.outputs() {
                 context.application().database().set_output(output)?;
@@ -216,6 +243,18 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                         .database()
                         .set_source(output, source)?;
                 }
+            }
+
+            if header_dependencies != new_header_dependencies {
+                let header_dependencies =
+                    filter_existing_header_dependencies(&context, &new_header_dependencies).await?;
+                let (phony_inputs, file_inputs) =
+                    classify_inputs(&context, &build, dynamic_inputs, &header_dependencies);
+
+                timestamp_hash =
+                    calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
+                content_hash =
+                    calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
             }
         }
 
@@ -254,6 +293,59 @@ async fn build_input(
     )
 }
 
+async fn build_header_dependencies(
+    context: &Arc<RunContext>,
+    inputs: &[String],
+) -> Result<Vec<String>, ApplicationError> {
+    let mut futures = vec![];
+    let mut kept = vec![];
+
+    for input in inputs {
+        if let Some(build) = context.configuration().outputs().get(input.as_str()) {
+            trigger_build(context.clone(), build).await?;
+
+            futures.push(context.build_futures().get(&build.id()).unwrap().clone());
+            kept.push(input.clone());
+        } else if context
+            .application()
+            .file_system()
+            .exists(input.as_ref())
+            .await?
+        {
+            kept.push(input.clone());
+        }
+    }
+
+    try_join_all(futures).await?;
+
+    Ok(kept)
+}
+
+async fn filter_existing_header_dependencies(
+    context: &RunContext,
+    dependencies: &[String],
+) -> Result<Vec<String>, ApplicationError> {
+    let mut existing_dependencies = vec![];
+
+    for dependency in dependencies {
+        if context
+            .configuration()
+            .outputs()
+            .get(dependency.as_str())
+            .is_none_or(|build| build.rule().is_some())
+            && context
+                .application()
+                .file_system()
+                .exists(dependency.as_ref())
+                .await?
+        {
+            existing_dependencies.push(dependency.clone());
+        }
+    }
+
+    Ok(existing_dependencies)
+}
+
 // TODO Use `FileSystem::exists`?
 async fn check_file_existence(context: &RunContext, path: &str) -> Result<(), ApplicationError> {
     if context
@@ -290,7 +382,29 @@ async fn prepare_directory(
     Ok(())
 }
 
-async fn run_rule(context: &RunContext, rule: &Rule) -> Result<(), ApplicationError> {
+fn classify_inputs<'a>(
+    context: &'a RunContext,
+    build: &'a Build,
+    dynamic_inputs: &'a [Arc<str>],
+    header_dependencies: &'a [String],
+) -> (Vec<&'a str>, Vec<&'a str>) {
+    build
+        .inputs()
+        .iter()
+        .chain(dynamic_inputs)
+        .map(AsRef::as_ref)
+        .chain(header_dependencies.iter().map(String::as_str))
+        .unique()
+        .partition(|&input| {
+            context
+                .configuration()
+                .outputs()
+                .get(input)
+                .map_or_default(|build| build.rule().is_none())
+        })
+}
+
+async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, ApplicationError> {
     let ((output, duration), mut console) = try_join!(
         async {
             let start_time = Instant::now();
@@ -318,7 +432,9 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<(), ApplicationEr
 
     profile!(context, console, "duration: {} ms", duration.as_millis());
 
-    console.write_stdout(&output.stdout).await?;
+    console
+        .write_stdout(&exclude_show_includes(rule, &output.stdout))
+        .await?;
     console.write_stderr(&output.stderr).await?;
 
     if !output.status.success() {
@@ -336,7 +452,7 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<(), ApplicationEr
         return Err(ApplicationError::Build);
     }
 
-    Ok(())
+    Ok(output)
 }
 
 fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> ApplicationError {

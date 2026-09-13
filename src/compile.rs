@@ -21,6 +21,10 @@ use train_map::TrainMap;
 
 const PHONY_RULE: &str = "phony";
 const BUILD_DIRECTORY_VARIABLE: &str = "builddir";
+const COMMAND_VARIABLE: &str = "command";
+const DESCRIPTION_VARIABLE: &str = "description";
+const DEPFILE_VARIABLE: &str = "depfile";
+const DEPS_VARIABLE: &str = "deps";
 const DYNAMIC_MODULE_VARIABLE: &str = "dyndep";
 const SOURCE_VARIABLE_NAME: &str = "srcdep";
 const MSVC_DEPS_PREFIX_VARIABLE: &str = "msvc_deps_prefix";
@@ -88,6 +92,17 @@ fn compile_module<'a>(
             ast::Statement::Build(build) => {
                 let mut variables = module_state.variables.fork();
 
+                if build.rule() != PHONY_RULE {
+                    variables.extend(
+                        module_state
+                            .rules
+                            .get(build.rule())
+                            .ok_or_else(|| CompileError::RuleNotFound(build.rule().into()))?
+                            .iter()
+                            .cloned(),
+                    );
+                }
+
                 variables.extend(
                     build
                         .variable_definitions()
@@ -110,29 +125,18 @@ fn compile_module<'a>(
                         .iter()
                         .map(|string| string.as_str().into())
                         .collect(),
-                    if build.rule() == PHONY_RULE {
-                        None
-                    } else {
-                        let rule = &module_state
-                            .rules
-                            .get(build.rule())
-                            .ok_or_else(|| CompileError::RuleNotFound(build.rule().into()))?;
-
-                        // TODO Resolve command, description, depfile, deps, and
-                        // dyndep through build, rule, and file scopes in this
-                        // order like ninja by inserting rule variables into the
-                        // variable scope between file and build ones.
+                    if build.rule() != PHONY_RULE {
                         Some(
                             Rule::new(
-                                interpolate_variables(rule.command(), &variables),
-                                rule.description().map(|description| {
-                                    interpolate_variables(description, &variables)
-                                }),
+                                resolve_variable(COMMAND_VARIABLE, &variables).unwrap_or_default(),
+                                resolve_variable(DESCRIPTION_VARIABLE, &variables),
                             )
                             .with_header_dependency(
-                                compile_header_dependency(build, rule, &variables)?,
+                                compile_header_dependency(build.rule(), &variables)?,
                             ),
                         )
+                    } else {
+                        None
                     },
                     build
                         .inputs()
@@ -145,7 +149,7 @@ fn compile_module<'a>(
                         .iter()
                         .map(|string| string.as_str().into())
                         .collect(),
-                    variables.get(DYNAMIC_MODULE_VARIABLE).cloned(),
+                    resolve_variable(DYNAMIC_MODULE_VARIABLE, &variables).map(Into::into),
                 ));
 
                 let outputs = || build.outputs().iter().chain(build.implicit_outputs());
@@ -177,7 +181,13 @@ fn compile_module<'a>(
                 )?;
             }
             ast::Statement::Rule(rule) => {
-                module_state.rules.insert(rule.name(), rule.clone());
+                module_state.rules.insert(
+                    rule.name(),
+                    rule.variable_definitions()
+                        .iter()
+                        .map(|definition| (definition.name(), definition.value().into()))
+                        .collect(),
+                );
             }
             ast::Statement::Submodule(submodule) => {
                 compile_module(
@@ -202,51 +212,25 @@ fn compile_module<'a>(
 }
 
 fn compile_header_dependency(
-    build: &ast::Build,
-    rule: &ast::Rule,
+    rule: &str,
     variables: &TrainMap<&str, Arc<str>>,
 ) -> Result<Option<HeaderDependency>, CompileError> {
     Ok(
         match (
-            rule.deps()
-                .map(|deps| interpolate_variables(deps, variables))
-                .as_deref(),
-            rule.depfile()
-                .map(|depfile| interpolate_variables(depfile, variables)),
+            resolve_variable(DEPS_VARIABLE, variables).as_deref(),
+            resolve_variable(DEPFILE_VARIABLE, variables),
         ) {
             (None, None) => None,
             (None, Some(path)) => Some(HeaderDependency::Make { path }),
             (Some("gcc"), Some(path)) => Some(HeaderDependency::Gcc { path }),
-            (Some("gcc"), None) => return Err(CompileError::MissingDepfile(rule.name().into())),
+            (Some("gcc"), None) => return Err(CompileError::MissingDepfile(rule.into())),
             (Some("msvc"), _) => Some(HeaderDependency::Msvc {
-                prefix: compile_msvc_deps_prefix(build, rule, variables),
+                prefix: resolve_variable(MSVC_DEPS_PREFIX_VARIABLE, variables)
+                    .unwrap_or_else(|| DEFAULT_MSVC_DEPS_PREFIX.into()),
             }),
             (Some(deps), _) => return Err(CompileError::InvalidDependencyStyle(deps.into())),
         },
     )
-}
-
-// TODO Look up the variable scope directly once it includes rule variables.
-fn compile_msvc_deps_prefix(
-    build: &ast::Build,
-    rule: &ast::Rule,
-    variables: &TrainMap<&str, Arc<str>>,
-) -> String {
-    build
-        .variable_definitions()
-        .iter()
-        .rev()
-        .find(|definition| definition.name() == MSVC_DEPS_PREFIX_VARIABLE)
-        .map(ast::VariableDefinition::value)
-        .or_else(|| rule.msvc_deps_prefix())
-        .or_else(|| {
-            variables
-                .get(MSVC_DEPS_PREFIX_VARIABLE)
-                .map(|value| value.as_ref())
-        })
-        .map(|prefix| interpolate_variables(prefix, variables))
-        .filter(|prefix| !prefix.is_empty())
-        .unwrap_or_else(|| DEFAULT_MSVC_DEPS_PREFIX.into())
 }
 
 pub fn compile_dynamic(module: &ast::DynamicModule) -> Result<DynamicConfiguration, CompileError> {
@@ -281,6 +265,13 @@ fn resolve_dependency<'a>(
         .ok_or_else(|| CompileError::ModuleNotFound(module_path.into()))?
         .get(submodule_path)
         .ok_or_else(|| CompileError::ModuleNotFound(submodule_path.into()))?)
+}
+
+fn resolve_variable(name: &str, variables: &TrainMap<&str, Arc<str>>) -> Option<String> {
+    variables
+        .get(name)
+        .map(|value| interpolate_variables(value, variables))
+        .filter(|value| !value.is_empty())
 }
 
 fn interpolate_variables(template: &str, variables: &TrainMap<&str, Arc<str>>) -> String {
@@ -326,6 +317,16 @@ mod tests {
         )
     }
 
+    fn ast_rule(name: &str, variable_definitions: &[(&str, &str)]) -> ast::Rule {
+        ast::Rule::new(
+            name,
+            variable_definitions
+                .iter()
+                .map(|(name, value)| ast::VariableDefinition::new(*name, *value))
+                .collect(),
+        )
+    }
+
     fn ir_explicit_build(outputs: Vec<Arc<str>>, rule: Rule, inputs: Vec<Arc<str>>) -> Build {
         Build::new(outputs, vec![], rule.into(), inputs, vec![], None)
     }
@@ -360,7 +361,7 @@ mod tests {
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
                         ast::VariableDefinition::new("x", "42").into(),
-                        ast::Rule::new("foo", "$x", None).into(),
+                        ast_rule("foo", &[("command", "$x")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -391,7 +392,7 @@ mod tests {
                     ast::Module::new(vec![
                         ast::VariableDefinition::new("x", "1").into(),
                         ast::VariableDefinition::new("y", "2").into(),
-                        ast::Rule::new("foo", "$x $y", None).into(),
+                        ast_rule("foo", &[("command", "$x $y")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -421,7 +422,7 @@ mod tests {
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
                         ast::VariableDefinition::new("x_y", "42").into(),
-                        ast::Rule::new("foo", "$x_y", None).into(),
+                        ast_rule("foo", &[("command", "$x_y")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -450,7 +451,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$$", None).into(),
+                        ast_rule("foo", &[("command", "$$")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into()
                     ])
                 )]
@@ -479,7 +480,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$in", None).into(),
+                        ast_rule("foo", &[("command", "$in")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec!["baz".into()], vec![])
                             .into(),
                     ])
@@ -514,7 +515,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$in", None).into(),
+                        ast_rule("foo", &[("command", "$in")]).into(),
                         ast::Build::new(
                             vec!["bar".into()],
                             vec![],
@@ -557,7 +558,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$out", None).into(),
+                        ast_rule("foo", &[("command", "$out")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -595,7 +596,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$out", None).into(),
+                        ast_rule("foo", &[("command", "$out")]).into(),
                         ast::Build::new(
                             vec!["bar".into()],
                             vec!["baz".into()],
@@ -630,7 +631,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$in", None).into(),
+                        ast_rule("foo", &[("command", "$in")]).into(),
                         ast::Build::new(
                             vec!["bar".into()],
                             vec![],
@@ -676,7 +677,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "", None).into(),
+                        ast_rule("foo", &[("command", "")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                         ast_explicit_build(vec!["baz".into()], "foo", vec![], vec![]).into()
                     ])
@@ -712,7 +713,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$x", None).into(),
+                        ast_rule("foo", &[("command", "$x")]).into(),
                         ast_explicit_build(
                             vec!["bar".into()],
                             "foo",
@@ -741,13 +742,150 @@ mod tests {
     }
 
     #[test]
+    fn interpolate_rule_variable_in_command() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast_rule(
+                            "foo",
+                            &[("command", "$description"), ("description", "bar")]
+                        )
+                        .into(),
+                        ast_explicit_build(vec!["baz".into()], "foo", vec![], vec![]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_configuration(
+                [(
+                    "baz".into(),
+                    ir_explicit_build(
+                        vec!["baz".into()],
+                        Rule::new("bar", Some("bar".into())),
+                        vec![]
+                    )
+                    .into()
+                )]
+                .into_iter()
+                .collect(),
+                ["baz".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn compile_last_command_in_rule() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast_rule("foo", &[("command", "first"), ("command", "second")]).into(),
+                        ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_configuration(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(vec!["bar".into()], Rule::new("second", None), vec![]).into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn compile_build_level_command_shadowing_rule_command() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast_rule("foo", &[("command", "rule")]).into(),
+                        ast_explicit_build(
+                            vec!["bar".into()],
+                            "foo",
+                            vec![],
+                            vec![ast::VariableDefinition::new("command", "build")]
+                        )
+                        .into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_configuration(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(vec!["bar".into()], Rule::new("build", None), vec![]).into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn compile_global_description() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast::VariableDefinition::new("description", "global").into(),
+                        ast_rule("foo", &[("command", "")]).into(),
+                        ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_configuration(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(
+                        vec!["bar".into()],
+                        Rule::new("", Some("global".into())),
+                        vec![]
+                    )
+                    .into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
     fn compile_source_map() {
         assert_eq!(
             compile(
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "foo", None).into(),
+                        ast_rule("foo", &[("command", "foo")]).into(),
                         ast_explicit_build(
                             vec!["bar".into()],
                             "foo",
@@ -883,15 +1021,93 @@ mod tests {
     }
 
     #[test]
+    fn compile_rule_level_dynamic_module_variable() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast_rule("foo", &[("command", ""), ("dyndep", "$out.dd")]).into(),
+                        ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_configuration(
+                [(
+                    "bar".into(),
+                    Build::new(
+                        vec!["bar".into()],
+                        vec![],
+                        Some(Rule::new("", None)),
+                        vec![],
+                        vec![],
+                        Some("bar.dd".into())
+                    )
+                    .into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn compile_build_level_dynamic_module_variable_shadowing_rule_level_one() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast_rule("foo", &[("command", ""), ("dyndep", "rule.dd")]).into(),
+                        ast_explicit_build(
+                            vec!["bar".into()],
+                            "foo",
+                            vec![],
+                            vec![ast::VariableDefinition::new("dyndep", "build.dd")]
+                        )
+                        .into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_configuration(
+                [(
+                    "bar".into(),
+                    Build::new(
+                        vec!["bar".into()],
+                        vec![],
+                        Some(Rule::new("", None)),
+                        vec![],
+                        vec![],
+                        Some("build.dd".into())
+                    )
+                    .into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
     fn compile_make_header_dependency() {
         assert_eq!(
             compile(
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None)
-                            .with_depfile(Some("foo.d".into()))
-                            .into(),
+                        ast_rule("foo", &[("command", "bar"), ("depfile", "foo.d")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -929,10 +1145,11 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None)
-                            .with_depfile(Some("foo.d".into()))
-                            .with_deps(Some("gcc".into()))
-                            .into(),
+                        ast_rule(
+                            "foo",
+                            &[("command", "bar"), ("depfile", "foo.d"), ("deps", "gcc")]
+                        )
+                        .into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -964,15 +1181,149 @@ mod tests {
     }
 
     #[test]
+    fn compile_make_header_dependency_with_build_level_depfile() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast_rule("foo", &[("command", "bar")]).into(),
+                        ast_explicit_build(
+                            vec!["bar".into()],
+                            "foo",
+                            vec![],
+                            vec![ast::VariableDefinition::new("depfile", "foo.d")]
+                        )
+                        .into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_configuration(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(
+                        vec!["bar".into()],
+                        Rule::new("bar", None).with_header_dependency(Some(
+                            HeaderDependency::Make {
+                                path: "foo.d".into()
+                            }
+                        )),
+                        vec![]
+                    )
+                    .into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn compile_gcc_header_dependency_with_build_level_deps() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast_rule("foo", &[("command", "bar"), ("depfile", "$out.d")]).into(),
+                        ast_explicit_build(
+                            vec!["bar".into()],
+                            "foo",
+                            vec![],
+                            vec![ast::VariableDefinition::new("deps", "gcc")]
+                        )
+                        .into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_configuration(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(
+                        vec!["bar".into()],
+                        Rule::new("bar", None).with_header_dependency(Some(
+                            HeaderDependency::Gcc {
+                                path: "bar.d".into()
+                            }
+                        )),
+                        vec![]
+                    )
+                    .into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn compile_make_header_dependency_with_build_level_empty_deps_shadowing_rule_deps() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast_rule(
+                            "foo",
+                            &[("command", "bar"), ("depfile", "foo.d"), ("deps", "gcc")]
+                        )
+                        .into(),
+                        ast_explicit_build(
+                            vec!["bar".into()],
+                            "foo",
+                            vec![],
+                            vec![ast::VariableDefinition::new("deps", "")]
+                        )
+                        .into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_configuration(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(
+                        vec!["bar".into()],
+                        Rule::new("bar", None).with_header_dependency(Some(
+                            HeaderDependency::Make {
+                                path: "foo.d".into()
+                            }
+                        )),
+                        vec![]
+                    )
+                    .into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
     fn fail_to_compile_gcc_header_dependency_without_depfile() {
         assert_eq!(
             compile(
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None)
-                            .with_deps(Some("gcc".into()))
-                            .into(),
+                        ast_rule("foo", &[("command", "bar"), ("deps", "gcc")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -992,9 +1343,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None)
-                            .with_deps(Some("clang".into()))
-                            .into(),
+                        ast_rule("foo", &[("command", "bar"), ("deps", "clang")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -1014,9 +1363,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None)
-                            .with_deps(Some("msvc".into()))
-                            .into(),
+                        ast_rule("foo", &[("command", "bar"), ("deps", "msvc")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -1054,10 +1401,11 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None)
-                            .with_depfile(Some("foo.d".into()))
-                            .with_deps(Some("msvc".into()))
-                            .into(),
+                        ast_rule(
+                            "foo",
+                            &[("command", "bar"), ("depfile", "foo.d"), ("deps", "msvc")]
+                        )
+                        .into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -1095,10 +1443,15 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None)
-                            .with_deps(Some("msvc".into()))
-                            .with_msvc_deps_prefix(Some("".into()))
-                            .into(),
+                        ast_rule(
+                            "foo",
+                            &[
+                                ("command", "bar"),
+                                ("deps", "msvc"),
+                                ("msvc_deps_prefix", "")
+                            ]
+                        )
+                        .into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -1136,10 +1489,15 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None)
-                            .with_deps(Some("msvc".into()))
-                            .with_msvc_deps_prefix(Some("Hinweis: Einlesen der Datei ".into()))
-                            .into(),
+                        ast_rule(
+                            "foo",
+                            &[
+                                ("command", "bar"),
+                                ("deps", "msvc"),
+                                ("msvc_deps_prefix", "Hinweis: Einlesen der Datei ")
+                            ]
+                        )
+                        .into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -1182,9 +1540,7 @@ mod tests {
                             "Hinweis: Einlesen der Datei "
                         )
                         .into(),
-                        ast::Rule::new("foo", "bar", None)
-                            .with_deps(Some("msvc".into()))
-                            .into(),
+                        ast_rule("foo", &[("command", "bar"), ("deps", "msvc")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -1223,10 +1579,15 @@ mod tests {
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
                         ast::VariableDefinition::new("msvc_deps_prefix", "global prefix: ").into(),
-                        ast::Rule::new("foo", "bar", None)
-                            .with_deps(Some("msvc".into()))
-                            .with_msvc_deps_prefix(Some("rule prefix: ".into()))
-                            .into(),
+                        ast_rule(
+                            "foo",
+                            &[
+                                ("command", "bar"),
+                                ("deps", "msvc"),
+                                ("msvc_deps_prefix", "rule prefix: ")
+                            ]
+                        )
+                        .into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -1264,10 +1625,15 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None)
-                            .with_deps(Some("msvc".into()))
-                            .with_msvc_deps_prefix(Some("rule prefix: ".into()))
-                            .into(),
+                        ast_rule(
+                            "foo",
+                            &[
+                                ("command", "bar"),
+                                ("deps", "msvc"),
+                                ("msvc_deps_prefix", "rule prefix: ")
+                            ]
+                        )
+                        .into(),
                         ast_explicit_build(
                             vec!["bar".into()],
                             "foo",
@@ -1328,7 +1694,7 @@ mod tests {
                         (
                             SUBMODULE_PATH.into(),
                             ast::Module::new(vec![
-                                ast::Rule::new("foo", "$x", None).into(),
+                                ast_rule("foo", &[("command", "$x")]).into(),
                                 ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![])
                                     .into()
                             ])
@@ -1370,7 +1736,7 @@ mod tests {
                             ROOT_MODULE_PATH.clone(),
                             ast::Module::new(vec![
                                 ast::VariableDefinition::new("x", "42").into(),
-                                ast::Rule::new("foo", "$x", None).into(),
+                                ast_rule("foo", &[("command", "$x")]).into(),
                                 ast::Submodule::new(SUBMODULE_PATH).into(),
                             ])
                         ),
@@ -1418,7 +1784,7 @@ mod tests {
                             ROOT_MODULE_PATH.clone(),
                             ast::Module::new(vec![
                                 ast::VariableDefinition::new("x", "42").into(),
-                                ast::Rule::new("foo", "$x", None).into(),
+                                ast_rule("foo", &[("command", "$x")]).into(),
                                 ast::Submodule::new(SUBMODULE_PATH).into(),
                                 ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![])
                                     .into(),

@@ -332,14 +332,12 @@ async fn filter_existing_header_dependencies(
     Ok(existing_dependencies)
 }
 
-// TODO Use `FileSystem::exists`?
 async fn check_file_existence(context: &RunContext, path: &str) -> Result<(), ApplicationError> {
-    if context
+    if !context
         .application()
         .file_system()
-        .metadata(path.as_ref())
-        .await
-        .is_err()
+        .exists(path.as_ref())
+        .await?
     {
         return Err(ApplicationError::FileNotFound(
             context

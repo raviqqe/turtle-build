@@ -6,7 +6,7 @@ mod options;
 
 use self::{
     context::Context as RunContext,
-    header_dependency::{exclude_show_includes, read_rule_output},
+    header_dependency::{exclude_show_includes, read_header_dependencies},
 };
 use crate::{
     build_graph::{BuildGraph, BuildGraphError},
@@ -233,7 +233,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             .await?;
 
             let new_header_dependencies =
-                read_rule_output(&context, rule, &run_rule(&context, rule).await?).await?;
+                read_header_dependencies(&context, rule, &run_rule(&context, rule).await?).await?;
 
             if !new_header_dependencies.is_empty() {
                 context

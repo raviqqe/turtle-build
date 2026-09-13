@@ -7,7 +7,7 @@ use crate::{
 };
 use std::{borrow::Cow, process::Output};
 
-pub async fn read_rule_output(
+pub async fn read_header_dependencies(
     context: &Context,
     rule: &Rule,
     output: &Output,

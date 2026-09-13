@@ -21,7 +21,7 @@ jobs:
       - uses: raviqqe/enable-homebrew@6bd383659a321c332bd0c0ed445c32d54e04efe8 # v1.0.5
       - run: brew install ninja
       - run: cargo install --path . --locked
-      - run: tools/benchmark.sh ${{ matrix.benchmark }}
+      - run: tools/bench.sh ${{ matrix.benchmark }}
   bench:
     needs:
       - hyperfine

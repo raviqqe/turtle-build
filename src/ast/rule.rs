@@ -5,6 +5,7 @@ pub struct Rule {
     description: Option<String>,
     depfile: Option<String>,
     deps: Option<String>,
+    dyndep: Option<String>,
     msvc_deps_prefix: Option<String>,
 }
 
@@ -20,6 +21,7 @@ impl Rule {
             description,
             depfile: None,
             deps: None,
+            dyndep: None,
             msvc_deps_prefix: None,
         }
     }
@@ -31,6 +33,11 @@ impl Rule {
 
     pub fn with_deps(mut self, deps: Option<String>) -> Self {
         self.deps = deps;
+        self
+    }
+
+    pub fn with_dyndep(mut self, dyndep: Option<String>) -> Self {
+        self.dyndep = dyndep;
         self
     }
 
@@ -57,6 +64,10 @@ impl Rule {
 
     pub fn deps(&self) -> Option<&str> {
         self.deps.as_deref()
+    }
+
+    pub fn dyndep(&self) -> Option<&str> {
+        self.dyndep.as_deref()
     }
 
     pub fn msvc_deps_prefix(&self) -> Option<&str> {

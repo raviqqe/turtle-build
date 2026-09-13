@@ -93,6 +93,7 @@ fn rule(input: &str) -> IResult<&str, Rule> {
                 Rule::new(name, find("command")?, find("description").map(Into::into))
                     .with_depfile(find("depfile").map(Into::into))
                     .with_deps(find("deps").map(Into::into))
+                    .with_dyndep(find("dyndep").map(Into::into))
                     .with_msvc_deps_prefix(find("msvc_deps_prefix").map(Into::into)),
             )
         },
@@ -376,6 +377,12 @@ mod tests {
             Rule::new("foo", "bar", None)
                 .with_depfile(Some("foo.d".into()))
                 .with_deps(Some("gcc".into()))
+        );
+        assert_eq!(
+            rule("rule foo\n command = bar\n dyndep = $out.dd\n")
+                .unwrap()
+                .1,
+            Rule::new("foo", "bar", None).with_dyndep(Some("$out.dd".into()))
         );
     }
 

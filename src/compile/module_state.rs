@@ -1,10 +1,9 @@
-use crate::ast;
 use std::sync::Arc;
 use train_map::TrainMap;
 
 #[derive(Clone, Debug)]
 pub struct ModuleState<'a, 'm> {
-    pub rules: TrainMap<'m, &'a str, ast::Rule>,
+    pub rules: TrainMap<'m, &'a str, Vec<(&'a str, Arc<str>)>>,
     pub variables: TrainMap<'m, &'a str, Arc<str>>,
 }
 

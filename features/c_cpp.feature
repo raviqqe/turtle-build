@@ -45,6 +45,29 @@ Feature: C and C++ header dependencies
       """
     And the file named "foo.o.d" should exist
 
+  Scenario: Rebuild after a header dependency from a depfile declared in a build statement is updated
+    Given a file named "build.ninja" with:
+      """
+      rule cc
+        command = printf 'building\n' && printf '$out: $in header.h\n' > $out.d && cp $in $out
+
+      build foo.o: cc source.c
+        depfile = foo.o.d
+        deps = gcc
+
+      """
+    And a file named "source.c" with "int main(void) { return 0; }"
+    And a file named "header.h" with "#define FOO 1"
+    When I successfully run `turtle`
+    And a file named "header.h" with "#define FOO 2"
+    And I successfully run `turtle`
+    Then the stdout should contain exactly:
+      """
+      building
+      building
+      """
+    And the file named "foo.o.d" should not exist
+
   Scenario: Rebuild after a header dependency from MSVC is updated
     Given a file named "build.ninja" with:
       """

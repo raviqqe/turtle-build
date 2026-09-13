@@ -117,6 +117,19 @@ Feature: Rule statement
     When I successfully run `turtle`
     Then the stdout should contain exactly "hello world"
 
+  Scenario: Run a command declared in a build statement
+    Given a file named "build.ninja" with:
+      """
+      rule echo
+        command = echo rule
+
+      build foo: echo
+        command = echo build
+
+      """
+    When I successfully run `turtle`
+    Then the stdout should contain exactly "build"
+
   Scenario: Run a phony rule
     Given a file named "build.ninja" with:
       """

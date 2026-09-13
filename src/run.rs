@@ -229,8 +229,8 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             )
             .await?;
 
-            let new_header_dependencies =
-                read_header_dependencies(&context, rule, &run_rule(&context, rule).await?).await?;
+            let output = run_rule(&context, rule).await?;
+            let new_header_dependencies = read_header_dependencies(&context, rule, &output).await?;
 
             context
                 .application()

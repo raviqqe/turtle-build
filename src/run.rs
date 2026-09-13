@@ -252,9 +252,6 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             header_dependencies = new_header_dependencies;
         }
 
-        // A rule is not expected to modify its own inputs, so hashes only
-        // need to be recomputed here when the header dependency set
-        // itself changed
         let (timestamp_hash, content_hash) = if header_dependencies_changed {
             let header_dependencies =
                 filter_existing_header_dependencies(&context, &header_dependencies).await?;

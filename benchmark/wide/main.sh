@@ -19,11 +19,6 @@ print_default() (
   echo default $1
 )
 
-cd $(dirname $0)
-rm -rf tmp
-mkdir -p tmp
-cd tmp
-
 for index in $(seq 0 $rule_count); do
   rule=rule$index
 
@@ -38,6 +33,3 @@ for index in $(seq 0 $rule_count); do
     print_default $output
   done
 done >build.ninja
-
-cargo install hyperfine
-hyperfine -p ../clean.sh ninja turtle

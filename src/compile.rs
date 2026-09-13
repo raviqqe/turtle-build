@@ -215,7 +215,7 @@ fn compile_header_dependency(
                 .map(|depfile| interpolate_variables(depfile, variables)),
         ) {
             (None, None) => None,
-            (None, Some(path)) => Some(HeaderDependency::Depfile { path }),
+            (None, Some(path)) => Some(HeaderDependency::Make { path }),
             (Some("gcc"), Some(path)) => Some(HeaderDependency::Gcc { path }),
             (Some("gcc"), None) => return Err(CompileError::MissingDepfile(rule.name().into())),
             (Some("msvc"), _) => Some(HeaderDependency::Msvc {
@@ -883,7 +883,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_depfile_header_dependency() {
+    fn compile_make_header_dependency() {
         assert_eq!(
             compile(
                 &[(
@@ -907,7 +907,7 @@ mod tests {
                     ir_explicit_build(
                         vec!["bar".into()],
                         Rule::new("bar", None).with_header_dependency(Some(
-                            HeaderDependency::Depfile {
+                            HeaderDependency::Make {
                                 path: "foo.d".into()
                             }
                         )),

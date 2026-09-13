@@ -14,7 +14,7 @@ pub async fn read_rule_output(
 ) -> Result<Vec<String>, ApplicationError> {
     let dependencies = match rule.header_dependency() {
         None => vec![],
-        Some(HeaderDependency::Depfile { path } | HeaderDependency::Gcc { path }) => {
+        Some(HeaderDependency::Make { path } | HeaderDependency::Gcc { path }) => {
             read_depfile(context, path).await?
         }
         Some(HeaderDependency::Msvc { prefix }) => {

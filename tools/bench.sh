@@ -2,7 +2,7 @@
 
 set -e
 
-cd $(dirname $0)/../benchmark/$1
+cd $(dirname $0)/../bench/$1
 rm -rf tmp
 mkdir tmp
 cd tmp

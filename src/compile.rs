@@ -32,7 +32,7 @@ const MSVC_DEPS_PREFIX_VARIABLE: &str = "msvc_deps_prefix";
 const DEFAULT_MSVC_DEPS_PREFIX: &str = "Note: including file: ";
 
 static VARIABLE_PATTERN: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\$([[:alpha:]_][[:alnum:]_]*)").unwrap());
+    Lazy::new(|| Regex::new(r"\$(\$|[[:alpha:]_][[:alnum:]_]*)").unwrap());
 
 // TODO Use a string pool for paths.
 pub fn compile(
@@ -198,12 +198,10 @@ fn compile_module<'a>(
                 )?;
             }
             ast::Statement::VariableDefinition(definition) => {
-                // TODO Expand values on definition like ninja so that nested
-                // references are expanded and later redefinitions do not
-                // affect earlier uses.
-                module_state
-                    .variables
-                    .insert(definition.name(), definition.value().into());
+                module_state.variables.insert(
+                    definition.name(),
+                    interpolate_variables(definition.value(), &module_state.variables).into(),
+                );
             }
         }
     }
@@ -276,13 +274,14 @@ fn resolve_variable(name: &str, variables: &TrainMap<&str, Arc<str>>) -> Option<
 
 fn interpolate_variables(template: &str, variables: &TrainMap<&str, Arc<str>>) -> String {
     VARIABLE_PATTERN
-        .replace_all(template, |captures: &Captures| {
-            variables
-                .get(&captures[1])
+        .replace_all(template, |captures: &Captures| match &captures[1] {
+            "$" => "$",
+            name => variables
+                .get(name)
                 .map(|string| string.as_ref())
-                .unwrap_or_default()
+                .unwrap_or_default(),
         })
-        .replace("$$", "$")
+        .into()
 }
 
 #[cfg(test)]
@@ -465,6 +464,191 @@ mod tests {
                 [(
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("$", None), vec![]).into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn interpolate_escaped_variable_in_command() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast::VariableDefinition::new("x", "42").into(),
+                        ast_rule("foo", &[("command", "$$x")]).into(),
+                        ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_configuration(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(vec!["bar".into()], Rule::new("$x", None), vec![]).into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn interpolate_nested_variable_in_command() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast::VariableDefinition::new("x", "42").into(),
+                        ast::VariableDefinition::new("y", "$x").into(),
+                        ast_rule("foo", &[("command", "$y")]).into(),
+                        ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_configuration(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn expand_variable_on_definition() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast::VariableDefinition::new("x", "1").into(),
+                        ast::VariableDefinition::new("y", "$x").into(),
+                        ast::VariableDefinition::new("x", "2").into(),
+                        ast_rule("foo", &[("command", "$y")]).into(),
+                        ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_configuration(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(vec!["bar".into()], Rule::new("1", None), vec![]).into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn append_value_to_variable() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast::VariableDefinition::new("x", "1").into(),
+                        ast::VariableDefinition::new("x", "$x 2").into(),
+                        ast_rule("foo", &[("command", "$x")]).into(),
+                        ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_configuration(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(vec!["bar".into()], Rule::new("1 2", None), vec![]).into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn expand_escaped_variable_on_definition() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast::VariableDefinition::new("y", "42").into(),
+                        ast::VariableDefinition::new("x", "$$y").into(),
+                        ast_rule("foo", &[("command", "$x")]).into(),
+                        ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_configuration(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(vec!["bar".into()], Rule::new("$y", None), vec![]).into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn unescape_dollar_signs_once() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast::VariableDefinition::new("x", "$$$$").into(),
+                        ast_rule("foo", &[("command", "$x")]).into(),
+                        ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_configuration(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(vec!["bar".into()], Rule::new("$$", None), vec![]).into()
                 )]
                 .into_iter()
                 .collect(),
@@ -974,6 +1158,32 @@ mod tests {
                 Default::default(),
                 Default::default(),
                 Some("foo".into())
+            )
+        );
+    }
+
+    #[test]
+    fn compile_build_directory_with_variable() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast::VariableDefinition::new("x", "foo").into(),
+                        ast::VariableDefinition::new("builddir", "$x/bar").into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            Configuration::new(
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                Some("foo/bar".into())
             )
         );
     }

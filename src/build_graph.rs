@@ -81,6 +81,15 @@ impl BuildGraph {
         self.validate()
     }
 
+    pub fn add_header_dependencies(&mut self, output: &Arc<str>, dependencies: &[String]) {
+        for dependency in dependencies {
+            self.add_edge(
+                self.primary_outputs[output].clone(),
+                dependency.as_str().into(),
+            );
+        }
+    }
+
     fn add_edge(&mut self, output: Arc<str>, input: Arc<str>) {
         self.add_node(&output);
         self.add_node(&input);
@@ -321,6 +330,54 @@ mod tests {
                 "bar".into(),
             ]))
         );
+    }
+
+    #[test]
+    fn validate_with_header_dependencies() {
+        let mut graph = BuildGraph::new(
+            &[
+                (
+                    "foo".into(),
+                    explicit_build(vec!["foo".into()], vec!["bar".into()]).into(),
+                ),
+                (
+                    "bar".into(),
+                    explicit_build(vec!["bar".into()], vec![]).into(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        );
+
+        graph.validate().unwrap();
+
+        graph.add_header_dependencies(&"bar".into(), &["foo".into()]);
+
+        assert_eq!(
+            graph.validate(),
+            Err(BuildGraphError::CircularDependency(vec![
+                "foo".into(),
+                "bar".into(),
+            ]))
+        );
+    }
+
+    #[test]
+    fn validate_without_header_dependencies() {
+        let mut graph = BuildGraph::new(
+            &[(
+                "foo".into(),
+                explicit_build(vec!["foo".into()], vec![]).into(),
+            )]
+            .into_iter()
+            .collect(),
+        );
+
+        graph.validate().unwrap();
+
+        graph.add_header_dependencies(&"foo".into(), &[]);
+
+        assert_eq!(graph.validate(), Ok(()));
     }
 
     #[test]

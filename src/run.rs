@@ -110,15 +110,6 @@ async fn trigger_build(context: Arc<RunContext>, build: &Arc<Build>) -> Result<(
 
 async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), BuildError> {
     spawn(async move {
-        let mut futures = vec![];
-
-        for input in build.inputs().iter().chain(build.order_only_inputs()) {
-            futures.push(build_input(context.clone(), input).await?);
-        }
-
-        // TODO Merge these with dynamic ones?
-        try_join_all(futures).await?;
-
         // TODO Consider caching dynamic modules.
         let dynamic_config = if let Some(dynamic_module) = build.dynamic_module() {
             let mut source = String::new();
@@ -152,13 +143,15 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             &[]
         };
 
-        let mut futures = vec![];
-
-        for input in dynamic_inputs {
-            futures.push(build_input(context.clone(), input).await?);
-        }
-
-        try_join_all(futures).await?;
+        try_join_all(
+            build
+                .inputs()
+                .iter()
+                .chain(build.order_only_inputs())
+                .chain(dynamic_inputs)
+                .map(|input| build_input(context.clone(), input)),
+        )
+        .await?;
 
         let header_dependencies = build_header_dependencies(
             &context,

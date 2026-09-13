@@ -11,7 +11,7 @@ const HEADER_DEPENDENCY_KEYSPACE_NAME: &str = "header_dependency";
 const OUTPUT_KEYSPACE_NAME: &str = "output";
 const SOURCE_KEYSPACE_NAME: &str = "source";
 
-static BINCODE_CONFIGURATION: LazyLock<bincode::config::Configuration> = LazyLock::new(|| {
+static BINCODE_CONFIG: LazyLock<bincode::config::Configuration> = LazyLock::new(|| {
     bincode::config::Configuration::<
         bincode::config::LittleEndian,
         bincode::config::Varint,
@@ -79,7 +79,7 @@ impl Database for FjallDatabase {
             .hash_keyspace(r#type)?
             .get(id.to_bytes())?
             .map(|value| {
-                bincode::decode_from_slice(&value, *BINCODE_CONFIGURATION).map(|(value, _)| value)
+                bincode::decode_from_slice(&value, *BINCODE_CONFIG).map(|(value, _)| value)
             })
             .transpose()?)
     }
@@ -87,7 +87,7 @@ impl Database for FjallDatabase {
     fn set_hash(&self, r#type: HashType, id: BuildId, hash: u64) -> Result<(), Box<dyn Error>> {
         self.hash_keyspace(r#type)?.insert(
             id.to_bytes(),
-            bincode::encode_to_vec(hash, *BINCODE_CONFIGURATION)?,
+            bincode::encode_to_vec(hash, *BINCODE_CONFIG)?,
         )?;
 
         Ok(())
@@ -99,7 +99,7 @@ impl Database for FjallDatabase {
             .header_dependency
             .get(id.to_bytes())?
             .map(|value| {
-                bincode::decode_from_slice(&value, *BINCODE_CONFIGURATION).map(|(value, _)| value)
+                bincode::decode_from_slice(&value, *BINCODE_CONFIG).map(|(value, _)| value)
             })
             .transpose()?
             .unwrap_or_default())
@@ -112,7 +112,7 @@ impl Database for FjallDatabase {
     ) -> Result<(), Box<dyn Error>> {
         self.database()?.header_dependency.insert(
             id.to_bytes(),
-            bincode::encode_to_vec(dependencies, *BINCODE_CONFIGURATION)?,
+            bincode::encode_to_vec(dependencies, *BINCODE_CONFIG)?,
         )?;
 
         Ok(())

@@ -2,7 +2,7 @@ use super::{BuildFuture, options::Options};
 use crate::{
     build_graph::BuildGraph,
     context::Context as ApplicationContext,
-    ir::{BuildId, Configuration},
+    ir::{BuildId, Config},
 };
 use dashmap::DashMap;
 use std::sync::Arc;
@@ -10,7 +10,7 @@ use tokio::sync::Mutex;
 
 pub struct Context {
     application: Arc<ApplicationContext>,
-    configuration: Arc<Configuration>,
+    config: Arc<Config>,
     build_futures: DashMap<BuildId, BuildFuture>,
     build_graph: Mutex<BuildGraph>,
     options: Options,
@@ -19,14 +19,14 @@ pub struct Context {
 impl Context {
     pub fn new(
         application: Arc<ApplicationContext>,
-        configuration: Arc<Configuration>,
+        config: Arc<Config>,
         build_graph: BuildGraph,
         options: Options,
     ) -> Self {
         Self {
             application,
             build_graph: build_graph.into(),
-            configuration,
+            config,
             build_futures: DashMap::new(),
             options,
         }
@@ -36,8 +36,8 @@ impl Context {
         &self.application
     }
 
-    pub fn configuration(&self) -> &Configuration {
-        &self.configuration
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 
     pub fn build_futures(&self) -> &DashMap<BuildId, BuildFuture> {

@@ -82,7 +82,7 @@ fn get_build_hash(context: &Context, r#type: HashType, input: &str) -> Result<u6
         .get_hash(
             r#type,
             context
-                .configuration()
+                .config()
                 .outputs()
                 .get(input)
                 .ok_or_else(|| BuildError::InputNotFound(input.into()))?

@@ -293,11 +293,6 @@ async fn build_input(
     )
 }
 
-// Unlike `build_input`, a header dependency that no longer exists is dropped
-// instead of failing the build. Like ninja, this only makes the build out of
-// date, since its inputs no longer match the stored hashes. A header
-// dependency that is a build output is built like any other input so that
-// generated headers exist before the inputs of this build are hashed.
 async fn build_header_dependencies(
     context: &Arc<RunContext>,
     inputs: &[String],

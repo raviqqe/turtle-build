@@ -265,19 +265,23 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
     .await?
 }
 
-// TODO Wait for the build input?
-async fn build_input(context: Arc<RunContext>, input: &str) -> Result<BuildFuture, BuildError> {
-    Ok(if let Some(build) = context.config().outputs().get(input) {
+async fn build_input(context: Arc<RunContext>, input: &str) -> Result<(), BuildError> {
+    if let Some(build) = context.config().outputs().get(input) {
         trigger_build(context.clone(), build).await?;
 
-        context.build_futures().get(&build.id()).unwrap().clone()
+        context
+            .build_futures()
+            .get(&build.id())
+            .unwrap()
+            .clone()
+            .await?;
+
+        Ok(())
     } else {
         let input = input.to_owned();
 
-        async move { check_file_existence(&context, &input).await }
-            .boxed()
-            .shared()
-    })
+        check_file_existence(&context, &input).await
+    }
 }
 
 async fn build_header_dependencies(

@@ -6,6 +6,7 @@ mod options;
 
 use self::{
     context::Context as RunContext,
+    hash::{calculate_content_hash, calculate_timestamp_hash},
     header_dependency::{exclude_show_includes, read_header_dependencies},
 };
 use crate::{
@@ -192,7 +193,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         let (phony_inputs, file_inputs) =
             classify_inputs(&context, &build, dynamic_inputs, &header_dependencies);
         let mut timestamp_hash =
-            hash::calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
+            calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
         if outputs_exist
             && Some(timestamp_hash)
@@ -205,7 +206,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         }
 
         let mut content_hash =
-            hash::calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
+            calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
         if outputs_exist
             && Some(content_hash)
@@ -253,11 +254,9 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                     classify_inputs(&context, &build, dynamic_inputs, &header_dependencies);
 
                 timestamp_hash =
-                    hash::calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs)
-                        .await?;
+                    calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
                 content_hash =
-                    hash::calculate_content_hash(&context, &build, &file_inputs, &phony_inputs)
-                        .await?;
+                    calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
             }
         }
 

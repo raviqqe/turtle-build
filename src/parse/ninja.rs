@@ -76,25 +76,12 @@ fn rule(input: &str) -> IResult<&str, Rule> {
             line_break,
             many1(preceded(indent, variable_definition)),
         ),
-        |(_, name, _, variables)| {
-            // TODO Allow duplicate fields at the AST level.
-            // TODO Reject unknown rule variables and keep the other reserved
-            // ones of generator, pool, restat, rspfile, and rspfile_content
-            // like ninja.
-            let find = |key| {
-                variables
-                    .iter()
-                    .rev()
-                    .find(|definition| definition.name() == key)
-                    .map(VariableDefinition::value)
-            };
-
-            Some(
-                Rule::new(name, find("command")?, find("description").map(Into::into))
-                    .with_depfile(find("depfile").map(Into::into))
-                    .with_deps(find("deps").map(Into::into))
-                    .with_msvc_deps_prefix(find("msvc_deps_prefix").map(Into::into)),
-            )
+        |(_, name, _, variable_definitions)| {
+            // TODO Reject unknown rule variables like ninja.
+            variable_definitions
+                .iter()
+                .any(|definition| definition.name() == "command")
+                .then(|| Rule::new(name, variable_definitions))
         },
     )
     .parse(input)
@@ -287,15 +274,17 @@ mod tests {
         );
         assert_eq!(
             module("rule foo\n command = bar\n").unwrap().1,
-            Module::new(vec![Rule::new("foo", "bar", None).into()])
+            Module::new(vec![
+                Rule::new("foo", vec![VariableDefinition::new("command", "bar")]).into()
+            ])
         );
         assert_eq!(
             module("rule foo\n command = bar\nrule baz\n command = blah\n")
                 .unwrap()
                 .1,
             Module::new(vec![
-                Rule::new("foo", "bar", None).into(),
-                Rule::new("baz", "blah", None).into(),
+                Rule::new("foo", vec![VariableDefinition::new("command", "bar")]).into(),
+                Rule::new("baz", vec![VariableDefinition::new("command", "blah")]).into(),
             ],)
         );
         assert_eq!(
@@ -361,21 +350,32 @@ mod tests {
     fn parse_rule() {
         assert_eq!(
             rule("rule foo\n command = bar\n").unwrap().1,
-            Rule::new("foo", "bar", None)
+            Rule::new("foo", vec![VariableDefinition::new("command", "bar")])
         );
         assert_eq!(
             rule("rule foo\n command = bar\n description = baz\n")
                 .unwrap()
                 .1,
-            Rule::new("foo", "bar", Some("baz".into()))
+            Rule::new(
+                "foo",
+                vec![
+                    VariableDefinition::new("command", "bar"),
+                    VariableDefinition::new("description", "baz")
+                ]
+            )
         );
         assert_eq!(
             rule("rule foo\n depfile = foo.d\n command = bar\n deps = gcc\n")
                 .unwrap()
                 .1,
-            Rule::new("foo", "bar", None)
-                .with_depfile(Some("foo.d".into()))
-                .with_deps(Some("gcc".into()))
+            Rule::new(
+                "foo",
+                vec![
+                    VariableDefinition::new("depfile", "foo.d"),
+                    VariableDefinition::new("command", "bar"),
+                    VariableDefinition::new("deps", "gcc")
+                ]
+            )
         );
     }
 
@@ -385,12 +385,18 @@ mod tests {
     }
 
     #[test]
-    fn parse_rule_with_duplicate_command_takes_last() {
+    fn parse_rule_with_duplicate_command() {
         assert_eq!(
             rule("rule foo\n command = bar\n command = baz\n")
                 .unwrap()
                 .1,
-            Rule::new("foo", "baz", None)
+            Rule::new(
+                "foo",
+                vec![
+                    VariableDefinition::new("command", "bar"),
+                    VariableDefinition::new("command", "baz")
+                ]
+            )
         );
     }
 

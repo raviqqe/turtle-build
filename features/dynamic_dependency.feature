@@ -36,3 +36,23 @@ Feature: Dynamic dependency
     And a file named "baz" with ""
     When I successfully run `turtle`
     Then the stdout should contain exactly "ok"
+
+  Scenario: Use a dyndep file declared in a rule
+    Given a file named "build.ninja" with:
+      """
+      rule touch
+        command = touch $out
+        dyndep = $out.dd
+      rule cp
+        command = echo ok && cp $in $out
+      rule dd
+        command = echo ninja_dyndep_version = 1 >> $out && echo build foo: dyndep '|' bar >> $out
+
+      build foo: touch || foo.dd
+      build foo.dd: dd
+      build bar: cp baz
+
+      """
+    And a file named "baz" with ""
+    When I successfully run `turtle foo`
+    Then the stdout should contain exactly "ok"

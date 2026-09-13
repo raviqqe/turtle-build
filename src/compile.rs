@@ -90,31 +90,24 @@ fn compile_module<'a>(
     for statement in module.statements() {
         match statement {
             ast::Statement::Build(build) => {
-                let rule_variables = if build.rule() == PHONY_RULE {
-                    None
-                } else {
-                    Some(
+                let mut variables = module_state.variables.fork();
+
+                if build.rule() != PHONY_RULE {
+                    variables.extend(
                         module_state
                             .rules
                             .get(build.rule())
-                            .ok_or_else(|| CompileError::RuleNotFound(build.rule().into()))?,
-                    )
-                };
-                let mut variables = module_state.variables.fork();
+                            .ok_or_else(|| CompileError::RuleNotFound(build.rule().into()))?
+                            .iter()
+                            .cloned(),
+                    );
+                }
 
-                // Build variables shadow rule ones inserted earlier.
                 variables.extend(
-                    rule_variables
-                        .map(Vec::as_slice)
-                        .unwrap_or_default()
+                    build
+                        .variable_definitions()
                         .iter()
-                        .cloned()
-                        .chain(
-                            build
-                                .variable_definitions()
-                                .iter()
-                                .map(|definition| (definition.name(), definition.value().into())),
-                        )
+                        .map(|definition| (definition.name(), definition.value().into()))
                         .chain([
                             ("in", build.inputs().join(" ").into()),
                             ("out", build.outputs().join(" ").into()),

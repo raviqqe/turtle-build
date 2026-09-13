@@ -6,14 +6,6 @@ on:
   pull_request:
 jobs:
   hyperfine:
-    strategy:
-      matrix:
-        benchmark:
-          - wide
-          - deep
-          - subninja
-          - depfile
-          - dyndep
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -21,7 +13,7 @@ jobs:
       - uses: raviqqe/enable-homebrew@6bd383659a321c332bd0c0ed445c32d54e04efe8 # v1.0.5
       - run: brew install ninja
       - run: cargo install --path . --locked
-      - run: tools/bench.sh ${{ matrix.benchmark }}
+      - run: tools/bench.sh
   bench:
     needs:
       - hyperfine

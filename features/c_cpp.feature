@@ -282,6 +282,28 @@ Feature: C and C++ header dependencies
       building
       """
 
+  Scenario: Tolerate a header dependency deleted while a generated header dependency is built
+    Given a file named "build.ninja" with:
+      """
+      rule gen
+        command = sleep 1 && rm -f header.h && cp $in $out
+
+      rule cc
+        command = printf '$out: $in gen.h header.h\n' > $out.d && cp $in $out
+        depfile = $out.d
+        deps = gcc
+
+      build gen.h: gen gen.h.in
+      build foo.o: cc source.c
+
+      """
+    And a file named "source.c" with "int main(void) { return 0; }"
+    And a file named "gen.h.in" with "#define G 1"
+    And a file named "header.h" with "#define FOO 1"
+    When I successfully run `turtle foo.o`
+    And I successfully run `turtle foo.o`
+    Then the file named "header.h" should not exist
+
   Scenario: Build foo.o on a clean checkout before its generated header exists
     Given a file named "build.ninja" with:
       """
@@ -301,7 +323,7 @@ Feature: C and C++ header dependencies
     When I successfully run `turtle foo.o`
     Then the file named "foo.o" should exist
 
-  Scenario: Accept a header dependency that is a phony output
+  Scenario: Do not rebuild with an unchanged header dependency that is a phony output
     Given a file named "build.ninja" with:
       """
       rule cc
@@ -316,7 +338,29 @@ Feature: C and C++ header dependencies
     And a file named "source.c" with "int main(void) { return 0; }"
     And a file named "header.h" with "#define FOO 1"
     When I successfully run `turtle foo.o`
-    Then the file named "foo.o" should exist
+    And I successfully run `turtle foo.o`
+    Then the stdout should contain exactly "building"
+
+  Scenario: Rebuild after a header dependency that is a phony output is updated
+    Given a file named "build.ninja" with:
+      """
+      rule cc
+        command = printf '$out: $in header.h\n' > $out.d && cat $in header.h > $out
+        depfile = $out.d
+        deps = gcc
+
+      build header.h: phony header.h.in
+      build foo.o: cc source.c
+
+      """
+    And a file named "source.c" with "int main(void) { return 0; }"
+    And a file named "header.h" with "#define FOO 1"
+    And a file named "header.h.in" with "#define FOO 1"
+    When I successfully run `turtle foo.o`
+    And I successfully run `turtle foo.o`
+    And a file named "header.h" with "#define FOO 2"
+    And I successfully run `turtle foo.o`
+    Then the file named "foo.o" should contain "#define FOO 2"
 
   Scenario: Rebuild after a generated header dependency is updated
     Given a file named "build.ninja" with:

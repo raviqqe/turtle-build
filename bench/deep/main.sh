@@ -6,7 +6,7 @@ build_count=1000
 
 touch 0.in
 
-cat <<EOF >build.ninja
+cat <<'EOF' >build.ninja
 rule cp
   command = cp $in $out
   description = run faster

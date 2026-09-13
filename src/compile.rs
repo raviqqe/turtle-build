@@ -324,6 +324,16 @@ mod tests {
         )
     }
 
+    fn ast_rule(name: &str, variable_definitions: &[(&str, &str)]) -> ast::Rule {
+        ast::Rule::new(
+            name,
+            variable_definitions
+                .iter()
+                .map(|(name, value)| ast::VariableDefinition::new(*name, *value))
+                .collect(),
+        )
+    }
+
     fn ir_explicit_build(outputs: Vec<Arc<str>>, rule: Rule, inputs: Vec<Arc<str>>) -> Build {
         Build::new(outputs, vec![], rule.into(), inputs, vec![], None)
     }
@@ -358,7 +368,7 @@ mod tests {
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
                         ast::VariableDefinition::new("x", "42").into(),
-                        ast::Rule::new("foo", "$x", None).into(),
+                        ast_rule("foo", &[("command", "$x")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -389,7 +399,7 @@ mod tests {
                     ast::Module::new(vec![
                         ast::VariableDefinition::new("x", "1").into(),
                         ast::VariableDefinition::new("y", "2").into(),
-                        ast::Rule::new("foo", "$x $y", None).into(),
+                        ast_rule("foo", &[("command", "$x $y")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -419,7 +429,7 @@ mod tests {
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
                         ast::VariableDefinition::new("x_y", "42").into(),
-                        ast::Rule::new("foo", "$x_y", None).into(),
+                        ast_rule("foo", &[("command", "$x_y")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -448,7 +458,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$$", None).into(),
+                        ast_rule("foo", &[("command", "$$")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into()
                     ])
                 )]
@@ -477,7 +487,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$in", None).into(),
+                        ast_rule("foo", &[("command", "$in")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec!["baz".into()], vec![])
                             .into(),
                     ])
@@ -512,7 +522,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$in", None).into(),
+                        ast_rule("foo", &[("command", "$in")]).into(),
                         ast::Build::new(
                             vec!["bar".into()],
                             vec![],
@@ -555,7 +565,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$out", None).into(),
+                        ast_rule("foo", &[("command", "$out")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -593,7 +603,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$out", None).into(),
+                        ast_rule("foo", &[("command", "$out")]).into(),
                         ast::Build::new(
                             vec!["bar".into()],
                             vec!["baz".into()],
@@ -628,7 +638,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$in", None).into(),
+                        ast_rule("foo", &[("command", "$in")]).into(),
                         ast::Build::new(
                             vec!["bar".into()],
                             vec![],
@@ -674,7 +684,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "", None).into(),
+                        ast_rule("foo", &[("command", "")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                         ast_explicit_build(vec!["baz".into()], "foo", vec![], vec![]).into()
                     ])
@@ -710,7 +720,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$x", None).into(),
+                        ast_rule("foo", &[("command", "$x")]).into(),
                         ast_explicit_build(
                             vec!["bar".into()],
                             "foo",
@@ -745,7 +755,11 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "$description", Some("bar".into())).into(),
+                        ast_rule(
+                            "foo",
+                            &[("command", "$description"), ("description", "bar")]
+                        )
+                        .into(),
                         ast_explicit_build(vec!["baz".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -773,13 +787,42 @@ mod tests {
     }
 
     #[test]
+    fn compile_last_command_in_rule() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast_rule("foo", &[("command", "first"), ("command", "second")]).into(),
+                        ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_configuration(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(vec!["bar".into()], Rule::new("second", None), vec![]).into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
     fn compile_build_level_command_shadowing_rule_command() {
         assert_eq!(
             compile(
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "rule", None).into(),
+                        ast_rule("foo", &[("command", "rule")]).into(),
                         ast_explicit_build(
                             vec!["bar".into()],
                             "foo",
@@ -815,7 +858,7 @@ mod tests {
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
                         ast::VariableDefinition::new("description", "global").into(),
-                        ast::Rule::new("foo", "", None).into(),
+                        ast_rule("foo", &[("command", "")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -849,7 +892,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "foo", None).into(),
+                        ast_rule("foo", &[("command", "foo")]).into(),
                         ast_explicit_build(
                             vec!["bar".into()],
                             "foo",
@@ -991,9 +1034,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "", None)
-                            .with_dyndep(Some("$out.dd".into()))
-                            .into(),
+                        ast_rule("foo", &[("command", ""), ("dyndep", "$out.dd")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -1030,9 +1071,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "", None)
-                            .with_dyndep(Some("rule.dd".into()))
-                            .into(),
+                        ast_rule("foo", &[("command", ""), ("dyndep", "rule.dd")]).into(),
                         ast_explicit_build(
                             vec!["bar".into()],
                             "foo",
@@ -1075,9 +1114,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None)
-                            .with_depfile(Some("foo.d".into()))
-                            .into(),
+                        ast_rule("foo", &[("command", "bar"), ("depfile", "foo.d")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -1115,10 +1152,11 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None)
-                            .with_depfile(Some("foo.d".into()))
-                            .with_deps(Some("gcc".into()))
-                            .into(),
+                        ast_rule(
+                            "foo",
+                            &[("command", "bar"), ("depfile", "foo.d"), ("deps", "gcc")]
+                        )
+                        .into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -1156,7 +1194,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None).into(),
+                        ast_rule("foo", &[("command", "bar")]).into(),
                         ast_explicit_build(
                             vec!["bar".into()],
                             "foo",
@@ -1200,9 +1238,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None)
-                            .with_depfile(Some("$out.d".into()))
-                            .into(),
+                        ast_rule("foo", &[("command", "bar"), ("depfile", "$out.d")]).into(),
                         ast_explicit_build(
                             vec!["bar".into()],
                             "foo",
@@ -1246,10 +1282,11 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None)
-                            .with_depfile(Some("foo.d".into()))
-                            .with_deps(Some("gcc".into()))
-                            .into(),
+                        ast_rule(
+                            "foo",
+                            &[("command", "bar"), ("depfile", "foo.d"), ("deps", "gcc")]
+                        )
+                        .into(),
                         ast_explicit_build(
                             vec!["bar".into()],
                             "foo",
@@ -1293,9 +1330,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None)
-                            .with_deps(Some("gcc".into()))
-                            .into(),
+                        ast_rule("foo", &[("command", "bar"), ("deps", "gcc")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -1315,9 +1350,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None)
-                            .with_deps(Some("clang".into()))
-                            .into(),
+                        ast_rule("foo", &[("command", "bar"), ("deps", "clang")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -1337,9 +1370,7 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None)
-                            .with_deps(Some("msvc".into()))
-                            .into(),
+                        ast_rule("foo", &[("command", "bar"), ("deps", "msvc")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -1377,10 +1408,11 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None)
-                            .with_depfile(Some("foo.d".into()))
-                            .with_deps(Some("msvc".into()))
-                            .into(),
+                        ast_rule(
+                            "foo",
+                            &[("command", "bar"), ("depfile", "foo.d"), ("deps", "msvc")]
+                        )
+                        .into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -1418,10 +1450,15 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None)
-                            .with_deps(Some("msvc".into()))
-                            .with_msvc_deps_prefix(Some("".into()))
-                            .into(),
+                        ast_rule(
+                            "foo",
+                            &[
+                                ("command", "bar"),
+                                ("deps", "msvc"),
+                                ("msvc_deps_prefix", "")
+                            ]
+                        )
+                        .into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -1459,10 +1496,15 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None)
-                            .with_deps(Some("msvc".into()))
-                            .with_msvc_deps_prefix(Some("Hinweis: Einlesen der Datei ".into()))
-                            .into(),
+                        ast_rule(
+                            "foo",
+                            &[
+                                ("command", "bar"),
+                                ("deps", "msvc"),
+                                ("msvc_deps_prefix", "Hinweis: Einlesen der Datei ")
+                            ]
+                        )
+                        .into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -1505,9 +1547,7 @@ mod tests {
                             "Hinweis: Einlesen der Datei "
                         )
                         .into(),
-                        ast::Rule::new("foo", "bar", None)
-                            .with_deps(Some("msvc".into()))
-                            .into(),
+                        ast_rule("foo", &[("command", "bar"), ("deps", "msvc")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -1546,10 +1586,15 @@ mod tests {
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
                         ast::VariableDefinition::new("msvc_deps_prefix", "global prefix: ").into(),
-                        ast::Rule::new("foo", "bar", None)
-                            .with_deps(Some("msvc".into()))
-                            .with_msvc_deps_prefix(Some("rule prefix: ".into()))
-                            .into(),
+                        ast_rule(
+                            "foo",
+                            &[
+                                ("command", "bar"),
+                                ("deps", "msvc"),
+                                ("msvc_deps_prefix", "rule prefix: ")
+                            ]
+                        )
+                        .into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -1587,10 +1632,15 @@ mod tests {
                 &[(
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
-                        ast::Rule::new("foo", "bar", None)
-                            .with_deps(Some("msvc".into()))
-                            .with_msvc_deps_prefix(Some("rule prefix: ".into()))
-                            .into(),
+                        ast_rule(
+                            "foo",
+                            &[
+                                ("command", "bar"),
+                                ("deps", "msvc"),
+                                ("msvc_deps_prefix", "rule prefix: ")
+                            ]
+                        )
+                        .into(),
                         ast_explicit_build(
                             vec!["bar".into()],
                             "foo",
@@ -1651,7 +1701,7 @@ mod tests {
                         (
                             SUBMODULE_PATH.into(),
                             ast::Module::new(vec![
-                                ast::Rule::new("foo", "$x", None).into(),
+                                ast_rule("foo", &[("command", "$x")]).into(),
                                 ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![])
                                     .into()
                             ])
@@ -1693,7 +1743,7 @@ mod tests {
                             ROOT_MODULE_PATH.clone(),
                             ast::Module::new(vec![
                                 ast::VariableDefinition::new("x", "42").into(),
-                                ast::Rule::new("foo", "$x", None).into(),
+                                ast_rule("foo", &[("command", "$x")]).into(),
                                 ast::Submodule::new(SUBMODULE_PATH).into(),
                             ])
                         ),
@@ -1741,7 +1791,7 @@ mod tests {
                             ROOT_MODULE_PATH.clone(),
                             ast::Module::new(vec![
                                 ast::VariableDefinition::new("x", "42").into(),
-                                ast::Rule::new("foo", "$x", None).into(),
+                                ast_rule("foo", &[("command", "$x")]).into(),
                                 ast::Submodule::new(SUBMODULE_PATH).into(),
                                 ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![])
                                     .into(),

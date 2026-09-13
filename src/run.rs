@@ -216,9 +216,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                     .get_hash(HashType::Content, build.id())?
         {
             return Ok(());
-        }
-
-        if let Some(rule) = build.rule() {
+        } else if let Some(rule) = build.rule() {
             try_join_all(
                 build
                     .outputs()

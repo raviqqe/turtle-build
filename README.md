@@ -9,7 +9,7 @@
 ## Goals
 
 - Memory safe implementation of the Ninja build system in Rust
-- Modest, complihensible, and customizable build/error outputs
+- Modest, comprehensible, and customizable build/error outputs
   - Turtle never shows any information that is inscrutable to end-users.
   - This is important for users of high-level programming languages who do not know how compilers and build systems work.
 
@@ -32,7 +32,7 @@ For more information, see `turtle --help`.
 - [Ninja][ninja]-compatible build file syntax and command line options 🥷
 - Content hash-based rebuild
 - Description-only outputs
-  - Turtle never shows commands of build rules but only descriptions because they are incomplihensible to end-users.
+  - Turtle never shows commands of build rules but only descriptions because they are incomprehensible to end-users.
 - Source mapping
   - Turtle maps outputs in error messages to source filenames defined as `srcdep` variables defined in `build` directives to make them understandable to end-users.
 - `--log-prefix` option

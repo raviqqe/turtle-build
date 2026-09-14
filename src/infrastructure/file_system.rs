@@ -1,7 +1,7 @@
 mod metadata;
 
 use async_trait::async_trait;
-use metadata::Metadata;
+pub use metadata::Metadata;
 use std::{
     error::Error,
     fmt::Debug,

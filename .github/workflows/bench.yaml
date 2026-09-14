@@ -5,7 +5,7 @@ on:
       - main
   pull_request:
 jobs:
-  hyperfine:
+  command:
     strategy:
       fail-fast: false
       matrix:
@@ -22,7 +22,7 @@ jobs:
       - run: tools/bench.sh
   bench:
     needs:
-      - hyperfine
+      - command
     if: always()
     runs-on: ubuntu-latest
     steps:

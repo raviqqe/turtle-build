@@ -13,7 +13,7 @@ pub trait Console {
     async fn write_stderr(&mut self, buffer: &[u8]) -> Result<(), Box<dyn Error>>;
 }
 
-/// A console provided by an operating system.
+/// A console backed by an operating system.
 #[derive(Debug)]
 pub struct OsConsole {
     stdout: Stdout,

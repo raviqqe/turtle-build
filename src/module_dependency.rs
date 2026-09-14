@@ -12,7 +12,7 @@ use std::{
 pub type ModuleDependencyMap = HashMap<PathBuf, HashMap<String, PathBuf>>;
 
 /// Validates module dependencies.
-pub fn validate(modules: &ModuleDependencyMap) -> Result<(), ModuleDependencyError> {
+pub fn validate_modules(modules: &ModuleDependencyMap) -> Result<(), ModuleDependencyError> {
     if is_module_dependency_circular(modules) {
         return Err(ModuleDependencyError::CircularDependency);
     }
@@ -60,13 +60,13 @@ mod tests {
 
     #[test]
     fn validate_empty() {
-        assert_eq!(validate(&Default::default()), Ok(()));
+        assert_eq!(validate_modules(&Default::default()), Ok(()));
     }
 
     #[test]
     fn validate_module() {
         assert_eq!(
-            validate(&[("foo".into(), Default::default())].into_iter().collect()),
+            validate_modules(&[("foo".into(), Default::default())].into_iter().collect()),
             Ok(())
         );
     }
@@ -74,7 +74,7 @@ mod tests {
     #[test]
     fn validate_circular_module() {
         assert_eq!(
-            validate(
+            validate_modules(
                 &[(
                     "foo".into(),
                     [("foo".into(), "foo".into())].into_iter().collect()
@@ -89,7 +89,7 @@ mod tests {
     #[test]
     fn validate_two_modules() {
         assert_eq!(
-            validate(
+            validate_modules(
                 &[
                     (
                         "foo".into(),
@@ -107,7 +107,7 @@ mod tests {
     #[test]
     fn validate_two_circular_modules() {
         assert_eq!(
-            validate(
+            validate_modules(
                 &[
                     (
                         "foo".into(),

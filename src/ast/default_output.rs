@@ -4,7 +4,7 @@ pub struct DefaultOutput {
 }
 
 impl DefaultOutput {
-    pub fn new(outputs: Vec<String>) -> Self {
+    pub const fn new(outputs: Vec<String>) -> Self {
         Self { outputs }
     }
 

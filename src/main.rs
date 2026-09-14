@@ -1,5 +1,7 @@
 #![doc = include_str!("../README.md")]
 
+extern crate alloc;
+
 use clap::{Parser, ValueEnum};
 use core::error::Error;
 use futures::future::try_join_all;

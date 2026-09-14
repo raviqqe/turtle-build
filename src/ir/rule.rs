@@ -29,7 +29,7 @@ impl Rule {
         self.description.as_deref()
     }
 
-    pub fn header_dependency(&self) -> Option<&HeaderDependency> {
+    pub const fn header_dependency(&self) -> Option<&HeaderDependency> {
         self.header_dependency.as_ref()
     }
 }

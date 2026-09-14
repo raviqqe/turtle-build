@@ -13,7 +13,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn new(
+    pub const fn new(
         outputs: HashMap<Arc<str>, Arc<Build>>,
         default_outputs: HashSet<Arc<str>>,
         source_map: HashMap<Arc<str>, Arc<str>>,
@@ -27,19 +27,19 @@ impl Config {
         }
     }
 
-    pub fn outputs(&self) -> &HashMap<Arc<str>, Arc<Build>> {
+    pub const fn outputs(&self) -> &HashMap<Arc<str>, Arc<Build>> {
         &self.outputs
     }
 
-    pub fn default_outputs(&self) -> &HashSet<Arc<str>> {
+    pub const fn default_outputs(&self) -> &HashSet<Arc<str>> {
         &self.default_outputs
     }
 
-    pub fn source_map(&self) -> &HashMap<Arc<str>, Arc<str>> {
+    pub const fn source_map(&self) -> &HashMap<Arc<str>, Arc<str>> {
         &self.source_map
     }
 
-    pub fn build_directory(&self) -> Option<&Arc<str>> {
+    pub const fn build_directory(&self) -> Option<&Arc<str>> {
         self.build_directory.as_ref()
     }
 }

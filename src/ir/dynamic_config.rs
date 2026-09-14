@@ -7,11 +7,11 @@ pub struct DynamicConfig {
 }
 
 impl DynamicConfig {
-    pub fn new(outputs: HashMap<Arc<str>, DynamicBuild>) -> Self {
+    pub const fn new(outputs: HashMap<Arc<str>, DynamicBuild>) -> Self {
         Self { outputs }
     }
 
-    pub fn outputs(&self) -> &HashMap<Arc<str>, DynamicBuild> {
+    pub const fn outputs(&self) -> &HashMap<Arc<str>, DynamicBuild> {
         &self.outputs
     }
 }

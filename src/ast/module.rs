@@ -6,7 +6,7 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn new(statements: Vec<Statement>) -> Self {
+    pub const fn new(statements: Vec<Statement>) -> Self {
         Self { statements }
     }
 

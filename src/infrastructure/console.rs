@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use std::{error::Error, fmt::Debug};
+use core::{error::Error, fmt::Debug};
 use tokio::io::{AsyncWriteExt, Stderr, Stdout, stderr, stdout};
 
 #[async_trait]

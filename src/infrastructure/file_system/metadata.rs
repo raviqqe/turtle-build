@@ -6,18 +6,18 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    pub fn new(modified_time: SystemTime, directory: bool) -> Self {
+    pub const fn new(modified_time: SystemTime, directory: bool) -> Self {
         Self {
             modified_time,
             directory,
         }
     }
 
-    pub fn modified_time(&self) -> SystemTime {
+    pub const fn modified_time(&self) -> SystemTime {
         self.modified_time
     }
 
-    pub fn is_file(&self) -> bool {
+    pub const fn is_file(&self) -> bool {
         !self.directory
     }
 }
@@ -26,6 +26,6 @@ impl TryFrom<fs::Metadata> for Metadata {
     type Error = io::Error;
 
     fn try_from(metadata: fs::Metadata) -> Result<Self, Self::Error> {
-        Ok(Metadata::new(metadata.modified()?, metadata.is_dir()))
+        Ok(Self::new(metadata.modified()?, metadata.is_dir()))
     }
 }

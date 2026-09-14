@@ -87,7 +87,7 @@ Turtle aims to support full syntax of the Ninja build files. It also supports ba
 
 ## Technical notes
 
-Something different from the traditional build systems and notable in Turtle is that it solves parallel builds similar to parallel graph reduction naturally, where you modify graph structures in parallel and reduce it into a solution, thanks to an ecosystem of futures and stackless coroutines in Rust.
+Unlike traditional build systems, Turtle parallelizes builds naturally in a way similar to parallel graph reduction, where a graph is rewritten in parallel until it is reduced to a final result. This is made possible by Rust's ecosystem of futures and stackless coroutines.
 
 Here is how parallel builds work in Turtle:
 

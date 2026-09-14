@@ -1,6 +1,6 @@
 use crate::infrastructure::Console;
-use async_trait::async_trait;
 use alloc::sync::Arc;
+use async_trait::async_trait;
 use core::error::Error;
 use std::sync::Mutex;
 

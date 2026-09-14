@@ -1,6 +1,6 @@
 use crate::{hash_type::HashType, infrastructure::Database, ir::BuildId};
-use async_trait::async_trait;
 use alloc::collections::BTreeSet;
+use async_trait::async_trait;
 use core::error::Error;
 use std::{collections::HashMap, path::Path, sync::Mutex};
 

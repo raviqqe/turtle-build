@@ -1,7 +1,7 @@
 use super::Metadata;
 use crate::infrastructure::FileSystem;
-use async_trait::async_trait;
 use alloc::sync::Arc;
+use async_trait::async_trait;
 use core::{
     error::Error,
     str,

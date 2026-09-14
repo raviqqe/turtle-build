@@ -35,3 +35,27 @@ Feature: Include statement
       """
     When I successfully run `turtle`
     Then the stdout should contain exactly "hello"
+
+  Scenario: Resolve a path relative to a working directory
+    Given a file named "build.ninja" with:
+      """
+      include foo/foo.ninja
+
+      rule echo
+        command = echo $x
+
+      build foo: echo
+
+      """
+    And a file named "foo/foo.ninja" with:
+      """
+      include bar.ninja
+
+      """
+    And a file named "bar.ninja" with:
+      """
+      x = hello
+
+      """
+    When I successfully run `turtle`
+    Then the stdout should contain exactly "hello"

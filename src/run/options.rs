@@ -1,6 +1,6 @@
 /// Run options.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Options {
+pub struct RunOptions {
     /// Shows debug logs.
     pub debug: bool,
     /// Shows profile timings.

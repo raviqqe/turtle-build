@@ -25,7 +25,7 @@ use async_recursion::async_recursion;
 use core::{future::Future, pin::Pin};
 use futures::future::{FutureExt, Shared, try_join_all};
 use itertools::Itertools;
-pub use options::Options;
+pub use options::RunOptions;
 use std::{path::Path, process::Output};
 use tokio::{spawn, time::Instant, try_join};
 
@@ -36,7 +36,7 @@ pub async fn run(
     context: &Arc<Context>,
     config: Arc<Config>,
     outputs: &[String],
-    options: Options,
+    options: RunOptions,
 ) -> Result<(), BuildError> {
     let mut graph = BuildGraph::new(config.outputs());
 
@@ -471,7 +471,7 @@ mod tests {
     use std::os::windows::process::ExitStatusExt;
     use std::{collections::HashMap, process::ExitStatus};
 
-    const DEFAULT_OPTIONS: Options = Options {
+    const DEFAULT_OPTIONS: RunOptions = RunOptions {
         debug: false,
         profile: false,
     };
@@ -1172,7 +1172,7 @@ mod tests {
                     &["foo"],
                 ),
                 &[],
-                Options {
+                RunOptions {
                     debug: true,
                     profile: false,
                 },
@@ -1201,7 +1201,7 @@ mod tests {
                 &["foo"],
             ),
             &[],
-            Options {
+            RunOptions {
                 debug: false,
                 profile: true,
             },

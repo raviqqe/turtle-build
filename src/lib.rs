@@ -24,6 +24,6 @@ pub use self::{
     infrastructure::{FjallDatabase, OsCommandRunner, OsConsole, OsFileSystem},
     module_dependency::{ModuleDependencyMap, validate as validate_module_dependencies},
     parse::parse,
-    run::{Options as RunOptions, run},
+    run::{RunOptions, run},
     tool::clean_dead,
 };

@@ -1,4 +1,4 @@
-use super::context::Context;
+use super::context::RunContext;
 use crate::{
     error::BuildError,
     file::canonicalize_path,
@@ -9,7 +9,7 @@ use alloc::borrow::Cow;
 use std::process::Output;
 
 pub async fn read_header_dependencies(
-    context: &Context,
+    context: &RunContext,
     rule: &Rule,
     output: &Output,
 ) -> Result<Vec<String>, BuildError> {
@@ -56,7 +56,7 @@ pub fn exclude_show_includes<'a>(rule: &Rule, output: &'a [u8]) -> Cow<'a, [u8]>
     }
 }
 
-async fn read_depfile(context: &Context, path: &str) -> Result<Vec<String>, BuildError> {
+async fn read_depfile(context: &RunContext, path: &str) -> Result<Vec<String>, BuildError> {
     if !context
         .application()
         .file_system()

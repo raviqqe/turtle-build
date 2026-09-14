@@ -261,10 +261,10 @@ fn resolve_variable(name: &str, variables: &TrainMap<&str, Arc<str>>) -> Option<
         .filter(|value| !value.is_empty())
 }
 
-fn interpolate_paths(paths: &[String], variables: &TrainMap<&str, Arc<str>>) -> Vec<Arc<str>> {
-    paths
+fn interpolate_strings(strings: &[String], variables: &TrainMap<&str, Arc<str>>) -> Vec<Arc<str>> {
+    strings
         .iter()
-        .map(|path| interpolate_variables(path, variables).into())
+        .map(|string| interpolate_variables(string, variables).into())
         .collect()
 }
 

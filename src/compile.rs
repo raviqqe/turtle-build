@@ -12,10 +12,10 @@ use crate::{
 };
 use once_cell::sync::Lazy;
 use regex::{Captures, Regex};
+use alloc::sync::Arc;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::Arc,
 };
 use train_map::TrainMap;
 

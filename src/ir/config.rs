@@ -1,8 +1,6 @@
 use super::Build;
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use alloc::sync::Arc;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Config {

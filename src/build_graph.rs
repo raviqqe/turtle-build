@@ -5,12 +5,12 @@ use petgraph::{
     algo::{kosaraju_scc, toposort},
     graph::{DefaultIx, NodeIndex},
 };
-use std::{
-    collections::HashMap,
+use alloc::sync::Arc;
+use core::{
     error::Error,
     fmt::{self, Display, Formatter},
-    sync::Arc,
 };
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct BuildGraph {

@@ -1,8 +1,8 @@
-use std::{
+use core::{
     error::Error,
     fmt::{self, Display, Formatter},
-    path::PathBuf,
 };
+use std::path::PathBuf;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CompileError {

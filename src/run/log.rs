@@ -1,3 +1,4 @@
+/// Logs a debug message.
 #[macro_export]
 macro_rules! debug {
     ($context:expr, $console:expr, $template:literal, $($value:expr),+) => {

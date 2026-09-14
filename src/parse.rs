@@ -9,6 +9,7 @@ use self::{
 };
 use crate::ast::{DynamicModule, Module};
 
+/// Parses a module.
 pub fn parse(source: &str) -> Result<Module, ParseError> {
     Ok(module(source).map(|(_, module)| module)?)
 }

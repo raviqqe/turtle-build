@@ -2,8 +2,9 @@
 
 extern crate alloc;
 
+use alloc::sync::Arc;
 use clap::{Parser, ValueEnum};
-use core::error::Error;
+use core::{error::Error, time::Duration};
 use futures::future::try_join_all;
 #[cfg(unix)]
 use rlimit::Resource;
@@ -13,8 +14,6 @@ use std::{
     env::set_current_dir,
     path::{Path, PathBuf},
     process::exit,
-    sync::Arc,
-    time::Duration,
 };
 use tokio::time::sleep;
 use turtle_build::{

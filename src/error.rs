@@ -2,26 +2,39 @@ use crate::{
     build_graph::BuildGraphError, compile::CompileError, ir::Build,
     module_dependency::ModuleDependencyError, parse::ParseError,
 };
-use std::{
+use alloc::sync::Arc;
+use core::{
     error::Error,
     fmt::{self, Display, Formatter},
-    sync::Arc,
 };
 use tokio::{io, task::JoinError};
 
+/// A build error.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BuildError {
+    /// A build failure.
     Build,
+    /// A build graph error.
     BuildGraph(BuildGraphError),
+    /// A compile error.
     Compile(CompileError),
+    /// A default output not found.
     DefaultOutputNotFound(Arc<str>),
+    /// A dynamic dependency not found.
     DynamicDependencyNotFound(Arc<Build>),
+    /// A file not found.
     FileNotFound(String),
+    /// An input not built.
     InputNotBuilt(String),
+    /// An input not found.
     InputNotFound(String),
+    /// A module dependency error.
     ModuleDependency(ModuleDependencyError),
+    /// Other errors.
     Other(String),
+    /// An output not found.
     OutputNotFound(String),
+    /// A parse error.
     Parse(ParseError),
 }
 

@@ -3,7 +3,8 @@ mod fjall;
 pub use self::fjall::FjallDatabase;
 use crate::{hash_type::HashType, ir::BuildId};
 use async_trait::async_trait;
-use std::{error::Error, path::Path};
+use core::error::Error;
+use std::path::Path;
 
 #[async_trait]
 pub trait Database {

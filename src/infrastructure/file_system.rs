@@ -2,9 +2,8 @@ mod metadata;
 
 use async_trait::async_trait;
 use metadata::Metadata;
+use core::{error::Error, fmt::Debug};
 use std::{
-    error::Error,
-    fmt::Debug,
     io,
     path::{Path, PathBuf},
 };

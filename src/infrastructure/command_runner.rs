@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-use std::{error::Error, process::Output};
+use core::error::Error;
+use std::process::Output;
 use tokio::{process::Command, sync::Semaphore};
 
 #[async_trait]
@@ -7,12 +8,14 @@ pub trait CommandRunner {
     async fn run(&self, command: &str) -> Result<Output, Box<dyn Error>>;
 }
 
+/// A command runner provided by an operating system.
 #[derive(Debug)]
 pub struct OsCommandRunner {
     semaphore: Semaphore,
 }
 
 impl OsCommandRunner {
+    /// Creates a command runner.
     pub fn new(job_limit: usize) -> Self {
         Self {
             semaphore: Semaphore::new(job_limit),

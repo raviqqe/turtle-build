@@ -5,7 +5,8 @@ use crate::{
     ir::{HeaderDependency, Rule},
     parse::parse_depfile,
 };
-use std::{borrow::Cow, process::Output};
+use alloc::borrow::Cow;
+use std::process::Output;
 
 pub async fn read_header_dependencies(
     context: &Context,

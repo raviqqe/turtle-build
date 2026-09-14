@@ -8,6 +8,7 @@ pub trait Console {
     async fn write_stderr(&mut self, buffer: &[u8]) -> Result<(), Box<dyn Error>>;
 }
 
+/// A console provided by an operating system.
 #[derive(Debug)]
 pub struct OsConsole {
     stdout: Stdout,
@@ -15,6 +16,7 @@ pub struct OsConsole {
 }
 
 impl OsConsole {
+    /// Creates a console.
     pub fn new() -> Self {
         Self {
             stdout: stdout(),

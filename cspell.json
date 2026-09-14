@@ -24,6 +24,8 @@
     "itertools",
     "keyspace",
     "kosaraju",
+    "libc",
+    "llvmorg",
     "msvc",
     "muffy",
     "neul",

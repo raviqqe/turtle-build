@@ -82,6 +82,12 @@ impl From<Box<dyn Error>> for BuildError {
     }
 }
 
+impl From<Box<dyn Error + Send + Sync>> for BuildError {
+    fn from(error: Box<dyn Error + Send + Sync>) -> Self {
+        Self::Other(error.to_string())
+    }
+}
+
 impl From<CompileError> for BuildError {
     fn from(error: CompileError) -> Self {
         Self::Compile(error)

@@ -111,15 +111,11 @@ fn compile_module<'a>(
                         .map(|definition| (definition.name(), definition.value().into())),
                 );
 
-                let interpolate_paths = |paths: &[String]| {
-                    paths
-                        .iter()
-                        .map(|path| interpolate_variables(path, &variables).into())
-                        .collect::<Vec<Arc<str>>>()
-                };
-                let outputs = interpolate_paths(build.outputs());
-                let inputs = interpolate_paths(build.inputs());
-                let mut variables = variables.fork();
+                let outputs = interpolate_paths(build.outputs(), &variables);
+                let implicit_outputs = interpolate_paths(build.implicit_outputs(), &variables);
+                let inputs = interpolate_paths(build.inputs(), &variables);
+                let implicit_inputs = interpolate_paths(build.implicit_inputs(), &variables);
+                let order_only_inputs = interpolate_paths(build.order_only_inputs(), &variables);
 
                 variables.extend([
                     ("in", inputs.join(" ").into()),
@@ -128,7 +124,7 @@ fn compile_module<'a>(
 
                 let ir = Arc::new(Build::new(
                     outputs,
-                    interpolate_paths(build.implicit_outputs()),
+                    implicit_outputs,
                     if build.rule() == PHONY_RULE {
                         None
                     } else {
@@ -142,11 +138,8 @@ fn compile_module<'a>(
                             ),
                         )
                     },
-                    inputs
-                        .into_iter()
-                        .chain(interpolate_paths(build.implicit_inputs()))
-                        .collect(),
-                    interpolate_paths(build.order_only_inputs()),
+                    inputs.into_iter().chain(implicit_inputs).collect(),
+                    order_only_inputs,
                     resolve_variable(DYNAMIC_MODULE_VARIABLE, &variables).map(Into::into),
                 ));
 
@@ -163,11 +156,10 @@ fn compile_module<'a>(
                 }
             }
             ast::Statement::Default(default) => {
-                global_state.default_outputs.extend(
-                    default.outputs().iter().map(|output| {
-                        interpolate_variables(output, &module_state.variables).into()
-                    }),
-                );
+                global_state.default_outputs.extend(interpolate_paths(
+                    default.outputs(),
+                    &module_state.variables,
+                ));
             }
             ast::Statement::Include(include) => {
                 compile_module(
@@ -267,6 +259,13 @@ fn resolve_variable(name: &str, variables: &TrainMap<&str, Arc<str>>) -> Option<
         .get(name)
         .map(|value| interpolate_variables(value, variables).into_owned())
         .filter(|value| !value.is_empty())
+}
+
+fn interpolate_paths(paths: &[String], variables: &TrainMap<&str, Arc<str>>) -> Vec<Arc<str>> {
+    paths
+        .iter()
+        .map(|path| interpolate_variables(path, variables).into())
+        .collect()
 }
 
 fn interpolate_variables<'a>(

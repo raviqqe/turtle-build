@@ -740,7 +740,10 @@ mod tests {
     fn create_simple_config(builds: Vec<Build>, default_outputs: &[&str]) -> Arc<Config> {
         Config::new(
             create_outputs(builds),
-            default_outputs.iter().map(|&output| output.into()).collect(),
+            default_outputs
+                .iter()
+                .map(|&output| output.into())
+                .collect(),
             Default::default(),
             None,
         )
@@ -826,7 +829,11 @@ mod tests {
     async fn fail_with_unknown_default_output() {
         assert_eq!(
             run(
-                &create_context(&Default::default(), &Default::default(), &Default::default()),
+                &create_context(
+                    &Default::default(),
+                    &Default::default(),
+                    &Default::default()
+                ),
                 create_simple_config(vec![], &["foo"]),
                 &[],
                 DEFAULT_OPTIONS,
@@ -840,7 +847,11 @@ mod tests {
     async fn fail_with_unknown_output() {
         assert_eq!(
             run(
-                &create_context(&Default::default(), &Default::default(), &Default::default()),
+                &create_context(
+                    &Default::default(),
+                    &Default::default(),
+                    &Default::default()
+                ),
                 create_simple_config(vec![], &[]),
                 &["foo".into()],
                 DEFAULT_OPTIONS,
@@ -980,7 +991,11 @@ mod tests {
 
     #[tokio::test]
     async fn report_source_of_missing_input() {
-        let context = create_context(&Default::default(), &Default::default(), &Default::default());
+        let context = create_context(
+            &Default::default(),
+            &Default::default(),
+            &Default::default(),
+        );
 
         context.database().set_source("foo.o", "foo.c").unwrap();
 
@@ -1007,7 +1022,11 @@ mod tests {
     async fn detect_circular_dependency() {
         assert_eq!(
             run(
-                &create_context(&Default::default(), &Default::default(), &Default::default()),
+                &create_context(
+                    &Default::default(),
+                    &Default::default(),
+                    &Default::default()
+                ),
                 create_simple_config(
                     vec![explicit_build(
                         vec!["foo".into()],
@@ -1028,7 +1047,11 @@ mod tests {
 
     #[tokio::test]
     async fn report_sources_in_circular_dependency() {
-        let context = create_context(&Default::default(), &Default::default(), &Default::default());
+        let context = create_context(
+            &Default::default(),
+            &Default::default(),
+            &Default::default(),
+        );
 
         context.database().set_source("foo", "baz").unwrap();
         context.database().set_source("bar", "baz").unwrap();
@@ -1063,7 +1086,11 @@ mod tests {
 
     #[tokio::test]
     async fn prepare_output_directory() {
-        let context = create_context(&Default::default(), &Default::default(), &Default::default());
+        let context = create_context(
+            &Default::default(),
+            &Default::default(),
+            &Default::default(),
+        );
 
         run(
             &context,
@@ -1492,7 +1519,13 @@ mod tests {
                 .unwrap(),
             ["foo.h"]
         );
-        assert!(!context.file_system().exists("foo.d".as_ref()).await.unwrap());
+        assert!(
+            !context
+                .file_system()
+                .exists("foo.d".as_ref())
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
@@ -1610,7 +1643,11 @@ mod tests {
 
     #[tokio::test]
     async fn detect_circular_header_dependency() {
-        let context = create_context(&Default::default(), &Default::default(), &Default::default());
+        let context = create_context(
+            &Default::default(),
+            &Default::default(),
+            &Default::default(),
+        );
         let build = explicit_build(vec!["foo".into()], Rule::new("touch foo", None), vec![]);
 
         context
@@ -1743,7 +1780,11 @@ mod tests {
             vec!["bar".into(), "baz".into(), "qux".into(), "bar".into()],
         );
         let context = RunContext::new(
-            create_context(&Default::default(), &Default::default(), &Default::default()),
+            create_context(
+                &Default::default(),
+                &Default::default(),
+                &Default::default(),
+            ),
             create_simple_config(
                 vec![
                     build.clone(),

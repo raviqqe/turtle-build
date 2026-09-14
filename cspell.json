@@ -8,6 +8,7 @@
     "canonicalize",
     "clippy",
     "codegen",
+    "corge",
     "cpus",
     "dashmap",
     "datei",

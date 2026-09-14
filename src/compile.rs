@@ -111,11 +111,11 @@ fn compile_module<'a>(
                         .map(|definition| (definition.name(), definition.value().into())),
                 );
 
-                let outputs = interpolate_paths(build.outputs(), &variables);
-                let implicit_outputs = interpolate_paths(build.implicit_outputs(), &variables);
-                let inputs = interpolate_paths(build.inputs(), &variables);
-                let implicit_inputs = interpolate_paths(build.implicit_inputs(), &variables);
-                let order_only_inputs = interpolate_paths(build.order_only_inputs(), &variables);
+                let outputs = interpolate_strings(build.outputs(), &variables);
+                let implicit_outputs = interpolate_strings(build.implicit_outputs(), &variables);
+                let inputs = interpolate_strings(build.inputs(), &variables);
+                let implicit_inputs = interpolate_strings(build.implicit_inputs(), &variables);
+                let order_only_inputs = interpolate_strings(build.order_only_inputs(), &variables);
 
                 variables.extend([
                     ("in", inputs.join(" ").into()),
@@ -156,7 +156,7 @@ fn compile_module<'a>(
                 }
             }
             ast::Statement::Default(default) => {
-                global_state.default_outputs.extend(interpolate_paths(
+                global_state.default_outputs.extend(interpolate_strings(
                     default.outputs(),
                     &module_state.variables,
                 ));

@@ -567,10 +567,13 @@ mod tests {
         );
         assert_eq!(
             build("build foo: bar $\n    baz$\n    blah\n").unwrap().1,
+            // cspell: disable-next-line
             explicit_build(vec!["foo".into()], "bar", vec!["bazblah".into()], vec![])
         );
         assert_eq!(
-            build("build x1: rule | $\n    x2 || $\n    x3\n").unwrap().1,
+            build("build x1: rule | $\n    x2 || $\n    x3\n")
+                .unwrap()
+                .1,
             Build::new(
                 vec!["x1".into()],
                 vec![],
@@ -689,8 +692,24 @@ mod tests {
         assert!(all_consuming(blank).parse("#").is_ok());
         assert!(all_consuming(blank).parse("#foo").is_ok());
         assert!(all_consuming(blank).parse(" #foo").is_ok());
+        assert!(all_consuming(blank).parse("$\n").is_ok());
+        assert!(all_consuming(blank).parse(" $\n ").is_ok());
+        assert!(all_consuming(blank).parse("$\n$\r\n").is_ok());
         assert!(all_consuming(blank).parse("\n").is_err());
         assert!(all_consuming(blank).parse(" \n").is_err());
+        assert!(all_consuming(blank).parse("$").is_err());
+        assert!(all_consuming(blank).parse("$$\n").is_err());
+    }
+
+    #[test]
+    fn parse_line_continuation() {
+        assert!(all_consuming(line_continuation).parse("$\n").is_ok());
+        assert!(all_consuming(line_continuation).parse("$\r\n").is_ok());
+        assert!(all_consuming(line_continuation).parse("$\n  ").is_ok());
+        assert!(all_consuming(line_continuation).parse("").is_err());
+        assert!(all_consuming(line_continuation).parse("$").is_err());
+        assert!(all_consuming(line_continuation).parse("$ \n").is_err());
+        assert!(all_consuming(line_continuation).parse("$\n\t").is_err());
     }
 
     #[test]
@@ -701,6 +720,9 @@ mod tests {
         assert!(all_consuming(line_break).parse(" \n").is_ok());
         assert!(all_consuming(line_break).parse("  \n").is_ok());
         assert!(all_consuming(line_break).parse("\n\n").is_ok());
+        assert!(all_consuming(line_break).parse(" $\n\n").is_ok());
+        assert!(all_consuming(line_break).parse("#foo $\n").is_ok());
         assert!(all_consuming(line_break).parse("\n ").is_err());
+        assert!(all_consuming(line_break).parse("$\n").is_err());
     }
 }

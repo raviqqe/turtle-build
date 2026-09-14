@@ -13,7 +13,7 @@ pub trait CommandRunner {
     async fn run(&self, command: &str) -> Result<Output, Box<dyn Error>>;
 }
 
-/// A command runner provided by an operating system.
+/// A command runner backed by an operating system.
 #[derive(Debug)]
 pub struct OsCommandRunner {
     semaphore: Semaphore,

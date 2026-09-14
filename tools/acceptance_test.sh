@@ -6,20 +6,17 @@ cd $(dirname $0)/..
 
 export PATH=$PWD/target/release:$PATH
 
-cd acceptance
-
 if [ $# -eq 0 ]; then
-  set -- *
+  set -- $(ls acceptance)
 fi
 
 for name in "$@"; do
   (
-    cd $name
-    rm -rf tmp
-    mkdir tmp
-    cd tmp
+    rm -rf tmp/$name
+    mkdir -p tmp/$name
+    cd tmp/$name
 
-    ../main.sh
+    ../../acceptance/$name/main.sh
 
     turtle -C build
     [ -z "$(turtle -C build 2>&1 | tee /dev/stderr)" ]

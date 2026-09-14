@@ -88,3 +88,20 @@ Feature: Variable definition
       """
     When I successfully run `turtle`
     Then the stdout should contain exactly "hello"
+
+  Scenario: Expand variables in build paths
+    Given a file named "build.ninja" with:
+      """
+      directory = foo
+
+      rule touch
+        command = touch $out
+
+      build $directory/bar ${directory}/baz: touch
+
+      default $directory/bar
+
+      """
+    When I successfully run `turtle`
+    Then the file named "foo/bar" should exist
+    And the file named "foo/baz" should exist

@@ -184,3 +184,19 @@ Feature: Build statement
     And the exit status should not be 0
     Then I run `turtle`
     And the exit status should not be 0
+
+  Scenario: Escape newlines in a build statement
+    Given a file named "build.ninja" with:
+      """
+      rule echo
+        command = echo $in
+
+      build foo: echo $
+        bar $
+        baz
+
+      """
+    And a file named "bar" with ""
+    And a file named "baz" with ""
+    When I successfully run `turtle`
+    Then the stdout should contain exactly "bar baz"

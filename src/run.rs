@@ -457,9 +457,7 @@ fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> Build
 mod tests {
     use super::*;
     use crate::{
-        infrastructure::{
-            Database, FakeCommandRunner, FakeConsole, FakeDatabase, FakeFileSystem, FileSystem,
-        },
+        infrastructure::{FakeCommandRunner, FakeConsole, FakeDatabase, FakeFileSystem},
         ir::HeaderDependency,
     };
     use pretty_assertions::assert_eq;

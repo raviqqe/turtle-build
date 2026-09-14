@@ -171,6 +171,20 @@ Feature: Build statement
     When I successfully run `turtle`
     Then I successfully run `turtle`
 
+  Scenario: Do not rebuild an output with a variable in its implicit output
+    Given a file named "build.ninja" with:
+      """
+      directory = foo
+
+      rule touch
+        command = [ ! -e $out ] && touch $out $directory/baz
+
+      build bar | $directory/baz: touch
+
+      """
+    When I successfully run `turtle`
+    Then I successfully run `turtle`
+
   Scenario: Rerun a failed rule
     Given a file named "build.ninja" with:
       """

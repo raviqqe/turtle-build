@@ -88,7 +88,7 @@ pub async fn run(
                 .collect::<Result<Vec<_>, _>>()?
         }
         .into_iter()
-        .map(|build| trigger_build(context.clone(), build)),
+        .map(|build| run_build(context.clone(), build)),
     )
     .await;
 
@@ -98,7 +98,7 @@ pub async fn run(
 }
 
 #[async_recursion]
-async fn trigger_build(context: Arc<RunContext>, build: &Arc<Build>) -> Result<(), BuildError> {
+async fn run_build(context: Arc<RunContext>, build: &Arc<Build>) -> Result<(), BuildError> {
     // Do not inline this to avoid holding a lock of build futures across an await point.
     let future = context
         .build_futures()
@@ -270,7 +270,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
 
 async fn build_input(context: Arc<RunContext>, input: &str) -> Result<(), BuildError> {
     if let Some(build) = context.config().outputs().get(input) {
-        trigger_build(context.clone(), build).await
+        run_build(context.clone(), build).await
     } else {
         check_file_existence(&context, input).await
     }
@@ -284,7 +284,7 @@ async fn build_header_dependencies(
         inputs
             .iter()
             .filter_map(|input| context.config().outputs().get(input.as_str()))
-            .map(|build| trigger_build(context.clone(), build)),
+            .map(|build| run_build(context.clone(), build)),
     )
     .await?;
 

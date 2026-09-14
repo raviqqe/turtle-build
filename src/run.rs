@@ -163,18 +163,24 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         )
         .await?;
 
-        let header_dependencies = build_header_dependencies(
-            &context,
-            &if build.rule().is_some() {
-                context
-                    .application()
-                    .database()
-                    .get_header_dependencies(build.id())?
-            } else {
-                vec![]
-            },
-        )
-        .await?;
+        let header_dependencies = if build.rule().is_some() {
+            let dependencies = context
+                .application()
+                .database()
+                .get_header_dependencies(build.id())?;
+
+            try_join_all(
+                dependencies
+                    .iter()
+                    .filter_map(|dependency| context.config().outputs().get(dependency.as_str()))
+                    .map(|build| run_build(context.clone(), build)),
+            )
+            .await?;
+
+            filter_existing_header_dependencies(&context, &dependencies).await?
+        } else {
+            vec![]
+        };
 
         let outputs_exist = try_join_all(
             build
@@ -274,21 +280,6 @@ async fn build_input(context: Arc<RunContext>, input: &str) -> Result<(), BuildE
     } else {
         check_file_existence(&context, input).await
     }
-}
-
-async fn build_header_dependencies(
-    context: &Arc<RunContext>,
-    inputs: &[String],
-) -> Result<Vec<String>, BuildError> {
-    try_join_all(
-        inputs
-            .iter()
-            .filter_map(|input| context.config().outputs().get(input.as_str()))
-            .map(|build| run_build(context.clone(), build)),
-    )
-    .await?;
-
-    filter_existing_header_dependencies(context, inputs).await
 }
 
 async fn filter_existing_header_dependencies(

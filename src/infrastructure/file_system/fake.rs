@@ -1,16 +1,18 @@
 use super::Metadata;
 use crate::infrastructure::FileSystem;
 use async_trait::async_trait;
+use alloc::sync::Arc;
+use core::{
+    error::Error,
+    str,
+    sync::atomic::{AtomicU64, Ordering},
+    time::Duration,
+};
 use std::{
     collections::{HashMap, HashSet},
-    error::Error,
     path::{Path, PathBuf},
-    str,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicU64, Ordering},
-    },
-    time::{Duration, SystemTime},
+    sync::Mutex,
+    time::SystemTime,
 };
 
 #[derive(Clone, Debug, Default)]

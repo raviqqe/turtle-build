@@ -1,11 +1,8 @@
 use crate::{hash_type::HashType, infrastructure::Database, ir::BuildId};
 use async_trait::async_trait;
-use std::{
-    collections::{BTreeSet, HashMap},
-    error::Error,
-    path::Path,
-    sync::Mutex,
-};
+use alloc::collections::BTreeSet;
+use core::error::Error;
+use std::{collections::HashMap, path::Path, sync::Mutex};
 
 #[derive(Debug, Default)]
 pub struct FakeDatabase {

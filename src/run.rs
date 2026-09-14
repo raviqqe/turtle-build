@@ -20,15 +20,18 @@ use crate::{
     parse::parse_dynamic,
     profile,
 };
+use alloc::sync::Arc;
 use async_recursion::async_recursion;
+use core::{future::Future, pin::Pin};
 use futures::future::{FutureExt, Shared, try_join_all};
 use itertools::Itertools;
 pub use options::Options;
-use std::{future::Future, path::Path, pin::Pin, process::Output, sync::Arc};
+use std::{path::Path, process::Output};
 use tokio::{spawn, time::Instant, try_join};
 
 type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<(), BuildError>> + Send>>>;
 
+/// Runs builds.
 pub async fn run(
     context: &Arc<Context>,
     config: Arc<Config>,

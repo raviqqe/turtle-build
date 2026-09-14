@@ -1,5 +1,7 @@
 #![doc = include_str!("../README.md")]
 
+extern crate alloc;
+
 mod ast;
 mod build_graph;
 mod compile;

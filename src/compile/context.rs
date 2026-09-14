@@ -8,7 +8,7 @@ pub struct Context<'a> {
 }
 
 impl<'a> Context<'a> {
-    pub fn new(
+    pub const fn new(
         modules: &'a HashMap<PathBuf, Module>,
         dependencies: &'a ModuleDependencyMap,
     ) -> Self {
@@ -18,11 +18,11 @@ impl<'a> Context<'a> {
         }
     }
 
-    pub fn modules(&self) -> &HashMap<PathBuf, Module> {
+    pub const fn modules(&self) -> &HashMap<PathBuf, Module> {
         self.modules
     }
 
-    pub fn dependencies(&self) -> &ModuleDependencyMap {
+    pub const fn dependencies(&self) -> &ModuleDependencyMap {
         self.dependencies
     }
 }

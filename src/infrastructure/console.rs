@@ -4,7 +4,7 @@ mod fake;
 #[cfg(test)]
 pub use self::fake::FakeConsole;
 use async_trait::async_trait;
-use std::{error::Error, fmt::Debug};
+use core::{error::Error, fmt::Debug};
 use tokio::io::{AsyncWriteExt, Stderr, Stdout, stderr, stdout};
 
 #[async_trait]
@@ -13,6 +13,7 @@ pub trait Console {
     async fn write_stderr(&mut self, buffer: &[u8]) -> Result<(), Box<dyn Error>>;
 }
 
+/// A console provided by an operating system.
 #[derive(Debug)]
 pub struct OsConsole {
     stdout: Stdout,
@@ -20,6 +21,7 @@ pub struct OsConsole {
 }
 
 impl OsConsole {
+    /// Creates a console.
     pub fn new() -> Self {
         Self {
             stdout: stdout(),

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use alloc::sync::Arc;
 use train_map::TrainMap;
 
 #[derive(Clone, Debug)]

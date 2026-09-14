@@ -1,13 +1,17 @@
+use core::{
+    error::Error,
+    fmt::{self, Display, Formatter},
+};
 use petgraph::{Graph, algo::is_cyclic_directed};
 use std::{
     collections::HashMap,
-    error::Error,
-    fmt::{self, Display, Formatter},
     path::{Path, PathBuf},
 };
 
+/// A module dependency map.
 pub type ModuleDependencyMap = HashMap<PathBuf, HashMap<String, PathBuf>>;
 
+/// Validates module dependencies.
 pub fn validate(modules: &ModuleDependencyMap) -> Result<(), ModuleDependencyError> {
     if is_module_dependency_circular(modules) {
         return Err(ModuleDependencyError::CircularDependency);

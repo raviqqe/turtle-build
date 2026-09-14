@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use alloc::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DynamicBuild {
@@ -6,7 +6,7 @@ pub struct DynamicBuild {
 }
 
 impl DynamicBuild {
-    pub fn new(inputs: Vec<Arc<str>>) -> Self {
+    pub const fn new(inputs: Vec<Arc<str>>) -> Self {
         Self { inputs }
     }
 

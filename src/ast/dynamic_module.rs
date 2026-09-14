@@ -6,7 +6,7 @@ pub struct DynamicModule {
 }
 
 impl DynamicModule {
-    pub fn new(builds: Vec<DynamicBuild>) -> Self {
+    pub const fn new(builds: Vec<DynamicBuild>) -> Self {
         Self { builds }
     }
 

@@ -1,12 +1,19 @@
 use super::{Build, DefaultOutput, Include, Rule, Submodule, VariableDefinition};
 
+/// A statement.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Statement {
+    /// A build statement.
     Build(Build),
+    /// A default statement.
     Default(DefaultOutput),
+    /// An include statement.
     Include(Include),
+    /// A rule statement.
     Rule(Rule),
+    /// A submodule statement.
     Submodule(Submodule),
+    /// A variable definition.
     VariableDefinition(VariableDefinition),
 }
 

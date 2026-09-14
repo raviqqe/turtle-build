@@ -4,8 +4,8 @@ use crate::{
     context::Context as ApplicationContext,
     ir::{BuildId, Config},
 };
+use alloc::sync::Arc;
 use dashmap::DashMap;
-use std::sync::Arc;
 use tokio::sync::Mutex;
 
 pub struct Context {
@@ -44,11 +44,11 @@ impl Context {
         &self.build_futures
     }
 
-    pub fn build_graph(&self) -> &Mutex<BuildGraph> {
+    pub const fn build_graph(&self) -> &Mutex<BuildGraph> {
         &self.build_graph
     }
 
-    pub fn options(&self) -> &Options {
+    pub const fn options(&self) -> &Options {
         &self.options
     }
 }

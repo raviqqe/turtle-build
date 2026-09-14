@@ -1,9 +1,8 @@
 use crate::infrastructure::Console;
+use alloc::sync::Arc;
 use async_trait::async_trait;
-use std::{
-    error::Error,
-    sync::{Arc, Mutex},
-};
+use core::error::Error;
+use std::sync::Mutex;
 
 #[derive(Clone, Debug, Default)]
 pub struct FakeConsole {

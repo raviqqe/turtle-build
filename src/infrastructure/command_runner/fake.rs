@@ -1,10 +1,11 @@
 use crate::infrastructure::CommandRunner;
+use alloc::sync::Arc;
 use async_trait::async_trait;
+use core::error::Error;
 use std::{
     collections::HashMap,
-    error::Error,
     process::{ExitStatus, Output},
-    sync::{Arc, Mutex},
+    sync::Mutex,
 };
 
 #[derive(Clone, Debug, Default)]

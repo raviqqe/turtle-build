@@ -10,12 +10,12 @@ use crate::{
     ir::{Build, Config, DynamicBuild, DynamicConfig, HeaderDependency, Rule},
     module_dependency::ModuleDependencyMap,
 };
+use alloc::sync::Arc;
 use once_cell::sync::Lazy;
 use regex::{Captures, Regex};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::Arc,
 };
 use train_map::TrainMap;
 
@@ -34,6 +34,7 @@ const DEFAULT_MSVC_DEPS_PREFIX: &str = "Note: including file: ";
 static VARIABLE_PATTERN: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\$(\$|[[:alpha:]_][[:alnum:]_]*)").unwrap());
 
+/// Compiles modules.
 // TODO Use a string pool for paths.
 pub fn compile(
     modules: &HashMap<PathBuf, ast::Module>,
@@ -125,7 +126,9 @@ fn compile_module<'a>(
                         .iter()
                         .map(|string| string.as_str().into())
                         .collect(),
-                    if build.rule() != PHONY_RULE {
+                    if build.rule() == PHONY_RULE {
+                        None
+                    } else {
                         Some(
                             Rule::new(
                                 resolve_variable(COMMAND_VARIABLE, &variables).unwrap_or_default(),
@@ -135,8 +138,6 @@ fn compile_module<'a>(
                                 compile_header_dependency(build.rule(), &variables)?,
                             ),
                         )
-                    } else {
-                        None
                     },
                     build
                         .inputs()

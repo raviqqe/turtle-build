@@ -4,10 +4,8 @@ use crate::{
     hash_type::HashType,
     ir::{Build, Rule},
 };
-use std::{
-    collections::hash_map::DefaultHasher,
-    hash::{Hash, Hasher},
-};
+use core::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 
 const BUFFER_CAPACITY: usize = 1 << 10;
 

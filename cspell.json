@@ -46,6 +46,7 @@
     "tempdir",
     "tempfile",
     "toposort",
+    "uninlined",
     "varint",
     "yota"
   ]

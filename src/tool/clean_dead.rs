@@ -2,6 +2,7 @@ use crate::{context::Context, ir::Config};
 use core::error::Error;
 use futures::future::try_join_all;
 
+/// Cleans dead outputs.
 pub async fn clean_dead(context: &Context, config: &Config) -> Result<(), Box<dyn Error>> {
     try_join_all(
         context

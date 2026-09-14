@@ -1,7 +1,10 @@
 #![doc = include_str!("../README.md")]
 
+extern crate alloc;
+
+use alloc::sync::Arc;
 use clap::{Parser, ValueEnum};
-use core::error::Error;
+use core::{error::Error, time::Duration};
 use futures::future::try_join_all;
 #[cfg(unix)]
 use rlimit::Resource;
@@ -11,8 +14,6 @@ use std::{
     env::set_current_dir,
     path::{Path, PathBuf},
     process::exit,
-    sync::Arc,
-    time::Duration,
 };
 use tokio::time::sleep;
 use turtle_build::{
@@ -85,11 +86,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .write_stderr(
                     format!(
                         "{}{}\n",
-                        if let Some(prefix) = &arguments.log_prefix {
-                            prefix
-                        } else {
-                            ""
-                        },
+                        arguments.log_prefix.as_deref().unwrap_or_default(),
                         error
                     )
                     .as_bytes(),

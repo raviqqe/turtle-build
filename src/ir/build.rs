@@ -1,19 +1,17 @@
 use super::Rule;
-use std::{
-    collections::hash_map::DefaultHasher,
-    hash::{Hash, Hasher},
-    sync::Arc,
-};
+use alloc::sync::Arc;
+use core::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct BuildId(u64);
 
 impl BuildId {
-    pub fn new(id: u64) -> Self {
+    pub const fn new(id: u64) -> Self {
         Self(id)
     }
 
-    pub fn to_bytes(self) -> [u8; 8] {
+    pub const fn to_bytes(self) -> [u8; 8] {
         self.0.to_le_bytes()
     }
 }
@@ -51,7 +49,7 @@ impl Build {
         }
     }
 
-    pub fn id(&self) -> BuildId {
+    pub const fn id(&self) -> BuildId {
         self.id
     }
 
@@ -63,7 +61,7 @@ impl Build {
         &self.implicit_outputs
     }
 
-    pub fn rule(&self) -> Option<&Rule> {
+    pub const fn rule(&self) -> Option<&Rule> {
         self.rule.as_ref()
     }
 
@@ -75,7 +73,7 @@ impl Build {
         &self.order_only_inputs
     }
 
-    pub fn dynamic_module(&self) -> Option<&Arc<str>> {
+    pub const fn dynamic_module(&self) -> Option<&Arc<str>> {
         self.dynamic_module.as_ref()
     }
 

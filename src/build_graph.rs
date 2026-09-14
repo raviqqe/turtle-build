@@ -1,16 +1,16 @@
 use crate::ir::{Build, DynamicConfig};
+use alloc::sync::Arc;
+use core::{
+    error::Error,
+    fmt::{self, Display, Formatter},
+};
 use itertools::Itertools;
 use petgraph::{
     Graph,
     algo::{kosaraju_scc, toposort},
     graph::{DefaultIx, NodeIndex},
 };
-use std::{
-    collections::HashMap,
-    error::Error,
-    fmt::{self, Display, Formatter},
-    sync::Arc,
-};
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct BuildGraph {

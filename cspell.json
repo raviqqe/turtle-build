@@ -10,7 +10,6 @@
     "codegen",
     "corge",
     "cpus",
-    "dashmap",
     "datei",
     "dedup",
     "depfile",

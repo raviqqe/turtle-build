@@ -87,12 +87,15 @@ pub async fn run(
         }
     }
 
-    // Do not inline this to avoid borrowing a lock of builds.
-    let futures = context
+    let mut futures = vec![];
+
+    context
         .build_futures()
-        .iter()
-        .map(|r#ref| r#ref.value().clone())
-        .collect::<Vec<_>>();
+        .iter_async(|_, future| {
+            futures.push(future.clone());
+            true
+        })
+        .await;
 
     let result = try_join_all(futures).await;
 
@@ -105,7 +108,8 @@ pub async fn run(
 async fn trigger_build(context: Arc<RunContext>, build: &Arc<Build>) -> Result<(), BuildError> {
     context
         .build_futures()
-        .entry(build.id())
+        .entry_async(build.id())
+        .await
         .or_insert_with(|| spawn_build(context.clone(), build.clone()).boxed().shared());
 
     Ok(())
@@ -272,10 +276,12 @@ async fn build_input(context: Arc<RunContext>, input: &str) -> Result<(), BuildE
     if let Some(build) = context.config().outputs().get(input) {
         trigger_build(context.clone(), build).await?;
 
-        // Do not inline this to avoid holding a lock of build futures across an await point.
-        let future = context.build_futures().get(&build.id()).unwrap().clone();
-
-        future.await
+        context
+            .build_futures()
+            .read_async(&build.id(), |_, future| future.clone())
+            .await
+            .unwrap()
+            .await
     } else {
         check_file_existence(&context, input).await
     }
@@ -291,7 +297,13 @@ async fn build_header_dependencies(
         if let Some(build) = context.config().outputs().get(input.as_str()) {
             trigger_build(context.clone(), build).await?;
 
-            futures.push(context.build_futures().get(&build.id()).unwrap().clone());
+            futures.push(
+                context
+                    .build_futures()
+                    .read_async(&build.id(), |_, future| future.clone())
+                    .await
+                    .unwrap(),
+            );
         }
     }
 

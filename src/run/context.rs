@@ -5,13 +5,13 @@ use crate::{
     ir::{BuildId, Config},
 };
 use alloc::sync::Arc;
-use dashmap::DashMap;
+use scc::HashMap;
 use tokio::sync::Mutex;
 
 pub struct Context {
     application: Arc<ApplicationContext>,
     config: Arc<Config>,
-    build_futures: DashMap<BuildId, BuildFuture>,
+    build_futures: HashMap<BuildId, BuildFuture>,
     build_graph: Mutex<BuildGraph>,
     options: RunOptions,
 }
@@ -27,7 +27,7 @@ impl Context {
             application,
             build_graph: build_graph.into(),
             config,
-            build_futures: DashMap::new(),
+            build_futures: HashMap::new(),
             options,
         }
     }
@@ -40,7 +40,7 @@ impl Context {
         &self.config
     }
 
-    pub fn build_futures(&self) -> &DashMap<BuildId, BuildFuture> {
+    pub fn build_futures(&self) -> &HashMap<BuildId, BuildFuture> {
         &self.build_futures
     }
 

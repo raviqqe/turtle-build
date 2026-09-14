@@ -92,4 +92,4 @@ Feature: Dynamic dependency
       """
     When I run `turtle foo`
     Then the exit status should not be 0
-    And the stderr should contain "baz"
+    And the output should contain "baz"

@@ -5,7 +5,7 @@ mod log;
 mod options;
 
 use self::{
-    context::Context as RunContext,
+    context::RunContext,
     hash::{calculate_content_hash, calculate_timestamp_hash},
     header_dependency::{exclude_show_includes, read_header_dependencies},
 };
@@ -22,14 +22,11 @@ use crate::{
 };
 use alloc::sync::Arc;
 use async_recursion::async_recursion;
-use core::{future::Future, pin::Pin};
-use futures::future::{FutureExt, Shared, try_join_all};
+use futures::future::{FutureExt, try_join_all};
 use itertools::Itertools;
 pub use options::RunOptions;
 use std::{path::Path, process::Output};
 use tokio::{spawn, time::Instant, try_join};
-
-type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<(), BuildError>> + Send>>>;
 
 /// Runs builds.
 pub async fn run(

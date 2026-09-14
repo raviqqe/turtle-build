@@ -61,40 +61,36 @@ pub async fn run(
         .validate()
         .map_err(|error| map_build_graph_error(&context, &error))?;
 
-    if outputs.is_empty() {
-        for output in context.config().default_outputs() {
-            trigger_build(
-                context.clone(),
-                context
-                    .config()
-                    .outputs()
-                    .get(output.as_ref())
-                    .ok_or_else(|| BuildError::DefaultOutputNotFound(output.clone()))?,
-            )
-            .await?;
+    let result = try_join_all(
+        if outputs.is_empty() {
+            context
+                .config()
+                .default_outputs()
+                .iter()
+                .map(|output| {
+                    context
+                        .config()
+                        .outputs()
+                        .get(output.as_ref())
+                        .ok_or_else(|| BuildError::DefaultOutputNotFound(output.clone()))
+                })
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            outputs
+                .iter()
+                .map(|output| {
+                    context
+                        .config()
+                        .outputs()
+                        .get(output.as_str())
+                        .ok_or_else(|| BuildError::OutputNotFound(output.clone()))
+                })
+                .collect::<Result<Vec<_>, _>>()?
         }
-    } else {
-        for output in outputs {
-            trigger_build(
-                context.clone(),
-                context
-                    .config()
-                    .outputs()
-                    .get(output.as_str())
-                    .ok_or_else(|| BuildError::OutputNotFound(output.clone()))?,
-            )
-            .await?;
-        }
-    }
-
-    // Do not inline this to avoid borrowing a lock of builds.
-    let futures = context
-        .build_futures()
-        .iter()
-        .map(|r#ref| r#ref.value().clone())
-        .collect::<Vec<_>>();
-
-    let result = try_join_all(futures).await;
+        .into_iter()
+        .map(|build| run_build(context.clone(), build)),
+    )
+    .await;
 
     context.application().database().flush().await?;
 
@@ -102,13 +98,17 @@ pub async fn run(
 }
 
 #[async_recursion]
-async fn trigger_build(context: Arc<RunContext>, build: &Arc<Build>) -> Result<(), BuildError> {
-    context
+async fn run_build(context: Arc<RunContext>, build: &Arc<Build>) -> Result<(), BuildError> {
+    // Do not inline this to avoid holding a lock of build futures across an await point.
+    let future = context
         .build_futures()
-        .entry(build.id())
-        .or_insert_with(|| spawn_build(context.clone(), build.clone()).boxed().shared());
+        .entry_async(build.id())
+        .await
+        .or_insert_with(|| spawn_build(context.clone(), build.clone()).boxed().shared())
+        .get()
+        .clone();
 
-    Ok(())
+    future.await
 }
 
 async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), BuildError> {
@@ -163,18 +163,24 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         )
         .await?;
 
-        let header_dependencies = build_header_dependencies(
-            &context,
-            &if build.rule().is_some() {
-                context
-                    .application()
-                    .database()
-                    .get_header_dependencies(build.id())?
-            } else {
-                vec![]
-            },
-        )
-        .await?;
+        let header_dependencies = if build.rule().is_some() {
+            let dependencies = context
+                .application()
+                .database()
+                .get_header_dependencies(build.id())?;
+
+            try_join_all(
+                dependencies
+                    .iter()
+                    .filter_map(|dependency| context.config().outputs().get(dependency.as_str()))
+                    .map(|build| run_build(context.clone(), build)),
+            )
+            .await?;
+
+            filter_existing_header_dependencies(&context, &dependencies).await?
+        } else {
+            vec![]
+        };
 
         let outputs_exist = try_join_all(
             build
@@ -270,34 +276,10 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
 
 async fn build_input(context: Arc<RunContext>, input: &str) -> Result<(), BuildError> {
     if let Some(build) = context.config().outputs().get(input) {
-        trigger_build(context.clone(), build).await?;
-
-        // Do not inline this to avoid holding a lock of build futures across an await point.
-        let future = context.build_futures().get(&build.id()).unwrap().clone();
-
-        future.await
+        run_build(context.clone(), build).await
     } else {
         check_file_existence(&context, input).await
     }
-}
-
-async fn build_header_dependencies(
-    context: &Arc<RunContext>,
-    inputs: &[String],
-) -> Result<Vec<String>, BuildError> {
-    let mut futures = vec![];
-
-    for input in inputs {
-        if let Some(build) = context.config().outputs().get(input.as_str()) {
-            trigger_build(context.clone(), build).await?;
-
-            futures.push(context.build_futures().get(&build.id()).unwrap().clone());
-        }
-    }
-
-    try_join_all(futures).await?;
-
-    filter_existing_header_dependencies(context, inputs).await
 }
 
 async fn filter_existing_header_dependencies(

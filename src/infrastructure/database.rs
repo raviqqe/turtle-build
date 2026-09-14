@@ -1,5 +1,9 @@
+#[cfg(test)]
+mod fake;
 mod fjall;
 
+#[cfg(test)]
+pub use self::fake::FakeDatabase;
 pub use self::fjall::FjallDatabase;
 use crate::{hash_type::HashType, ir::BuildId};
 use async_trait::async_trait;

@@ -1,3 +1,8 @@
+#[cfg(test)]
+mod fake;
+
+#[cfg(test)]
+pub use self::fake::FakeConsole;
 use async_trait::async_trait;
 use std::{error::Error, fmt::Debug};
 use tokio::io::{AsyncWriteExt, Stderr, Stdout, stderr, stdout};

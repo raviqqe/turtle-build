@@ -4,7 +4,7 @@
 [![crates.io](https://img.shields.io/crates/v/turtle-build?style=flat-square)](https://crates.io/crates/turtle-build)
 [![License](https://img.shields.io/crates/l/turtle-build?style=flat-square)](#license)
 
-[Ninja][ninja]-compatible build system for high-level programming languages written in Rust
+[Ninja][ninja]-compatible build system for high-level programming languages written in Rust.
 
 ## Goals
 
@@ -32,7 +32,7 @@ For more information, see `turtle --help`.
 - [Ninja][ninja]-compatible build file syntax and command line options 🥷
 - Content hash-based rebuild
 - Description-only outputs
-  - Turtle never shows commands of build rules but only descriptions because the former is hard for end-users to digest.
+  - Turtle never shows commands of build rules but only descriptions because they are incomprehensive to end-users.
 - Source mapping
   - Turtle maps outputs in error messages to source filenames defined as `srcdep` variables defined in `build` directives to make them understandable to end-users.
 - `--log-prefix` option

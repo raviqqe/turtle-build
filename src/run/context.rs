@@ -1,4 +1,4 @@
-use super::{BuildFuture, options::Options};
+use super::{BuildFuture, options::RunOptions};
 use crate::{
     build_graph::BuildGraph,
     context::Context as ApplicationContext,
@@ -13,7 +13,7 @@ pub struct Context {
     config: Arc<Config>,
     build_futures: DashMap<BuildId, BuildFuture>,
     build_graph: Mutex<BuildGraph>,
-    options: Options,
+    options: RunOptions,
 }
 
 impl Context {
@@ -21,7 +21,7 @@ impl Context {
         application: Arc<ApplicationContext>,
         config: Arc<Config>,
         build_graph: BuildGraph,
-        options: Options,
+        options: RunOptions,
     ) -> Self {
         Self {
             application,
@@ -48,7 +48,7 @@ impl Context {
         &self.build_graph
     }
 
-    pub const fn options(&self) -> &Options {
+    pub const fn options(&self) -> &RunOptions {
         &self.options
     }
 }

@@ -18,8 +18,7 @@ use std::{
 use tokio::time::sleep;
 use turtle_build::{
     BuildError, Context, FjallDatabase, Module, ModuleDependencyMap, OsCommandRunner, OsConsole,
-    OsFileSystem, RunOptions, Statement, clean_dead, compile, parse, run,
-    validate_module_dependencies,
+    OsFileSystem, RunOptions, Statement, clean_dead, compile, parse, run, validate_modules,
 };
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
@@ -121,7 +120,7 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Bu
         .await?;
     let (modules, dependencies) = parse_modules(context, &root_module_path).await?;
 
-    validate_module_dependencies(&dependencies)?;
+    validate_modules(&dependencies)?;
 
     let config = Arc::new(compile(&modules, &dependencies, &root_module_path)?);
 

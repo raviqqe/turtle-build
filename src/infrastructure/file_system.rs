@@ -32,7 +32,7 @@ pub trait FileSystem {
     async fn remove_file(&self, path: &Path) -> Result<(), Box<dyn Error>>;
 }
 
-/// A file system provided by an operating system.
+/// A file system backed by an operating system.
 #[derive(Debug)]
 pub struct OsFileSystem {
     semaphore: Semaphore,

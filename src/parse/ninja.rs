@@ -5,9 +5,9 @@ use crate::ast::{
 use nom::{
     IResult, Parser,
     branch::alt,
-    bytes::complete::{is_not, tag},
-    character::complete::{alpha1, alphanumeric1, line_ending, none_of, one_of, space1},
-    combinator::{all_consuming, into, map, map_opt, not, opt, peek, recognize, value},
+    bytes::complete::{is_not, tag, take_while1},
+    character::complete::{line_ending, none_of, one_of, satisfy, space1},
+    combinator::{all_consuming, into, map, map_opt, not, opt, peek, value},
     multi::{fold_many1, many0, many0_count, many1, many1_count},
     sequence::{preceded, terminated},
 };
@@ -190,15 +190,21 @@ fn string<'a>(
 }
 
 fn keyword(name: &'static str) -> impl Fn(&str) -> IResult<&str, ()> {
-    move |input| value((), token((tag(name), peek(not(alphanumeric1))))).parse(input)
+    move |input| {
+        value(
+            (),
+            token((tag(name), peek(not(satisfy(is_identifier_character))))),
+        )
+        .parse(input)
+    }
 }
 
 fn identifier(input: &str) -> IResult<&str, &str> {
-    token(recognize((
-        alt((alpha1, tag("_"))),
-        many0_count(alt((alphanumeric1, tag("_")))),
-    )))
-    .parse(input)
+    token(take_while1(is_identifier_character)).parse(input)
+}
+
+const fn is_identifier_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '_' | '.' | '-')
 }
 
 fn sign(sign: &'static str) -> impl Fn(&str) -> IResult<&str, ()> {
@@ -303,6 +309,14 @@ mod tests {
             module("builddir = foo\n").unwrap().1,
             Module::new(vec![VariableDefinition::new("builddir", "foo").into()])
         );
+        assert_eq!(
+            module("default_x = foo\n").unwrap().1,
+            Module::new(vec![VariableDefinition::new("default_x", "foo").into()])
+        );
+        assert_eq!(
+            module("rule-x = foo\n").unwrap().1,
+            Module::new(vec![VariableDefinition::new("rule-x", "foo").into()])
+        );
     }
 
     #[test]
@@ -405,6 +419,13 @@ mod tests {
                 ]
             )
         );
+        assert_eq!(
+            rule("rule foo-bar.baz\n command = blah\n").unwrap().1,
+            Rule::new(
+                "foo-bar.baz",
+                vec![VariableDefinition::new("command", "blah")]
+            )
+        );
     }
 
     #[test]
@@ -433,6 +454,10 @@ mod tests {
         assert_eq!(
             build("build foo: bar\n").unwrap().1,
             explicit_build(vec!["foo".into()], "bar", vec![], vec![])
+        );
+        assert_eq!(
+            build("build foo: bar-baz.blah\n").unwrap().1,
+            explicit_build(vec!["foo".into()], "bar-baz.blah", vec![], vec![])
         );
         assert_eq!(
             build("build foo: bar baz\n").unwrap().1,
@@ -671,7 +696,11 @@ mod tests {
     #[test]
     fn parse_keyword() {
         assert!(keyword("foo")("foo").is_ok());
+        assert!(keyword("foo")("foo bar").is_ok());
         assert!(keyword("fo")("foo").is_err());
+        assert!(keyword("foo")("foo_bar").is_err());
+        assert!(keyword("foo")("foo.bar").is_err());
+        assert!(keyword("foo")("foo-bar").is_err());
     }
 
     #[test]
@@ -680,6 +709,11 @@ mod tests {
         assert_eq!(identifier("foo bar").unwrap().1, "foo");
         assert_eq!(identifier("foo_bar").unwrap().1, "foo_bar");
         assert_eq!(identifier("_foo").unwrap().1, "_foo");
+        assert_eq!(identifier("foo.bar").unwrap().1, "foo.bar");
+        assert_eq!(identifier("foo-bar").unwrap().1, "foo-bar");
+        assert_eq!(identifier("42").unwrap().1, "42");
+        assert_eq!(identifier("foo:bar").unwrap().1, "foo");
+        assert!(identifier("").is_err());
     }
 
     #[test]

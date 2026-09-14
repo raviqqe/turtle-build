@@ -10,7 +10,7 @@ use crate::{
     ir::{Build, Config, DynamicBuild, DynamicConfig, HeaderDependency, Rule},
     module_dependency::ModuleDependencyMap,
 };
-use alloc::sync::Arc;
+use alloc::{borrow::Cow, sync::Arc};
 use once_cell::sync::Lazy;
 use regex::{Captures, Regex};
 use std::{
@@ -32,7 +32,7 @@ const MSVC_DEPS_PREFIX_VARIABLE: &str = "msvc_deps_prefix";
 const DEFAULT_MSVC_DEPS_PREFIX: &str = "Note: including file: ";
 
 static VARIABLE_PATTERN: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\$(\$|[[:alpha:]_][[:alnum:]_]*)").unwrap());
+    Lazy::new(|| Regex::new(r"\$(\$|\{([[:alnum:]_.-]+)\}|[[:alpha:]_][[:alnum:]_]*)").unwrap());
 
 /// Compiles modules.
 // TODO Use a string pool for paths.
@@ -108,24 +108,23 @@ fn compile_module<'a>(
                     build
                         .variable_definitions()
                         .iter()
-                        .map(|definition| (definition.name(), definition.value().into()))
-                        .chain([
-                            ("in", build.inputs().join(" ").into()),
-                            ("out", build.outputs().join(" ").into()),
-                        ]),
+                        .map(|definition| (definition.name(), definition.value().into())),
                 );
 
+                let outputs = interpolate_strings(build.outputs(), &variables);
+                let implicit_outputs = interpolate_strings(build.implicit_outputs(), &variables);
+                let inputs = interpolate_strings(build.inputs(), &variables);
+                let implicit_inputs = interpolate_strings(build.implicit_inputs(), &variables);
+                let order_only_inputs = interpolate_strings(build.order_only_inputs(), &variables);
+
+                variables.extend([
+                    ("in", inputs.join(" ").into()),
+                    ("out", outputs.join(" ").into()),
+                ]);
+
                 let ir = Arc::new(Build::new(
-                    build
-                        .outputs()
-                        .iter()
-                        .map(|string| string.as_str().into())
-                        .collect(),
-                    build
-                        .implicit_outputs()
-                        .iter()
-                        .map(|string| string.as_str().into())
-                        .collect(),
+                    outputs,
+                    implicit_outputs,
                     if build.rule() == PHONY_RULE {
                         None
                     } else {
@@ -139,39 +138,28 @@ fn compile_module<'a>(
                             ),
                         )
                     },
-                    build
-                        .inputs()
-                        .iter()
-                        .chain(build.implicit_inputs())
-                        .map(|string| string.as_str().into())
-                        .collect(),
-                    build
-                        .order_only_inputs()
-                        .iter()
-                        .map(|string| string.as_str().into())
-                        .collect(),
+                    inputs.into_iter().chain(implicit_inputs).collect(),
+                    order_only_inputs,
                     resolve_variable(DYNAMIC_MODULE_VARIABLE, &variables).map(Into::into),
                 ));
 
-                let outputs = || build.outputs().iter().chain(build.implicit_outputs());
+                let outputs = || ir.outputs().iter().chain(ir.implicit_outputs());
 
                 global_state
                     .outputs
-                    .extend(outputs().map(|output| (output.as_str().into(), ir.clone())));
+                    .extend(outputs().map(|output| (output.clone(), ir.clone())));
 
                 if let Some(source) = variables.get(SOURCE_VARIABLE_NAME) {
                     global_state
                         .source_map
-                        .extend(outputs().map(|output| (output.as_str().into(), source.clone())));
+                        .extend(outputs().map(|output| (output.clone(), source.clone())));
                 }
             }
             ast::Statement::Default(default) => {
-                global_state.default_outputs.extend(
-                    default
-                        .outputs()
-                        .iter()
-                        .map(|string| string.as_str().into()),
-                );
+                global_state.default_outputs.extend(interpolate_strings(
+                    default.outputs(),
+                    &module_state.variables,
+                ));
             }
             ast::Statement::Include(include) => {
                 compile_module(
@@ -269,20 +257,28 @@ fn resolve_dependency<'a>(
 fn resolve_variable(name: &str, variables: &TrainMap<&str, Arc<str>>) -> Option<String> {
     variables
         .get(name)
-        .map(|value| interpolate_variables(value, variables))
+        .map(|value| interpolate_variables(value, variables).into_owned())
         .filter(|value| !value.is_empty())
 }
 
-fn interpolate_variables(template: &str, variables: &TrainMap<&str, Arc<str>>) -> String {
-    VARIABLE_PATTERN
-        .replace_all(template, |captures: &Captures| match &captures[1] {
-            "$" => "$",
-            name => variables
-                .get(name)
-                .map(|string| string.as_ref())
-                .unwrap_or_default(),
-        })
-        .into()
+fn interpolate_strings(strings: &[String], variables: &TrainMap<&str, Arc<str>>) -> Vec<Arc<str>> {
+    strings
+        .iter()
+        .map(|string| interpolate_variables(string, variables).into())
+        .collect()
+}
+
+fn interpolate_variables<'a>(
+    template: &'a str,
+    variables: &TrainMap<&str, Arc<str>>,
+) -> Cow<'a, str> {
+    VARIABLE_PATTERN.replace_all(template, |captures: &Captures| match &captures[1] {
+        "$" => "$",
+        name => variables
+            .get(captures.get(2).map_or(name, |name| name.as_str()))
+            .map(|string| string.as_ref())
+            .unwrap_or_default(),
+    })
 }
 
 #[cfg(test)]
@@ -423,6 +419,36 @@ mod tests {
                     ast::Module::new(vec![
                         ast::VariableDefinition::new("x_y", "42").into(),
                         ast_rule("foo", &[("command", "$x_y")]).into(),
+                        ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_config(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(vec!["bar".into()], Rule::new("42", None), vec![]).into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn interpolate_variable_with_braces_in_command() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast::VariableDefinition::new("x.y", "42").into(),
+                        ast_rule("foo", &[("command", "${x.y}")]).into(),
                         ast_explicit_build(vec!["bar".into()], "foo", vec![], vec![]).into(),
                     ])
                 )]
@@ -851,6 +877,200 @@ mod tests {
                 .into_iter()
                 .collect(),
                 ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn interpolate_variables_in_paths() {
+        let build = Arc::new(Build::new(
+            vec!["foo/output".into()],
+            vec!["foo/implicit_output".into()],
+            Rule::new("foo/input foo/output", None).into(),
+            vec!["foo/input".into(), "foo/implicit_input".into()],
+            vec!["foo/order_only_input".into()],
+            None,
+        ));
+
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast::VariableDefinition::new("x", "foo").into(),
+                        ast_rule("bar", &[("command", "$in $out")]).into(),
+                        ast::Build::new(
+                            vec!["$x/output".into()],
+                            vec!["${x}/implicit_output".into()],
+                            "bar",
+                            vec!["$x/input".into()],
+                            vec!["${x}/implicit_input".into()],
+                            vec!["$x/order_only_input".into()],
+                            vec![]
+                        )
+                        .into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_config(
+                [
+                    ("foo/output".into(), build.clone()),
+                    ("foo/implicit_output".into(), build)
+                ]
+                .into_iter()
+                .collect(),
+                ["foo/output".into(), "foo/implicit_output".into()]
+                    .into_iter()
+                    .collect()
+            )
+        );
+    }
+
+    #[test]
+    fn interpolate_build_local_variable_in_path() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast_rule("foo", &[("command", "$out")]).into(),
+                        ast_explicit_build(
+                            vec!["$x/bar".into()],
+                            "foo",
+                            vec![],
+                            vec![ast::VariableDefinition::new("x", "baz")]
+                        )
+                        .into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_config(
+                [(
+                    "baz/bar".into(),
+                    ir_explicit_build(vec!["baz/bar".into()], Rule::new("baz/bar", None), vec![])
+                        .into()
+                )]
+                .into_iter()
+                .collect(),
+                ["baz/bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn unescape_dollar_sign_in_path() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast_rule("foo", &[("command", "")]).into(),
+                        ast_explicit_build(vec!["bar$$baz".into()], "foo", vec![], vec![]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_config(
+                [(
+                    "bar$baz".into(),
+                    ir_explicit_build(vec!["bar$baz".into()], Rule::new("", None), vec![]).into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar$baz".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn do_not_interpolate_in_and_out_variables_in_paths() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast_rule("foo", &[("command", "$in $out")]).into(),
+                        ast_explicit_build(
+                            vec!["bar$out".into()],
+                            "foo",
+                            vec!["baz$in".into()],
+                            vec![]
+                        )
+                        .into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_config(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(
+                        vec!["bar".into()],
+                        Rule::new("baz bar", None),
+                        vec!["baz".into()]
+                    )
+                    .into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn interpolate_variable_in_default_output() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast::VariableDefinition::new("x", "foo").into(),
+                        ast_rule("bar", &[("command", "")]).into(),
+                        ast_explicit_build(vec!["foo/baz".into()], "bar", vec![], vec![]).into(),
+                        ast_explicit_build(vec!["qux".into()], "bar", vec![], vec![]).into(),
+                        ast::DefaultOutput::new(vec!["$x/baz".into()]).into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_config(
+                [
+                    (
+                        "foo/baz".into(),
+                        ir_explicit_build(vec!["foo/baz".into()], Rule::new("", None), vec![])
+                            .into()
+                    ),
+                    (
+                        "qux".into(),
+                        ir_explicit_build(vec!["qux".into()], Rule::new("", None), vec![]).into()
+                    )
+                ]
+                .into_iter()
+                .collect(),
+                ["foo/baz".into()].into_iter().collect()
             )
         );
     }

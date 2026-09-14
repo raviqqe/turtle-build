@@ -56,3 +56,40 @@ Feature: Dynamic dependency
     And a file named "baz" with ""
     When I successfully run `turtle foo`
     Then the stdout should contain exactly "ok"
+
+  Scenario: Use a dyndep file naming an implicit output
+    Given a file named "build.ninja" with:
+      """
+      rule touch
+        command = touch $out
+      rule cp
+        command = echo ok && cp $in $out
+      rule dd
+        command = echo ninja_dyndep_version = 1 >> $out && echo build baz: dyndep '|' bar >> $out
+
+      build foo | baz: touch || foo.dd
+        dyndep = foo.dd
+      build foo.dd: dd
+      build bar: cp qux
+
+      """
+    And a file named "qux" with ""
+    When I successfully run `turtle foo`
+    Then the stdout should contain exactly "ok"
+
+  Scenario: Fail to use a dyndep file naming an unknown output
+    Given a file named "build.ninja" with:
+      """
+      rule touch
+        command = touch $out
+      rule dd
+        command = echo ninja_dyndep_version = 1 >> $out && echo build baz: dyndep '|' bar >> $out
+
+      build foo: touch || foo.dd
+        dyndep = foo.dd
+      build foo.dd: dd
+
+      """
+    When I run `turtle foo`
+    Then the exit status should not be 0
+    And the output should contain "baz"

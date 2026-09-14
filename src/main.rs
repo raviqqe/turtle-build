@@ -180,7 +180,7 @@ async fn parse_modules(
                     Statement::Submodule(submodule) => Some(submodule.path()),
                     _ => None,
                 })
-                .map(|submodule_path| resolve_submodule_path(context, &path, submodule_path))
+                .map(|submodule_path| resolve_submodule_path(context, submodule_path))
                 .collect::<Vec<_>>(),
         )
         .await?
@@ -198,14 +198,13 @@ async fn parse_modules(
 
 async fn resolve_submodule_path(
     context: &Context,
-    module_path: &Path,
     submodule_path: &str,
 ) -> Result<(String, PathBuf), BuildError> {
     Ok((
         submodule_path.into(),
         context
             .file_system()
-            .canonicalize_path(&module_path.parent().unwrap().join(submodule_path))
+            .canonicalize_path(submodule_path.as_ref())
             .await?,
     ))
 }

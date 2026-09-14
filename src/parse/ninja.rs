@@ -5,10 +5,10 @@ use crate::ast::{
 use nom::{
     IResult, Parser,
     branch::alt,
-    bytes::complete::tag,
+    bytes::complete::{is_not, tag},
     character::complete::{alpha1, alphanumeric1, line_ending, none_of, one_of, space1},
     combinator::{all_consuming, into, map, map_opt, not, opt, peek, recognize, value},
-    multi::{many0, many0_count, many1, many1_count},
+    multi::{fold_many1, many0, many0_count, many1, many1_count},
     sequence::{preceded, terminated},
 };
 
@@ -55,7 +55,7 @@ fn variable_definition(input: &str) -> IResult<&str, VariableDefinition> {
     .parse(input)
 }
 
-fn dynamic_module_version(input: &str) -> IResult<&str, &str> {
+fn dynamic_module_version(input: &str) -> IResult<&str, String> {
     map(
         (
             keyword(DYNAMIC_MODULE_VERSION_VARIABLE),
@@ -168,21 +168,25 @@ fn submodule(input: &str) -> IResult<&str, Submodule> {
     .parse(input)
 }
 
-fn string_line(input: &str) -> IResult<&str, &str> {
-    map(recognize(many1_count(none_of("\n"))), |string: &str| {
-        string.trim()
-    })
-    .parse(input)
+fn string_line(input: &str) -> IResult<&str, String> {
+    map(string(is_not("$\n")), |string| string.trim().to_owned()).parse(input)
 }
 
 fn string_literal(input: &str) -> IResult<&str, String> {
-    map(
-        token(recognize(many1_count(none_of(
-            &*(" \t\r\n".to_owned() + OPERATOR_CHARACTERS),
-        )))),
-        |string| string.to_owned(),
-    )
+    token(string(is_not(
+        &*(" \t\r\n$".to_owned() + OPERATOR_CHARACTERS),
+    )))
     .parse(input)
+}
+
+fn string<'a>(
+    text: impl Parser<&'a str, Output = &'a str, Error = nom::error::Error<&'a str>>,
+) -> impl Parser<&'a str, Output = String, Error = nom::error::Error<&'a str>> {
+    fold_many1(
+        alt((text, tag("$$"), value("", line_continuation), tag("$"))),
+        String::new,
+        |string, chunk| string + chunk,
+    )
 }
 
 fn keyword(name: &'static str) -> impl Fn(&str) -> IResult<&str, ()> {
@@ -225,11 +229,19 @@ fn indent(input: &str) -> IResult<&str, ()> {
 }
 
 fn blank(input: &str) -> IResult<&str, ()> {
-    value((), many0_count(alt((value((), space1), comment)))).parse(input)
+    value(
+        (),
+        many0_count(alt((value((), space1), comment, line_continuation))),
+    )
+    .parse(input)
 }
 
 fn comment(input: &str) -> IResult<&str, ()> {
     value((), (tag("#"), many0_count(none_of("\n")))).parse(input)
+}
+
+fn line_continuation(input: &str) -> IResult<&str, ()> {
+    value((), (tag("$"), line_ending, many0_count(tag(" ")))).parse(input)
 }
 
 fn line_break(input: &str) -> IResult<&str, ()> {
@@ -333,6 +345,22 @@ mod tests {
         assert_eq!(
             variable_definition("x = \n").unwrap().1,
             VariableDefinition::new("x", "")
+        );
+    }
+
+    #[test]
+    fn parse_variable_definition_with_line_continuation() {
+        assert_eq!(
+            variable_definition("x = foo $\n    bar\n").unwrap().1,
+            VariableDefinition::new("x", "foo bar")
+        );
+        assert_eq!(
+            variable_definition("x = $\n    foo\n").unwrap().1,
+            VariableDefinition::new("x", "foo")
+        );
+        assert_eq!(
+            variable_definition("x = foo $\n\n").unwrap().1,
+            VariableDefinition::new("x", "foo")
         );
     }
 
@@ -519,6 +547,46 @@ mod tests {
     }
 
     #[test]
+    fn parse_build_with_line_continuation() {
+        assert_eq!(
+            build("build foo $\n    bar: baz\n").unwrap().1,
+            explicit_build(vec!["foo".into(), "bar".into()], "baz", vec![], vec![])
+        );
+        assert_eq!(
+            build("build foo: $\n    bar\n").unwrap().1,
+            explicit_build(vec!["foo".into()], "bar", vec![], vec![])
+        );
+        assert_eq!(
+            build("build foo: bar baz $\n    blah\n").unwrap().1,
+            explicit_build(
+                vec!["foo".into()],
+                "bar",
+                vec!["baz".into(), "blah".into()],
+                vec![]
+            )
+        );
+        assert_eq!(
+            build("build foo: bar $\n    baz$\n    blah\n").unwrap().1,
+            // cspell: disable-next-line
+            explicit_build(vec!["foo".into()], "bar", vec!["bazblah".into()], vec![])
+        );
+        assert_eq!(
+            build("build x1: rule | $\n    x2 || $\n    x3\n")
+                .unwrap()
+                .1,
+            Build::new(
+                vec!["x1".into()],
+                vec![],
+                "rule",
+                vec![],
+                vec!["x2".into()],
+                vec!["x3".into()],
+                vec![]
+            )
+        );
+    }
+
+    #[test]
     fn parse_dynamic_build() {
         assert_eq!(
             dynamic_build("build foo: dyndep\n").unwrap().1,
@@ -571,10 +639,33 @@ mod tests {
     }
 
     #[test]
+    fn parse_string_line_with_line_continuation() {
+        assert_eq!(string_line("foo $\n bar").unwrap().1, "foo bar");
+        assert_eq!(string_line("foo$\n  bar").unwrap().1, "foobar");
+        assert_eq!(string_line("foo$\r\n bar").unwrap().1, "foobar");
+        assert_eq!(string_line("foo$\n\tbar").unwrap().1, "foo\tbar");
+        assert_eq!(string_line("foo $\n\nbar").unwrap().1, "foo");
+        assert_eq!(string_line("foo $").unwrap().1, "foo $");
+        assert_eq!(string_line("foo$$\nbar").unwrap().1, "foo$$");
+        assert_eq!(string_line("foo$$$\n bar").unwrap().1, "foo$$bar");
+        assert_eq!(string_line("$x$\n $y").unwrap().1, "$x$y");
+    }
+
+    #[test]
     fn parse_string_literal() {
         assert!(string_literal("").is_err());
         assert_eq!(string_literal("foo").unwrap().1, "foo");
         assert_eq!(string_literal("foo bar").unwrap().1, "foo");
+    }
+
+    #[test]
+    fn parse_string_literal_with_line_continuation() {
+        assert_eq!(string_literal("foo$\n  bar").unwrap().1, "foobar");
+        assert_eq!(string_literal("foo$\n bar baz").unwrap().1, "foobar");
+        assert_eq!(string_literal("foo $\n bar").unwrap().1, "foo");
+        assert_eq!(string_literal(" $\n foo").unwrap().1, "foo");
+        assert_eq!(string_literal("foo$$\nbar").unwrap().1, "foo$$");
+        assert_eq!(string_literal("foo$$$\n bar").unwrap().1, "foo$$bar");
     }
 
     #[test]
@@ -601,8 +692,24 @@ mod tests {
         assert!(all_consuming(blank).parse("#").is_ok());
         assert!(all_consuming(blank).parse("#foo").is_ok());
         assert!(all_consuming(blank).parse(" #foo").is_ok());
+        assert!(all_consuming(blank).parse("$\n").is_ok());
+        assert!(all_consuming(blank).parse(" $\n ").is_ok());
+        assert!(all_consuming(blank).parse("$\n$\r\n").is_ok());
         assert!(all_consuming(blank).parse("\n").is_err());
         assert!(all_consuming(blank).parse(" \n").is_err());
+        assert!(all_consuming(blank).parse("$").is_err());
+        assert!(all_consuming(blank).parse("$$\n").is_err());
+    }
+
+    #[test]
+    fn parse_line_continuation() {
+        assert!(all_consuming(line_continuation).parse("$\n").is_ok());
+        assert!(all_consuming(line_continuation).parse("$\r\n").is_ok());
+        assert!(all_consuming(line_continuation).parse("$\n  ").is_ok());
+        assert!(all_consuming(line_continuation).parse("").is_err());
+        assert!(all_consuming(line_continuation).parse("$").is_err());
+        assert!(all_consuming(line_continuation).parse("$ \n").is_err());
+        assert!(all_consuming(line_continuation).parse("$\n\t").is_err());
     }
 
     #[test]
@@ -613,6 +720,9 @@ mod tests {
         assert!(all_consuming(line_break).parse(" \n").is_ok());
         assert!(all_consuming(line_break).parse("  \n").is_ok());
         assert!(all_consuming(line_break).parse("\n\n").is_ok());
+        assert!(all_consuming(line_break).parse(" $\n\n").is_ok());
+        assert!(all_consuming(line_break).parse("#foo $\n").is_ok());
         assert!(all_consuming(line_break).parse("\n ").is_err());
+        assert!(all_consuming(line_break).parse("$\n").is_err());
     }
 }

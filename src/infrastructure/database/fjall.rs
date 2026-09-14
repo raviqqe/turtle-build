@@ -1,8 +1,9 @@
 use crate::{hash_type::HashType, infrastructure::Database, ir::BuildId};
 use async_trait::async_trait;
+use core::{error::Error, str};
 use fjall::{Keyspace, KeyspaceCreateOptions, PersistMode};
 use once_cell::sync::OnceCell;
-use std::{error::Error, path::Path, str, sync::LazyLock};
+use std::{path::Path, sync::LazyLock};
 use tokio::task::spawn_blocking;
 
 const TIMESTAMP_HASH_KEYSPACE_NAME: &str = "timestamp_hash";
@@ -19,6 +20,7 @@ static BINCODE_CONFIG: LazyLock<bincode::config::Configuration> = LazyLock::new(
     >::default()
 });
 
+/// A fjall database.
 #[derive(Default)]
 pub struct FjallDatabase {
     database: OnceCell<FjallDatabaseInner>,
@@ -34,6 +36,7 @@ struct FjallDatabaseInner {
 }
 
 impl FjallDatabase {
+    /// Creates a database.
     pub fn new() -> Self {
         Self {
             database: Default::default(),

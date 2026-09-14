@@ -5,8 +5,8 @@ mod metadata;
 #[cfg(test)]
 pub use self::fake::FakeFileSystem;
 use async_trait::async_trait;
-use metadata::Metadata;
 use core::{error::Error, fmt::Debug};
+use metadata::Metadata;
 use std::{
     io,
     path::{Path, PathBuf},
@@ -32,12 +32,14 @@ pub trait FileSystem {
     async fn remove_file(&self, path: &Path) -> Result<(), Box<dyn Error>>;
 }
 
+/// A file system provided by an operating system.
 #[derive(Debug)]
 pub struct OsFileSystem {
     semaphore: Semaphore,
 }
 
 impl OsFileSystem {
+    /// Creates a file system.
     pub fn new(open_file_limit: usize) -> Self {
         Self {
             semaphore: Semaphore::new(open_file_limit.min(Semaphore::MAX_PERMITS)),

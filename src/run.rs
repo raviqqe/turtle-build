@@ -20,12 +20,12 @@ use crate::{
     parse::parse_dynamic,
     profile,
 };
+use alloc::sync::Arc;
 use async_recursion::async_recursion;
+use core::{future::Future, pin::Pin};
 use futures::future::{FutureExt, Shared, try_join_all};
 use itertools::Itertools;
 pub use options::Options;
-use alloc::sync::Arc;
-use core::{future::Future, pin::Pin};
 use std::{path::Path, process::Output};
 use tokio::{spawn, time::Instant, try_join};
 

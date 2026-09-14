@@ -1,8 +1,8 @@
-use petgraph::{Graph, algo::is_cyclic_directed};
 use core::{
     error::Error,
     fmt::{self, Display, Formatter},
 };
+use petgraph::{Graph, algo::is_cyclic_directed};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},

@@ -4,8 +4,8 @@ use crate::{
     context::Context as ApplicationContext,
     ir::{BuildId, Config},
 };
-use dashmap::DashMap;
 use alloc::sync::Arc;
+use dashmap::DashMap;
 use tokio::sync::Mutex;
 
 pub struct Context {

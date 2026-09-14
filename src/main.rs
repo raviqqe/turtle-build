@@ -86,11 +86,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .write_stderr(
                     format!(
                         "{}{}\n",
-                        if let Some(prefix) = &arguments.log_prefix {
-                            prefix
-                        } else {
-                            ""
-                        },
+                        arguments.log_prefix.as_deref().unwrap_or_default(),
                         error
                     )
                     .as_bytes(),

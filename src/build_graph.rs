@@ -1,14 +1,14 @@
 use crate::ir::{Build, DynamicConfig};
+use alloc::sync::Arc;
+use core::{
+    error::Error,
+    fmt::{self, Display, Formatter},
+};
 use itertools::Itertools;
 use petgraph::{
     Graph,
     algo::{kosaraju_scc, toposort},
     graph::{DefaultIx, NodeIndex},
-};
-use alloc::sync::Arc;
-use core::{
-    error::Error,
-    fmt::{self, Display, Formatter},
 };
 use std::collections::HashMap;
 

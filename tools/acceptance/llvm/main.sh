@@ -1,0 +1,9 @@
+#!/bin/sh
+
+set -e
+
+# cspell: ignore llvmorg
+git clone --depth 1 --branch llvmorg-23.1.1 --filter blob:none --sparse https://github.com/llvm/llvm-project .
+git sparse-checkout set cmake libc llvm third-party
+
+cmake -G Ninja -S llvm -B build -D CMAKE_BUILD_TYPE=Release -D LLVM_TARGETS_TO_BUILD=host

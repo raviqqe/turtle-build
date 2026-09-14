@@ -421,7 +421,10 @@ mod tests {
         );
         assert_eq!(
             rule("rule foo-bar.baz\n command = blah\n").unwrap().1,
-            Rule::new("foo-bar.baz", vec![VariableDefinition::new("command", "blah")])
+            Rule::new(
+                "foo-bar.baz",
+                vec![VariableDefinition::new("command", "blah")]
+            )
         );
     }
 
@@ -693,7 +696,11 @@ mod tests {
     #[test]
     fn parse_keyword() {
         assert!(keyword("foo")("foo").is_ok());
+        assert!(keyword("foo")("foo bar").is_ok());
         assert!(keyword("fo")("foo").is_err());
+        assert!(keyword("foo")("foo_bar").is_err());
+        assert!(keyword("foo")("foo.bar").is_err());
+        assert!(keyword("foo")("foo-bar").is_err());
     }
 
     #[test]
@@ -702,6 +709,11 @@ mod tests {
         assert_eq!(identifier("foo bar").unwrap().1, "foo");
         assert_eq!(identifier("foo_bar").unwrap().1, "foo_bar");
         assert_eq!(identifier("_foo").unwrap().1, "_foo");
+        assert_eq!(identifier("foo.bar").unwrap().1, "foo.bar");
+        assert_eq!(identifier("foo-bar").unwrap().1, "foo-bar");
+        assert_eq!(identifier("42").unwrap().1, "42");
+        assert_eq!(identifier("foo:bar").unwrap().1, "foo");
+        assert!(identifier("").is_err());
     }
 
     #[test]

@@ -1,5 +1,9 @@
+#[cfg(test)]
+mod fake;
 mod metadata;
 
+#[cfg(test)]
+pub use self::fake::FakeFileSystem;
 use async_trait::async_trait;
 use metadata::Metadata;
 use std::{

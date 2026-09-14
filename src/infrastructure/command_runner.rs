@@ -1,3 +1,8 @@
+#[cfg(test)]
+mod fake;
+
+#[cfg(test)]
+pub use self::fake::FakeCommandRunner;
 use async_trait::async_trait;
 use core::error::Error;
 use std::process::Output;

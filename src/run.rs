@@ -455,3 +455,1119 @@ fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> Build
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        infrastructure::{FakeCommandRunner, FakeConsole, FakeDatabase, FakeFileSystem},
+        ir::HeaderDependency,
+    };
+    use pretty_assertions::assert_eq;
+    use regex::Regex;
+    #[cfg(unix)]
+    use std::os::unix::process::ExitStatusExt;
+    #[cfg(windows)]
+    use std::os::windows::process::ExitStatusExt;
+    use std::{collections::HashMap, process::ExitStatus};
+
+    const DEFAULT_OPTIONS: Options = Options {
+        debug: false,
+        profile: false,
+    };
+
+    fn create_context(
+        command_runner: &FakeCommandRunner,
+        console: &FakeConsole,
+        file_system: &FakeFileSystem,
+    ) -> Arc<Context> {
+        Context::new(
+            command_runner.clone(),
+            console.clone(),
+            FakeDatabase::default(),
+            file_system.clone(),
+        )
+        .into()
+    }
+
+    fn create_outputs(builds: Vec<Build>) -> HashMap<Arc<str>, Arc<Build>> {
+        builds
+            .into_iter()
+            .map(Arc::new)
+            .flat_map(|build| {
+                build
+                    .outputs()
+                    .iter()
+                    .chain(build.implicit_outputs())
+                    .map(|output| (output.clone(), build.clone()))
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    fn create_simple_config(builds: Vec<Build>, default_outputs: &[&str]) -> Arc<Config> {
+        Config::new(
+            create_outputs(builds),
+            default_outputs
+                .iter()
+                .map(|&output| output.into())
+                .collect(),
+            Default::default(),
+            None,
+        )
+        .into()
+    }
+
+    fn explicit_build(outputs: Vec<Arc<str>>, rule: Rule, inputs: Vec<Arc<str>>) -> Build {
+        Build::new(outputs, vec![], rule.into(), inputs, vec![], None)
+    }
+
+    fn failed_output() -> Output {
+        Output {
+            status: ExitStatus::from_raw(cfg_select! {
+                unix => 1 << 8,
+                windows => 1,
+            }),
+            stdout: vec![],
+            stderr: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn build_nothing() {
+        let command_runner = FakeCommandRunner::default();
+
+        run(
+            &create_context(&command_runner, &Default::default(), &Default::default()),
+            create_simple_config(vec![], &[]),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(command_runner.commands(), Vec::<String>::new());
+    }
+
+    #[tokio::test]
+    async fn build_default_output() {
+        let command_runner = FakeCommandRunner::default();
+
+        run(
+            &create_context(&command_runner, &Default::default(), &Default::default()),
+            create_simple_config(
+                vec![
+                    explicit_build(vec!["foo".into()], Rule::new("touch foo", None), vec![]),
+                    explicit_build(vec!["bar".into()], Rule::new("touch bar", None), vec![]),
+                ],
+                &["foo"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(command_runner.commands(), ["touch foo"]);
+    }
+
+    #[tokio::test]
+    async fn build_specified_output() {
+        let command_runner = FakeCommandRunner::default();
+
+        run(
+            &create_context(&command_runner, &Default::default(), &Default::default()),
+            create_simple_config(
+                vec![
+                    explicit_build(vec!["foo".into()], Rule::new("touch foo", None), vec![]),
+                    explicit_build(vec!["bar".into()], Rule::new("touch bar", None), vec![]),
+                ],
+                &["foo"],
+            ),
+            &["bar".into()],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(command_runner.commands(), ["touch bar"]);
+    }
+
+    #[tokio::test]
+    async fn fail_with_unknown_default_output() {
+        assert_eq!(
+            run(
+                &create_context(
+                    &Default::default(),
+                    &Default::default(),
+                    &Default::default()
+                ),
+                create_simple_config(vec![], &["foo"]),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await,
+            Err(BuildError::DefaultOutputNotFound("foo".into()))
+        );
+    }
+
+    #[tokio::test]
+    async fn fail_with_unknown_output() {
+        assert_eq!(
+            run(
+                &create_context(
+                    &Default::default(),
+                    &Default::default(),
+                    &Default::default()
+                ),
+                create_simple_config(vec![], &[]),
+                &["foo".into()],
+                DEFAULT_OPTIONS,
+            )
+            .await,
+            Err(BuildError::OutputNotFound("foo".into()))
+        );
+    }
+
+    #[tokio::test]
+    async fn build_shared_input_once() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+
+        file_system.write_file("bar", "");
+        file_system.write_file("baz", "");
+
+        run(
+            &create_context(&command_runner, &Default::default(), &file_system),
+            create_simple_config(
+                vec![
+                    explicit_build(
+                        vec!["foo".into()],
+                        Rule::new("touch foo", None),
+                        vec!["bar".into(), "baz".into()],
+                    ),
+                    explicit_build(
+                        vec!["bar".into()],
+                        Rule::new("touch bar", None),
+                        vec!["baz".into()],
+                    ),
+                    explicit_build(vec!["baz".into()], Rule::new("touch baz", None), vec![]),
+                ],
+                &["foo"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            command_runner.commands(),
+            ["touch baz", "touch bar", "touch foo"]
+        );
+    }
+
+    #[tokio::test]
+    async fn build_order_only_input() {
+        let command_runner = FakeCommandRunner::default();
+
+        run(
+            &create_context(&command_runner, &Default::default(), &Default::default()),
+            create_simple_config(
+                vec![
+                    Build::new(
+                        vec!["foo".into()],
+                        vec![],
+                        Rule::new("touch foo", None).into(),
+                        vec![],
+                        vec!["bar".into()],
+                        None,
+                    ),
+                    explicit_build(vec!["bar".into()], Rule::new("touch bar", None), vec![]),
+                ],
+                &["foo"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(command_runner.commands(), ["touch bar", "touch foo"]);
+    }
+
+    #[tokio::test]
+    async fn build_multiple_outputs_of_build() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+
+        file_system.write_file("foo", "");
+        file_system.write_file("bar", "");
+
+        run(
+            &create_context(&command_runner, &Default::default(), &file_system),
+            create_simple_config(
+                vec![
+                    explicit_build(
+                        vec!["foo".into(), "bar".into()],
+                        Rule::new("touch foo bar", None),
+                        vec![],
+                    ),
+                    explicit_build(
+                        vec!["baz".into()],
+                        Rule::new("cat foo bar > baz", None),
+                        vec!["foo".into(), "bar".into()],
+                    ),
+                ],
+                &["baz"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            command_runner.commands(),
+            ["touch foo bar", "cat foo bar > baz"]
+        );
+    }
+
+    #[tokio::test]
+    async fn fail_with_missing_input() {
+        let command_runner = FakeCommandRunner::default();
+
+        assert_eq!(
+            run(
+                &create_context(&command_runner, &Default::default(), &Default::default()),
+                create_simple_config(
+                    vec![explicit_build(
+                        vec!["foo".into()],
+                        Rule::new("cp bar foo", None),
+                        vec!["bar".into()],
+                    )],
+                    &["foo"],
+                ),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await,
+            Err(BuildError::FileNotFound("bar".into()))
+        );
+        assert_eq!(command_runner.commands(), Vec::<String>::new());
+    }
+
+    #[tokio::test]
+    async fn report_source_of_missing_input() {
+        let context = create_context(
+            &Default::default(),
+            &Default::default(),
+            &Default::default(),
+        );
+
+        context.database().set_source("foo.o", "foo.c").unwrap();
+
+        assert_eq!(
+            run(
+                &context,
+                create_simple_config(
+                    vec![explicit_build(
+                        vec!["foo".into()],
+                        Rule::new("cc foo.o", None),
+                        vec!["foo.o".into()],
+                    )],
+                    &["foo"],
+                ),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await,
+            Err(BuildError::FileNotFound("foo.c".into()))
+        );
+    }
+
+    #[tokio::test]
+    async fn detect_circular_dependency() {
+        assert_eq!(
+            run(
+                &create_context(
+                    &Default::default(),
+                    &Default::default(),
+                    &Default::default()
+                ),
+                create_simple_config(
+                    vec![explicit_build(
+                        vec!["foo".into()],
+                        Rule::new("cp foo foo", None),
+                        vec!["foo".into()],
+                    )],
+                    &["foo"],
+                ),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await,
+            Err(BuildError::BuildGraph(BuildGraphError::CircularDependency(
+                vec!["foo".into()]
+            )))
+        );
+    }
+
+    #[tokio::test]
+    async fn report_sources_in_circular_dependency() {
+        let context = create_context(
+            &Default::default(),
+            &Default::default(),
+            &Default::default(),
+        );
+
+        context.database().set_source("foo", "baz").unwrap();
+        context.database().set_source("bar", "baz").unwrap();
+
+        assert_eq!(
+            run(
+                &context,
+                create_simple_config(
+                    vec![
+                        explicit_build(
+                            vec!["foo".into()],
+                            Rule::new("cp bar foo", None),
+                            vec!["bar".into()],
+                        ),
+                        explicit_build(
+                            vec!["bar".into()],
+                            Rule::new("cp foo bar", None),
+                            vec!["foo".into()],
+                        ),
+                    ],
+                    &["foo"],
+                ),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await,
+            Err(BuildError::BuildGraph(BuildGraphError::CircularDependency(
+                vec!["baz".into()]
+            )))
+        );
+    }
+
+    #[tokio::test]
+    async fn prepare_output_directory() {
+        let context = create_context(
+            &Default::default(),
+            &Default::default(),
+            &Default::default(),
+        );
+
+        run(
+            &context,
+            create_simple_config(
+                vec![explicit_build(
+                    vec!["foo/bar".into()],
+                    Rule::new("touch foo/bar", None),
+                    vec![],
+                )],
+                &["foo/bar"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert!(context.file_system().exists("foo".as_ref()).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn record_output_with_source() {
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&Default::default(), &Default::default(), &file_system);
+
+        file_system.write_file("foo.c", "");
+
+        run(
+            &context,
+            Config::new(
+                create_outputs(vec![explicit_build(
+                    vec!["foo.o".into()],
+                    Rule::new("cc foo.c", None),
+                    vec!["foo.c".into()],
+                )]),
+                ["foo.o".into()].into_iter().collect(),
+                [("foo.o".into(), "foo.c".into())].into_iter().collect(),
+                None,
+            )
+            .into(),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(context.database().get_outputs().unwrap(), ["foo.o"]);
+        assert_eq!(
+            context.database().get_source("foo.o").unwrap(),
+            Some("foo.c".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn skip_up_to_date_build() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&command_runner, &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![explicit_build(
+                vec!["foo".into()],
+                Rule::new("cp bar foo", None),
+                vec!["bar".into()],
+            )],
+            &["foo"],
+        );
+
+        file_system.write_file("foo", "");
+        file_system.write_file("bar", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+        assert_eq!(command_runner.commands(), ["cp bar foo"]);
+    }
+
+    #[tokio::test]
+    async fn skip_build_on_timestamp_update_of_input() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&command_runner, &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![explicit_build(
+                vec!["foo".into()],
+                Rule::new("cp bar foo", None),
+                vec!["bar".into()],
+            )],
+            &["foo"],
+        );
+
+        file_system.write_file("foo", "");
+        file_system.write_file("bar", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        file_system.write_file("bar", "");
+
+        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+        assert_eq!(command_runner.commands(), ["cp bar foo"]);
+    }
+
+    #[tokio::test]
+    async fn rebuild_on_content_update_of_input() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&command_runner, &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![explicit_build(
+                vec!["foo".into()],
+                Rule::new("cp bar foo", None),
+                vec!["bar".into()],
+            )],
+            &["foo"],
+        );
+
+        file_system.write_file("foo", "");
+        file_system.write_file("bar", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        file_system.write_file("bar", "bar");
+
+        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+        assert_eq!(command_runner.commands(), ["cp bar foo", "cp bar foo"]);
+    }
+
+    #[tokio::test]
+    async fn rebuild_on_update_of_phony_input() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&command_runner, &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![
+                explicit_build(
+                    vec!["foo".into()],
+                    Rule::new("cp bar foo", None),
+                    vec!["bar".into()],
+                ),
+                Build::new(
+                    vec!["bar".into()],
+                    vec![],
+                    None,
+                    vec!["baz".into()],
+                    vec![],
+                    None,
+                ),
+            ],
+            &["foo"],
+        );
+
+        file_system.write_file("foo", "");
+        file_system.write_file("baz", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        file_system.write_file("baz", "baz");
+
+        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+        assert_eq!(command_runner.commands(), ["cp bar foo", "cp bar foo"]);
+    }
+
+    #[tokio::test]
+    async fn rebuild_missing_output() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&command_runner, &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![explicit_build(
+                vec!["foo".into()],
+                Rule::new("cp bar foo", None),
+                vec!["bar".into()],
+            )],
+            &["foo"],
+        );
+
+        file_system.write_file("bar", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+        assert_eq!(command_runner.commands(), ["cp bar foo", "cp bar foo"]);
+    }
+
+    #[tokio::test]
+    async fn rebuild_missing_implicit_output() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&command_runner, &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![Build::new(
+                vec!["foo".into()],
+                vec!["baz".into()],
+                Rule::new("cp bar foo", None).into(),
+                vec!["bar".into()],
+                vec![],
+                None,
+            )],
+            &["foo"],
+        );
+
+        file_system.write_file("foo", "");
+        file_system.write_file("bar", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+        assert_eq!(command_runner.commands(), ["cp bar foo", "cp bar foo"]);
+    }
+
+    #[tokio::test]
+    async fn rerun_failed_build() {
+        let command_runner =
+            FakeCommandRunner::new([("exit 1".into(), failed_output())].into_iter().collect());
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&command_runner, &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![explicit_build(
+                vec!["foo".into()],
+                Rule::new("exit 1", None),
+                vec![],
+            )],
+            &["foo"],
+        );
+
+        file_system.write_file("foo", "");
+
+        assert_eq!(
+            run(&context, config.clone(), &[], DEFAULT_OPTIONS).await,
+            Err(BuildError::Build)
+        );
+        assert_eq!(
+            run(&context, config, &[], DEFAULT_OPTIONS).await,
+            Err(BuildError::Build)
+        );
+        assert_eq!(command_runner.commands(), ["exit 1", "exit 1"]);
+    }
+
+    #[tokio::test]
+    async fn write_command_output() {
+        let console = FakeConsole::default();
+
+        run(
+            &create_context(
+                &FakeCommandRunner::new(
+                    [(
+                        "touch foo".into(),
+                        Output {
+                            status: ExitStatus::default(),
+                            stdout: b"bar\n".into(),
+                            stderr: b"baz\n".into(),
+                        },
+                    )]
+                    .into_iter()
+                    .collect(),
+                ),
+                &console,
+                &Default::default(),
+            ),
+            create_simple_config(
+                vec![explicit_build(
+                    vec!["foo".into()],
+                    Rule::new("touch foo", Some("build foo".into())),
+                    vec![],
+                )],
+                &["foo"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(console.stdout(), "bar\n");
+        assert_eq!(console.stderr(), "build foo\nbaz\n");
+    }
+
+    #[tokio::test]
+    async fn write_debug_log_of_failed_build() {
+        let console = FakeConsole::default();
+
+        assert_eq!(
+            run(
+                &create_context(
+                    &FakeCommandRunner::new(
+                        [("exit 1".into(), failed_output())].into_iter().collect(),
+                    ),
+                    &console,
+                    &Default::default(),
+                ),
+                create_simple_config(
+                    vec![explicit_build(
+                        vec!["foo".into()],
+                        Rule::new("exit 1", None),
+                        vec![],
+                    )],
+                    &["foo"],
+                ),
+                &[],
+                Options {
+                    debug: true,
+                    profile: false,
+                },
+            )
+            .await,
+            Err(BuildError::Build)
+        );
+        assert_eq!(
+            console.stderr(),
+            "turtle: command: exit 1\nturtle: exit status: 1\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn write_profile_log() {
+        let console = FakeConsole::default();
+
+        run(
+            &create_context(&Default::default(), &console, &Default::default()),
+            create_simple_config(
+                vec![explicit_build(
+                    vec!["foo".into()],
+                    Rule::new("touch foo", None),
+                    vec![],
+                )],
+                &["foo"],
+            ),
+            &[],
+            Options {
+                debug: false,
+                profile: true,
+            },
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            Regex::new(r"^turtle: duration: \d+ ms\n$")
+                .unwrap()
+                .is_match(&console.stderr())
+        );
+    }
+
+    #[tokio::test]
+    async fn rebuild_on_update_of_header_dependency() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&command_runner, &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![explicit_build(
+                vec!["foo.o".into()],
+                Rule::new("cc foo.c", None).with_header_dependency(Some(HeaderDependency::Make {
+                    path: "foo.d".into(),
+                })),
+                vec!["foo.c".into()],
+            )],
+            &["foo.o"],
+        );
+
+        file_system.write_file("foo.o", "");
+        file_system.write_file("foo.c", "");
+        file_system.write_file("foo.h", "");
+        file_system.write_file("foo.d", "foo.o: foo.h\n");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        file_system.write_file("foo.h", "foo");
+
+        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+        assert_eq!(command_runner.commands(), ["cc foo.c", "cc foo.c"]);
+    }
+
+    #[tokio::test]
+    async fn read_and_remove_gcc_depfile() {
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&Default::default(), &Default::default(), &file_system);
+        let build = explicit_build(
+            vec!["foo.o".into()],
+            Rule::new("cc foo.c", None).with_header_dependency(Some(HeaderDependency::Gcc {
+                path: "foo.d".into(),
+            })),
+            vec!["foo.c".into()],
+        );
+
+        file_system.write_file("foo.c", "");
+        file_system.write_file("foo.h", "");
+        file_system.write_file("foo.d", "foo.o: foo.h\n");
+
+        run(
+            &context,
+            create_simple_config(vec![build.clone()], &["foo.o"]),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            context
+                .database()
+                .get_header_dependencies(build.id())
+                .unwrap(),
+            ["foo.h"]
+        );
+        assert!(
+            !context
+                .file_system()
+                .exists("foo.d".as_ref())
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn read_msvc_header_dependencies() {
+        let console = FakeConsole::default();
+        let file_system = FakeFileSystem::default();
+        let context = create_context(
+            &FakeCommandRunner::new(
+                [(
+                    "cl foo.c".into(),
+                    Output {
+                        status: ExitStatus::default(),
+                        stdout: b"Note: including file: foo.h\nfoo.c\n".into(),
+                        stderr: vec![],
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            ),
+            &console,
+            &file_system,
+        );
+        let build = explicit_build(
+            vec!["foo.obj".into()],
+            Rule::new("cl foo.c", None).with_header_dependency(Some(HeaderDependency::Msvc {
+                prefix: "Note: including file: ".into(),
+            })),
+            vec!["foo.c".into()],
+        );
+
+        file_system.write_file("foo.c", "");
+        file_system.write_file("foo.h", "");
+
+        run(
+            &context,
+            create_simple_config(vec![build.clone()], &["foo.obj"]),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            context
+                .database()
+                .get_header_dependencies(build.id())
+                .unwrap(),
+            ["foo.h"]
+        );
+        assert_eq!(console.stdout(), "foo.c\n");
+    }
+
+    #[tokio::test]
+    async fn build_generated_header_dependency() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&command_runner, &Default::default(), &file_system);
+        let build = explicit_build(
+            vec!["foo.o".into()],
+            Rule::new("cc foo.c", None),
+            vec!["foo.c".into()],
+        );
+
+        context
+            .database()
+            .set_header_dependencies(build.id(), &["foo.h".into()])
+            .unwrap();
+        file_system.write_file("foo.c", "");
+        file_system.write_file("foo.h", "");
+
+        run(
+            &context,
+            create_simple_config(
+                vec![
+                    build,
+                    explicit_build(vec!["foo.h".into()], Rule::new("touch foo.h", None), vec![]),
+                ],
+                &["foo.o"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(command_runner.commands(), ["touch foo.h", "cc foo.c"]);
+    }
+
+    #[tokio::test]
+    async fn ignore_missing_header_dependency() {
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&Default::default(), &Default::default(), &file_system);
+        let build = explicit_build(
+            vec!["foo.o".into()],
+            Rule::new("cc foo.c", None),
+            vec!["foo.c".into()],
+        );
+
+        context
+            .database()
+            .set_header_dependencies(build.id(), &["foo.h".into()])
+            .unwrap();
+        file_system.write_file("foo.c", "");
+
+        run(
+            &context,
+            create_simple_config(vec![build], &["foo.o"]),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn detect_circular_header_dependency() {
+        let context = create_context(
+            &Default::default(),
+            &Default::default(),
+            &Default::default(),
+        );
+        let build = explicit_build(vec!["foo".into()], Rule::new("touch foo", None), vec![]);
+
+        context
+            .database()
+            .set_header_dependencies(build.id(), &["foo".into()])
+            .unwrap();
+
+        assert_eq!(
+            run(
+                &context,
+                create_simple_config(vec![build], &["foo"]),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await,
+            Err(BuildError::BuildGraph(BuildGraphError::CircularDependency(
+                vec!["foo".into()]
+            )))
+        );
+    }
+
+    #[tokio::test]
+    async fn build_dynamic_input() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+
+        file_system.write_file(
+            "foo.dd",
+            "ninja_dyndep_version = 1\nbuild foo: dyndep | bar\n",
+        );
+        file_system.write_file("bar", "");
+
+        run(
+            &create_context(&command_runner, &Default::default(), &file_system),
+            create_simple_config(
+                vec![
+                    Build::new(
+                        vec!["foo".into()],
+                        vec![],
+                        Rule::new("touch foo", None).into(),
+                        vec![],
+                        vec!["foo.dd".into()],
+                        Some("foo.dd".into()),
+                    ),
+                    explicit_build(
+                        vec!["foo.dd".into()],
+                        Rule::new("touch foo.dd", None),
+                        vec![],
+                    ),
+                    explicit_build(vec!["bar".into()], Rule::new("touch bar", None), vec![]),
+                ],
+                &["foo"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            command_runner.commands(),
+            ["touch foo.dd", "touch bar", "touch foo"]
+        );
+    }
+
+    #[tokio::test]
+    async fn fail_with_missing_dynamic_dependency() {
+        let file_system = FakeFileSystem::default();
+        let build = Build::new(
+            vec!["foo".into()],
+            vec![],
+            Rule::new("touch foo", None).into(),
+            vec![],
+            vec![],
+            Some("foo.dd".into()),
+        );
+
+        file_system.write_file("foo.dd", "ninja_dyndep_version = 1\n");
+
+        assert_eq!(
+            run(
+                &create_context(&Default::default(), &Default::default(), &file_system),
+                create_simple_config(vec![build.clone()], &["foo"]),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await,
+            Err(BuildError::DynamicDependencyNotFound(build.into()))
+        );
+    }
+
+    #[tokio::test]
+    async fn detect_circular_dynamic_dependency() {
+        let file_system = FakeFileSystem::default();
+
+        file_system.write_file(
+            "foo.dd",
+            "ninja_dyndep_version = 1\nbuild foo: dyndep | foo\n",
+        );
+
+        assert_eq!(
+            run(
+                &create_context(&Default::default(), &Default::default(), &file_system),
+                create_simple_config(
+                    vec![Build::new(
+                        vec!["foo".into()],
+                        vec![],
+                        Rule::new("touch foo", None).into(),
+                        vec![],
+                        vec![],
+                        Some("foo.dd".into()),
+                    )],
+                    &["foo"],
+                ),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await,
+            Err(BuildError::BuildGraph(BuildGraphError::CircularDependency(
+                vec!["foo".into()]
+            )))
+        );
+    }
+
+    #[test]
+    fn classify_phony_and_file_inputs() {
+        let build = explicit_build(
+            vec!["foo".into()],
+            Rule::new("", None),
+            vec!["bar".into(), "baz".into(), "qux".into(), "bar".into()],
+        );
+        let context = RunContext::new(
+            create_context(
+                &Default::default(),
+                &Default::default(),
+                &Default::default(),
+            ),
+            create_simple_config(
+                vec![
+                    build.clone(),
+                    Build::new(vec!["bar".into()], vec![], None, vec![], vec![], None),
+                    explicit_build(vec!["baz".into()], Rule::new("", None), vec![]),
+                ],
+                &[],
+            ),
+            BuildGraph::new(&Default::default()),
+            DEFAULT_OPTIONS,
+        );
+
+        assert_eq!(
+            classify_inputs(
+                &context,
+                &build,
+                &["quux".into(), "baz".into()],
+                &["qux".into(), "corge".into()],
+            ),
+            (vec!["bar"], vec!["baz", "qux", "quux", "corge"])
+        );
+    }
+}

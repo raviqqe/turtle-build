@@ -148,6 +148,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             build
                 .outputs()
                 .iter()
+                .chain(build.implicit_outputs())
                 .find_map(|output| config.outputs().get(output.as_ref()))
                 .map(|build| build.inputs())
                 .ok_or_else(|| BuildError::DynamicDependencyNotFound(build.clone()))?
@@ -453,6 +454,7 @@ fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> Build
                 Err(error) => error,
             }
         }
+        BuildGraphError::OutputNotFound(_) => error.clone().into(),
     }
 }
 
@@ -1477,6 +1479,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn build_dynamic_input_declared_for_implicit_output() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+
+        file_system.write_file(
+            "foo.dd",
+            "ninja_dyndep_version = 1\nbuild baz: dyndep | bar\n",
+        );
+        file_system.write_file("bar", "");
+
+        run(
+            &create_context(&command_runner, &Default::default(), &file_system),
+            create_simple_config(
+                vec![
+                    Build::new(
+                        vec!["foo".into()],
+                        vec!["baz".into()],
+                        Rule::new("touch foo", None).into(),
+                        vec![],
+                        vec!["foo.dd".into()],
+                        Some("foo.dd".into()),
+                    ),
+                    explicit_build(
+                        vec!["foo.dd".into()],
+                        Rule::new("touch foo.dd", None),
+                        vec![],
+                    ),
+                    explicit_build(vec!["bar".into()], Rule::new("touch bar", None), vec![]),
+                ],
+                &["foo"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            command_runner.commands(),
+            ["touch foo.dd", "touch bar", "touch foo"]
+        );
+    }
+
+    #[tokio::test]
     async fn fail_with_missing_dynamic_dependency() {
         let file_system = FakeFileSystem::default();
         let build = Build::new(
@@ -1499,6 +1545,39 @@ mod tests {
             )
             .await,
             Err(BuildError::DynamicDependencyNotFound(build.into()))
+        );
+    }
+
+    #[tokio::test]
+    async fn fail_with_unknown_output_in_dynamic_dependency() {
+        let file_system = FakeFileSystem::default();
+
+        file_system.write_file(
+            "foo.dd",
+            "ninja_dyndep_version = 1\nbuild bar: dyndep | baz\n",
+        );
+
+        assert_eq!(
+            run(
+                &create_context(&Default::default(), &Default::default(), &file_system),
+                create_simple_config(
+                    vec![Build::new(
+                        vec!["foo".into()],
+                        vec![],
+                        Rule::new("touch foo", None).into(),
+                        vec![],
+                        vec![],
+                        Some("foo.dd".into()),
+                    )],
+                    &["foo"],
+                ),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await,
+            Err(BuildError::BuildGraph(BuildGraphError::OutputNotFound(
+                "bar".into()
+            )))
         );
     }
 

@@ -36,7 +36,12 @@ impl BuildGraph {
             if output == &build.outputs()[0] {
                 this.primary_outputs.insert(output.clone(), output.clone());
 
-                for secondary in build.outputs().iter().skip(1) {
+                for secondary in build
+                    .outputs()
+                    .iter()
+                    .skip(1)
+                    .chain(build.implicit_outputs())
+                {
                     this.add_edge(secondary.clone(), output.clone());
                     this.primary_outputs
                         .insert(secondary.clone(), output.clone());
@@ -70,8 +75,14 @@ impl BuildGraph {
 
     pub fn validate_dynamic(&mut self, config: &DynamicConfig) -> Result<(), BuildGraphError> {
         for (output, build) in config.outputs() {
+            let output = self
+                .primary_outputs
+                .get(output)
+                .ok_or_else(|| BuildGraphError::OutputNotFound(output.clone()))?
+                .clone();
+
             for input in build.inputs() {
-                self.add_edge(self.primary_outputs[output].clone(), input.clone());
+                self.add_edge(output.clone(), input.clone());
             }
         }
 
@@ -106,6 +117,7 @@ impl BuildGraph {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BuildGraphError {
     CircularDependency(Vec<Arc<str>>),
+    OutputNotFound(Arc<str>),
 }
 
 impl Error for BuildGraphError {}
@@ -126,6 +138,7 @@ impl Display for BuildGraphError {
                         .join(" -> ")
                 )
             }
+            Self::OutputNotFound(output) => write!(formatter, "output \"{output}\" not found"),
         }
     }
 }
@@ -285,7 +298,9 @@ mod tests {
             .into_iter()
             .collect(),
         )
-        .unwrap_err();
+        .unwrap_err() else {
+            panic!()
+        };
 
         assert_eq!(
             &paths,
@@ -326,6 +341,52 @@ mod tests {
                 "foo".into(),
                 "bar".into(),
             ]))
+        );
+    }
+
+    #[test]
+    fn validate_with_dynamic_config_for_unknown_output() {
+        let mut graph = BuildGraph::new(
+            &[(
+                "foo".into(),
+                explicit_build(vec!["foo".into()], vec![]).into(),
+            )]
+            .into_iter()
+            .collect(),
+        );
+
+        graph.validate().unwrap();
+
+        assert_eq!(
+            graph.validate_dynamic(&DynamicConfig::new(
+                [("bar".into(), DynamicBuild::new(vec!["baz".into()]))]
+                    .into_iter()
+                    .collect(),
+            )),
+            Err(BuildGraphError::OutputNotFound("bar".into()))
+        );
+    }
+
+    #[test]
+    fn validate_with_dynamic_config_without_input_for_unknown_output() {
+        let mut graph = BuildGraph::new(
+            &[(
+                "foo".into(),
+                explicit_build(vec!["foo".into()], vec![]).into(),
+            )]
+            .into_iter()
+            .collect(),
+        );
+
+        graph.validate().unwrap();
+
+        assert_eq!(
+            graph.validate_dynamic(&DynamicConfig::new(
+                [("bar".into(), DynamicBuild::new(vec![]))]
+                    .into_iter()
+                    .collect(),
+            )),
+            Err(BuildGraphError::OutputNotFound("bar".into()))
         );
     }
 
@@ -402,6 +463,67 @@ mod tests {
     #[test]
     fn validate_circular_build_with_dependency_from_primary_to_secondary() {
         let build = Arc::new(explicit_build(vec!["foo".into(), "bar".into()], vec![]));
+
+        let mut graph = BuildGraph::new(
+            &[("foo".into(), build.clone()), ("bar".into(), build)]
+                .into_iter()
+                .collect(),
+        );
+
+        graph.validate().unwrap();
+
+        assert_eq!(
+            graph.validate_dynamic(&DynamicConfig::new(
+                [("foo".into(), DynamicBuild::new(vec!["bar".into()]))]
+                    .into_iter()
+                    .collect(),
+            )),
+            Err(BuildGraphError::CircularDependency(vec![
+                "bar".into(),
+                "foo".into()
+            ]))
+        );
+    }
+
+    #[test]
+    fn validate_circular_build_with_dependency_from_implicit_to_primary() {
+        let build = Arc::new(Build::new(
+            vec!["foo".into()],
+            vec!["bar".into()],
+            Rule::new("", None).into(),
+            vec![],
+            vec![],
+            None,
+        ));
+
+        let mut graph = BuildGraph::new(
+            &[("foo".into(), build.clone()), ("bar".into(), build)]
+                .into_iter()
+                .collect(),
+        );
+
+        graph.validate().unwrap();
+
+        assert_eq!(
+            graph.validate_dynamic(&DynamicConfig::new(
+                [("bar".into(), DynamicBuild::new(vec!["foo".into()]))]
+                    .into_iter()
+                    .collect(),
+            )),
+            Err(BuildGraphError::CircularDependency(vec!["foo".into()]))
+        );
+    }
+
+    #[test]
+    fn validate_circular_build_with_dependency_from_primary_to_implicit() {
+        let build = Arc::new(Build::new(
+            vec!["foo".into()],
+            vec!["bar".into()],
+            Rule::new("", None).into(),
+            vec![],
+            vec![],
+            None,
+        ));
 
         let mut graph = BuildGraph::new(
             &[("foo".into(), build.clone()), ("bar".into(), build)]

@@ -21,7 +21,7 @@ for name in "$@"; do
 
     ../main.sh
 
-    turtle
-    [ -z "$(turtle 2>&1 | tee /dev/stderr)" ]
+    turtle -C build
+    [ -z "$(turtle -C build 2>&1 | tee /dev/stderr)" ]
   )
 done

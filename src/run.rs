@@ -454,6 +454,7 @@ mod tests {
     #[cfg(windows)]
     use std::os::windows::process::ExitStatusExt;
     use std::{collections::HashMap, process::ExitStatus};
+    use tokio::task::yield_now;
 
     const DEFAULT_OPTIONS: RunOptions = RunOptions {
         debug: false,
@@ -578,6 +579,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn build_duplicate_outputs() {
+        let command_runner = FakeCommandRunner::default();
+
+        run(
+            &create_context(&command_runner, &Default::default(), &Default::default()),
+            create_simple_config(
+                vec![explicit_build(
+                    vec!["foo".into()],
+                    Rule::new("touch foo", None),
+                    vec![],
+                )],
+                &[],
+            ),
+            &["foo".into(), "foo".into()],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(command_runner.commands(), ["touch foo"]);
+    }
+
+    #[tokio::test]
     async fn fail_with_unknown_default_output() {
         assert_eq!(
             run(
@@ -611,6 +635,34 @@ mod tests {
             .await,
             Err(BuildError::OutputNotFound("foo".into()))
         );
+    }
+
+    #[tokio::test]
+    async fn fail_with_unknown_output_after_known_output() {
+        let command_runner = FakeCommandRunner::default();
+
+        assert_eq!(
+            run(
+                &create_context(&command_runner, &Default::default(), &Default::default()),
+                create_simple_config(
+                    vec![explicit_build(
+                        vec!["foo".into()],
+                        Rule::new("touch foo", None),
+                        vec![],
+                    )],
+                    &[],
+                ),
+                &["foo".into(), "bar".into()],
+                DEFAULT_OPTIONS,
+            )
+            .await,
+            Err(BuildError::OutputNotFound("bar".into()))
+        );
+
+        // Let the runtime run builds spawned before the error if any.
+        yield_now().await;
+
+        assert_eq!(command_runner.commands(), Vec::<String>::new());
     }
 
     #[tokio::test]

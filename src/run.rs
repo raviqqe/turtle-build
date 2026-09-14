@@ -632,24 +632,30 @@ mod tests {
 
     #[derive(Clone, Default)]
     struct FakeFileSystem {
-        files: Arc<Mutex<HashMap<PathBuf, (Vec<u8>, SystemTime)>>>,
+        files: Arc<Mutex<HashMap<PathBuf, FakeFile>>>,
         directories: Arc<Mutex<HashSet<PathBuf>>>,
         clock: Arc<AtomicU64>,
+    }
+
+    #[derive(Clone)]
+    struct FakeFile {
+        content: Vec<u8>,
+        modified_time: SystemTime,
     }
 
     impl FakeFileSystem {
         fn write_file(&self, path: &str, content: &str) {
             self.files.lock().unwrap().insert(
                 path.into(),
-                (
-                    content.into(),
-                    SystemTime::UNIX_EPOCH
+                FakeFile {
+                    content: content.into(),
+                    modified_time: SystemTime::UNIX_EPOCH
                         + Duration::from_secs(self.clock.fetch_add(1, Ordering::SeqCst)),
-                ),
+                },
             );
         }
 
-        fn file(&self, path: &Path) -> Result<(Vec<u8>, SystemTime), Box<dyn Error>> {
+        fn file(&self, path: &Path) -> Result<FakeFile, Box<dyn Error>> {
             Ok(self
                 .files
                 .lock()
@@ -663,7 +669,7 @@ mod tests {
     #[async_trait]
     impl FileSystem for FakeFileSystem {
         async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
-            buffer.extend(self.file(path)?.0);
+            buffer.extend(self.file(path)?.content);
 
             Ok(())
         }
@@ -673,7 +679,7 @@ mod tests {
             path: &Path,
             buffer: &mut String,
         ) -> Result<(), Box<dyn Error>> {
-            buffer.push_str(str::from_utf8(&self.file(path)?.0)?);
+            buffer.push_str(str::from_utf8(&self.file(path)?.content)?);
 
             Ok(())
         }
@@ -684,7 +690,7 @@ mod tests {
         }
 
         async fn metadata(&self, path: &Path) -> Result<Metadata, Box<dyn Error>> {
-            Ok(Metadata::new(self.file(path)?.1, false))
+            Ok(Metadata::new(self.file(path)?.modified_time, false))
         }
 
         async fn create_directory(&self, path: &Path) -> Result<(), Box<dyn Error>> {

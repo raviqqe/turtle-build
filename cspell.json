@@ -23,6 +23,7 @@
     "itertools",
     "keyspace",
     "kosaraju",
+    "libc",
     "msvc",
     "muffy",
     "neul",

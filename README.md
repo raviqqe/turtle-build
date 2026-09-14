@@ -63,6 +63,7 @@ Turtle aims to support full syntax of the Ninja build files. It also supports ba
 - [x] Global variables
 - [x] Build-local variables
 - [x] `in` and `out` special variable
+- [ ] `in_newline` special variable
 
 #### Command line arguments
 
@@ -83,6 +84,7 @@ Turtle aims to support full syntax of the Ninja build files. It also supports ba
 - [x] C/C++ header dependencies
   - [x] `depfile` option
   - [x] `deps` option
+- [ ] `rspfile` and `rspfile_content` options
 - [ ] Windows support
 
 ## Technical notes

@@ -12,6 +12,18 @@ Feature: Rule statement
     When I successfully run `turtle`
     Then the stdout should contain exactly "hello"
 
+  Scenario: Run a rule with hyphens and dots in its name
+    Given a file named "build.ninja" with:
+      """
+      rule hello-world.v1
+        command = echo hello
+
+      build foo: hello-world.v1
+
+      """
+    When I successfully run `turtle`
+    Then the stdout should contain exactly "hello"
+
   Scenario: Fail to parse a rule without a command
     Given a file named "build.ninja" with:
       """

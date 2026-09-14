@@ -74,3 +74,17 @@ Feature: Variable definition
       """
     When I successfully run `turtle`
     Then the stdout should contain exactly "hello world"
+
+  Scenario: Define a variable prefixed with a keyword
+    Given a file named "build.ninja" with:
+      """
+      default_message = hello
+
+      rule echo
+        command = echo $default_message
+
+      build foo: echo
+
+      """
+    When I successfully run `turtle`
+    Then the stdout should contain exactly "hello"

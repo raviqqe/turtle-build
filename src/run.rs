@@ -1084,10 +1084,8 @@ mod tests {
 
     #[tokio::test]
     async fn rerun_failed_build() {
-        let command_runner = FakeCommandRunner {
-            outputs: [("exit 1".into(), failed_output())].into_iter().collect(),
-            ..Default::default()
-        };
+        let command_runner =
+            FakeCommandRunner::new([("exit 1".into(), failed_output())].into_iter().collect());
         let file_system = FakeFileSystem::default();
         let context = create_context(&command_runner, &Default::default(), &file_system);
         let config = create_simple_config(
@@ -1118,8 +1116,8 @@ mod tests {
 
         run(
             &create_context(
-                &FakeCommandRunner {
-                    outputs: [(
+                &FakeCommandRunner::new(
+                    [(
                         "touch foo".into(),
                         Output {
                             status: ExitStatus::default(),
@@ -1129,8 +1127,7 @@ mod tests {
                     )]
                     .into_iter()
                     .collect(),
-                    ..Default::default()
-                },
+                ),
                 &console,
                 &Default::default(),
             ),
@@ -1159,10 +1156,9 @@ mod tests {
         assert_eq!(
             run(
                 &create_context(
-                    &FakeCommandRunner {
-                        outputs: [("exit 1".into(), failed_output())].into_iter().collect(),
-                        ..Default::default()
-                    },
+                    &FakeCommandRunner::new(
+                        [("exit 1".into(), failed_output())].into_iter().collect(),
+                    ),
                     &console,
                     &Default::default(),
                 ),
@@ -1300,8 +1296,8 @@ mod tests {
         let console = FakeConsole::default();
         let file_system = FakeFileSystem::default();
         let context = create_context(
-            &FakeCommandRunner {
-                outputs: [(
+            &FakeCommandRunner::new(
+                [(
                     "cl foo.c".into(),
                     Output {
                         status: ExitStatus::default(),
@@ -1311,8 +1307,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                ..Default::default()
-            },
+            ),
             &console,
             &file_system,
         );

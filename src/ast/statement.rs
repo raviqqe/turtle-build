@@ -1,4 +1,4 @@
-use super::{Build, DefaultOutput, Include, Rule, Submodule, VariableDefinition};
+use super::{Build, DefaultOutput, Include, Pool, Rule, Submodule, VariableDefinition};
 
 /// A statement.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -9,6 +9,8 @@ pub enum Statement {
     Default(DefaultOutput),
     /// An include statement.
     Include(Include),
+    /// A pool statement.
+    Pool(Pool),
     /// A rule statement.
     Rule(Rule),
     /// A submodule statement.
@@ -32,6 +34,12 @@ impl From<DefaultOutput> for Statement {
 impl From<Include> for Statement {
     fn from(include: Include) -> Self {
         Self::Include(include)
+    }
+}
+
+impl From<Pool> for Statement {
+    fn from(pool: Pool) -> Self {
+        Self::Pool(pool)
     }
 }
 

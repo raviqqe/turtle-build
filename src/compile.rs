@@ -115,7 +115,6 @@ fn compile_module<'a>(
                         .map(|definition| (definition.name(), definition.value().into())),
                 );
 
-                // Resolve a pool before defining `in` and `out` variables like ninja.
                 let pool = compile_pool(&global_state.pools, &variables)?;
 
                 let outputs = interpolate_strings(build.outputs(), &variables);

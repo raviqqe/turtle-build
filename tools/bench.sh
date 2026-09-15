@@ -21,7 +21,7 @@ for name in "$@"; do
 
     ../main.sh
 
-    hyperfine -L tool ninja,turtle -n "{tool} ($name, clean build)" --prepare "$clean" '{tool}'
-    hyperfine -L tool ninja,turtle -n "{tool} ($name, no-op build)" --setup "$clean" --warmup 1 '{tool}'
+    hyperfine -L tool ninja,turtle -n "{tool} ($name, clean build)" --prepare "$clean" --export-json clean.json '{tool}'
+    hyperfine -L tool ninja,turtle -n "{tool} ($name, no-op build)" --setup "$clean" --warmup 1 --export-json no_op.json '{tool}'
   )
 done

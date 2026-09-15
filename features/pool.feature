@@ -39,7 +39,7 @@ Feature: Pool statement
     Then the file named "bar" should exist
     And the file named "baz" should exist
 
-  Scenario: Run builds in a pool concurrently up to its depth
+  Scenario: Run builds in a pool of depth two concurrently
     Given a file named "build.ninja" with:
       """
       pool foo
@@ -183,6 +183,19 @@ Feature: Pool statement
       """
     When I successfully run `sh -c 'echo hello | turtle'`
     Then the file named "foo" should contain "hello"
+
+  Scenario: Write standard error in a console pool
+    Given a file named "build.ninja" with:
+      """
+      rule echo
+        command = echo hello >&2
+        pool = console
+
+      build foo: echo
+
+      """
+    When I successfully run `turtle`
+    Then the stderr should contain "hello"
 
   Scenario: Do not read standard input outside a console pool
     Given a file named "build.ninja" with:
@@ -354,4 +367,4 @@ Feature: Pool statement
       """
     When I run `turtle`
     Then the exit status should not be 0
-    And the stderr should contain "bar"
+    And the stderr should contain "has invalid depth"

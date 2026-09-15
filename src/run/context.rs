@@ -18,7 +18,7 @@ pub struct RunContext {
     config: Arc<Config>,
     build_futures: HashMap<BuildId, BuildFuture>,
     build_graph: Mutex<BuildGraph>,
-    pools: HashMap<Arc<str>, Arc<Semaphore>>,
+    pools: std::collections::HashMap<Arc<str>, Semaphore>,
     options: RunOptions,
 }
 
@@ -32,9 +32,18 @@ impl RunContext {
         Self {
             application,
             build_graph: build_graph.into(),
+            pools: config
+                .pools()
+                .iter()
+                .map(|(name, depth)| {
+                    (
+                        name.clone(),
+                        Semaphore::new(depth.get().min(Semaphore::MAX_PERMITS)),
+                    )
+                })
+                .collect(),
             config,
             build_futures: HashMap::new(),
-            pools: HashMap::new(),
             options,
         }
     }
@@ -55,7 +64,7 @@ impl RunContext {
         &self.build_graph
     }
 
-    pub const fn pools(&self) -> &HashMap<Arc<str>, Arc<Semaphore>> {
+    pub const fn pools(&self) -> &std::collections::HashMap<Arc<str>, Semaphore> {
         &self.pools
     }
 

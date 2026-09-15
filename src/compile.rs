@@ -50,7 +50,7 @@ pub fn compile(
         outputs: Default::default(),
         default_outputs: Default::default(),
         source_map: Default::default(),
-        pools: [(CONSOLE_POOL.into(), Some(Pool::Console))].into(),
+        pools: [(CONSOLE_POOL.into(), None)].into(),
     };
     let mut module_state = ModuleState {
         rules: TrainMap::new(),
@@ -74,6 +74,11 @@ pub fn compile(
         global_state.outputs,
         default_outputs,
         global_state.source_map,
+        global_state
+            .pools
+            .into_iter()
+            .filter_map(|(name, depth)| Some((name, depth?)))
+            .collect(),
         module_state
             .variables
             .get(BUILD_DIRECTORY_VARIABLE)
@@ -181,15 +186,10 @@ fn compile_module<'a>(
                     return Err(CompileError::DuplicatePool(pool.name().into()));
                 };
                 let depth = interpolate_variables(pool.depth(), &module_state.variables);
-                let pool = NonZeroUsize::new(depth.trim().parse().map_err(|_| {
-                    CompileError::InvalidPoolDepth(pool.name().into(), depth.as_ref().into())
-                })?)
-                .map(|depth| Pool::Limited {
-                    name: entry.key().clone(),
-                    depth,
-                });
 
-                entry.insert(pool);
+                entry.insert(NonZeroUsize::new(depth.trim().parse().map_err(|_| {
+                    CompileError::InvalidPoolDepth(pool.name().into(), depth.as_ref().into())
+                })?));
             }
             ast::Statement::Rule(rule) => {
                 module_state.rules.insert(
@@ -243,17 +243,21 @@ fn compile_header_dependency(
 }
 
 fn compile_pool(
-    pools: &HashMap<Arc<str>, Option<Pool>>,
+    pools: &HashMap<Arc<str>, Option<NonZeroUsize>>,
     variables: &TrainMap<&str, Arc<str>>,
 ) -> Result<Option<Pool>, CompileError> {
     let Some(name) = resolve_variable(POOL_VARIABLE, variables) else {
         return Ok(None);
     };
+    let (name, depth) = pools
+        .get_key_value(name.as_str())
+        .ok_or(CompileError::PoolNotFound(name))?;
 
-    pools
-        .get(name.as_str())
-        .cloned()
-        .ok_or(CompileError::PoolNotFound(name))
+    Ok(if name.as_ref() == CONSOLE_POOL {
+        Some(Pool::Console)
+    } else {
+        depth.map(|_| Pool::Limited { name: name.clone() })
+    })
 }
 
 pub fn compile_dynamic(module: &ast::DynamicModule) -> Result<DynamicConfig, CompileError> {
@@ -367,7 +371,50 @@ mod tests {
         outputs: HashMap<Arc<str>, Arc<Build>>,
         default_outputs: HashSet<Arc<str>>,
     ) -> Config {
-        Config::new(outputs, default_outputs, Default::default(), None)
+        Config::new(
+            outputs,
+            default_outputs,
+            Default::default(),
+            Default::default(),
+            None,
+        )
+    }
+
+    fn compile_root_module(statements: Vec<ast::Statement>) -> Result<Config, CompileError> {
+        compile(
+            &[(ROOT_MODULE_PATH.clone(), ast::Module::new(statements))]
+                .into_iter()
+                .collect(),
+            &DEFAULT_DEPENDENCIES,
+            &ROOT_MODULE_PATH,
+        )
+    }
+
+    fn create_pool_config(pool: Option<Pool>, pools: &[(&str, usize)]) -> Config {
+        Config::new(
+            [(
+                "bar".into(),
+                ir_explicit_build(
+                    vec!["bar".into()],
+                    Rule::new("baz", None).with_pool(pool),
+                    vec![],
+                )
+                .into(),
+            )]
+            .into_iter()
+            .collect(),
+            ["bar".into()].into_iter().collect(),
+            Default::default(),
+            pools
+                .iter()
+                .map(|&(name, depth)| (name.into(), NonZeroUsize::new(depth).unwrap()))
+                .collect(),
+            None,
+        )
+    }
+
+    fn limited_pool(name: &str) -> Option<Pool> {
+        Some(Pool::Limited { name: name.into() })
     }
 
     #[test]
@@ -1354,6 +1401,7 @@ mod tests {
                 .collect(),
                 ["bar".into()].into_iter().collect(),
                 [("bar".into(), "oh-my-src".into())].into_iter().collect(),
+                Default::default(),
                 None,
             )
         );
@@ -1414,6 +1462,7 @@ mod tests {
                 Default::default(),
                 Default::default(),
                 Default::default(),
+                Default::default(),
                 Some("foo".into())
             )
         );
@@ -1437,6 +1486,7 @@ mod tests {
             )
             .unwrap(),
             Config::new(
+                Default::default(),
                 Default::default(),
                 Default::default(),
                 Default::default(),
@@ -2140,40 +2190,6 @@ mod tests {
         );
     }
 
-    fn compile_root_module(statements: Vec<ast::Statement>) -> Result<Config, CompileError> {
-        compile(
-            &[(ROOT_MODULE_PATH.clone(), ast::Module::new(statements))]
-                .into_iter()
-                .collect(),
-            &DEFAULT_DEPENDENCIES,
-            &ROOT_MODULE_PATH,
-        )
-    }
-
-    fn create_pool_config(pool: Option<Pool>) -> Config {
-        create_simple_config(
-            [(
-                "bar".into(),
-                ir_explicit_build(
-                    vec!["bar".into()],
-                    Rule::new("baz", None).with_pool(pool),
-                    vec![],
-                )
-                .into(),
-            )]
-            .into_iter()
-            .collect(),
-            ["bar".into()].into_iter().collect(),
-        )
-    }
-
-    fn limited_pool(name: &str, depth: usize) -> Option<Pool> {
-        Some(Pool::Limited {
-            name: name.into(),
-            depth: NonZeroUsize::new(depth).unwrap(),
-        })
-    }
-
     #[test]
     fn compile_rule_level_pool() {
         assert_eq!(
@@ -2182,7 +2198,7 @@ mod tests {
                 ast_rule("qux", &[("command", "baz"), ("pool", "foo")]).into(),
                 ast_explicit_build(vec!["bar".into()], "qux", vec![], vec![]).into(),
             ]),
-            Ok(create_pool_config(limited_pool("foo", 2)))
+            Ok(create_pool_config(limited_pool("foo"), &[("foo", 2)]))
         );
     }
 
@@ -2200,7 +2216,7 @@ mod tests {
                 )
                 .into(),
             ]),
-            Ok(create_pool_config(limited_pool("foo", 2)))
+            Ok(create_pool_config(limited_pool("foo"), &[("foo", 2)]))
         );
     }
 
@@ -2218,7 +2234,7 @@ mod tests {
                 )
                 .into(),
             ]),
-            Ok(create_pool_config(limited_pool("foo", 2)))
+            Ok(create_pool_config(limited_pool("foo"), &[("foo", 2)]))
         );
     }
 
@@ -2235,7 +2251,7 @@ mod tests {
                 )
                 .into(),
             ]),
-            Ok(create_pool_config(None))
+            Ok(create_pool_config(None, &[]))
         );
     }
 
@@ -2246,7 +2262,7 @@ mod tests {
                 ast_rule("qux", &[("command", "baz"), ("pool", "console")]).into(),
                 ast_explicit_build(vec!["bar".into()], "qux", vec![], vec![]).into(),
             ]),
-            Ok(create_pool_config(Some(Pool::Console)))
+            Ok(create_pool_config(Some(Pool::Console), &[]))
         );
     }
 
@@ -2282,7 +2298,7 @@ mod tests {
                 ast_rule("qux", &[("command", "baz"), ("pool", "foo")]).into(),
                 ast_explicit_build(vec!["bar".into()], "qux", vec![], vec![]).into(),
             ]),
-            Ok(create_pool_config(None))
+            Ok(create_pool_config(None, &[]))
         );
     }
 
@@ -2296,7 +2312,7 @@ mod tests {
                 ast_rule("qux", &[("command", "baz"), ("pool", "foo")]).into(),
                 ast_explicit_build(vec!["bar".into()], "qux", vec![], vec![]).into(),
             ]),
-            Ok(create_pool_config(limited_pool("foo", 2)))
+            Ok(create_pool_config(limited_pool("foo"), &[("foo", 2)]))
         );
     }
 
@@ -2309,7 +2325,7 @@ mod tests {
                 ast_rule("qux", &[("command", "baz"), ("pool", "foo")]).into(),
                 ast_explicit_build(vec!["bar".into()], "qux", vec![], vec![]).into(),
             ]),
-            Ok(create_pool_config(limited_pool("foo", 2)))
+            Ok(create_pool_config(limited_pool("foo"), &[("foo", 2)]))
         );
     }
 
@@ -2327,7 +2343,7 @@ mod tests {
                 )
                 .into(),
             ]),
-            Ok(create_pool_config(limited_pool("foo", 2)))
+            Ok(create_pool_config(limited_pool("foo"), &[("foo", 2)]))
         );
     }
 
@@ -2339,7 +2355,7 @@ mod tests {
                 ast_rule("qux", &[("command", "baz"), ("pool", "$out")]).into(),
                 ast_explicit_build(vec!["bar".into()], "qux", vec![], vec![]).into(),
             ]),
-            Ok(create_pool_config(None))
+            Ok(create_pool_config(None, &[("bar", 2)]))
         );
     }
 
@@ -2396,7 +2412,7 @@ mod tests {
     #[test]
     fn fail_to_compile_duplicate_console_pool() {
         assert_eq!(
-            compile_root_module(vec![ast::Pool::new("console", "2").into()]),
+            compile_root_module(vec![ast::Pool::new("console", "foo").into()]),
             Err(CompileError::DuplicatePool("console".into()))
         );
     }
@@ -2415,10 +2431,36 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
+        const SUBMODULE_PATH: &str = "foo.ninja";
+
+        fn compile_with_submodule(
+            statements: Vec<ast::Statement>,
+            submodule_statements: Vec<ast::Statement>,
+        ) -> Result<Config, CompileError> {
+            compile(
+                &[
+                    (ROOT_MODULE_PATH.clone(), ast::Module::new(statements)),
+                    (
+                        SUBMODULE_PATH.into(),
+                        ast::Module::new(submodule_statements),
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    [(SUBMODULE_PATH.into(), PathBuf::from(SUBMODULE_PATH))]
+                        .into_iter()
+                        .collect(),
+                )]
+                .into_iter()
+                .collect(),
+                &ROOT_MODULE_PATH,
+            )
+        }
+
         #[test]
         fn reference_variable_in_parent_module() {
-            const SUBMODULE_PATH: &str = "foo.ninja";
-
             assert_eq!(
                 compile(
                     &[
@@ -2465,8 +2507,6 @@ mod tests {
 
         #[test]
         fn reference_rule_in_parent_module() {
-            const SUBMODULE_PATH: &str = "foo.ninja";
-
             assert_eq!(
                 compile(
                     &[
@@ -2513,8 +2553,6 @@ mod tests {
 
         #[test]
         fn do_not_overwrite_variable_in_parent_module() {
-            const SUBMODULE_PATH: &str = "foo.ninja";
-
             assert_eq!(
                 compile(
                     &[
@@ -2558,34 +2596,6 @@ mod tests {
             );
         }
 
-        fn compile_with_submodule(
-            statements: Vec<ast::Statement>,
-            submodule_statements: Vec<ast::Statement>,
-        ) -> Result<Config, CompileError> {
-            const SUBMODULE_PATH: &str = "foo.ninja";
-
-            compile(
-                &[
-                    (ROOT_MODULE_PATH.clone(), ast::Module::new(statements)),
-                    (
-                        SUBMODULE_PATH.into(),
-                        ast::Module::new(submodule_statements),
-                    ),
-                ]
-                .into_iter()
-                .collect(),
-                &[(
-                    ROOT_MODULE_PATH.clone(),
-                    [(SUBMODULE_PATH.into(), PathBuf::from(SUBMODULE_PATH))]
-                        .into_iter()
-                        .collect(),
-                )]
-                .into_iter()
-                .collect(),
-                &ROOT_MODULE_PATH,
-            )
-        }
-
         #[test]
         fn reference_pool_in_parent_module() {
             assert_eq!(
@@ -2593,11 +2603,11 @@ mod tests {
                     vec![
                         ast::Pool::new("foo", "2").into(),
                         ast_rule("qux", &[("command", "baz"), ("pool", "foo")]).into(),
-                        ast::Submodule::new("foo.ninja").into(),
+                        ast::Submodule::new(SUBMODULE_PATH).into(),
                     ],
                     vec![ast_explicit_build(vec!["bar".into()], "qux", vec![], vec![]).into()],
                 ),
-                Ok(create_pool_config(limited_pool("foo", 2)))
+                Ok(create_pool_config(limited_pool("foo"), &[("foo", 2)]))
             );
         }
 
@@ -2606,13 +2616,13 @@ mod tests {
             assert_eq!(
                 compile_with_submodule(
                     vec![
-                        ast::Submodule::new("foo.ninja").into(),
+                        ast::Submodule::new(SUBMODULE_PATH).into(),
                         ast_rule("qux", &[("command", "baz"), ("pool", "foo")]).into(),
                         ast_explicit_build(vec!["bar".into()], "qux", vec![], vec![]).into(),
                     ],
                     vec![ast::Pool::new("foo", "2").into()],
                 ),
-                Ok(create_pool_config(limited_pool("foo", 2)))
+                Ok(create_pool_config(limited_pool("foo"), &[("foo", 2)]))
             );
         }
 
@@ -2622,7 +2632,7 @@ mod tests {
                 compile_with_submodule(
                     vec![
                         ast_rule("qux", &[("command", "baz"), ("pool", "foo")]).into(),
-                        ast::Submodule::new("foo.ninja").into(),
+                        ast::Submodule::new(SUBMODULE_PATH).into(),
                         ast::Pool::new("foo", "2").into(),
                     ],
                     vec![ast_explicit_build(vec!["bar".into()], "qux", vec![], vec![]).into()],
@@ -2632,12 +2642,12 @@ mod tests {
         }
 
         #[test]
-        fn fail_to_declare_pool_in_module_included_twice() {
+        fn fail_to_declare_pool_in_submodule_referenced_twice() {
             assert_eq!(
                 compile_with_submodule(
                     vec![
-                        ast::Submodule::new("foo.ninja").into(),
-                        ast::Submodule::new("foo.ninja").into(),
+                        ast::Submodule::new(SUBMODULE_PATH).into(),
+                        ast::Submodule::new(SUBMODULE_PATH).into(),
                     ],
                     vec![ast::Pool::new("foo", "2").into()],
                 ),

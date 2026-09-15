@@ -20,6 +20,30 @@ jobs:
       - run: brew install ninja
       - run: cargo install --path . --locked
       - run: tools/bench.sh
+      - run: tools/bench_metrics.sh ${{ matrix.os }} > ${{ matrix.os }}.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bench-${{ matrix.os }}
+          path: ${{ matrix.os }}.json
+  report:
+    needs:
+      - command
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: bench-*
+          merge-multiple: true
+          path: tmp/bench
+      - run: jq -s . tmp/bench/*.json > tmp/bench.json
+      - uses: k1low/octocov-action@a167dc0dee441b7ffc45e1b862ab55ec0d87f278 # v1.5.2
+        env:
+          OCTOCOV_CUSTOM_METRICS_BENCH: tmp/bench.json
   bench:
     needs:
       - command

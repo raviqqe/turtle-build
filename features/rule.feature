@@ -115,6 +115,26 @@ Feature: Rule statement
     When I successfully run `turtle`
     Then the stdout should contain exactly "bar"
 
+  Scenario: Run a rule with a newline-separated input variable
+    Given a file named "build.ninja" with:
+      """
+      rule echo
+        command = echo '$in_newline'
+
+      build foo: echo bar baz | qux || quux
+
+      """
+    And a file named "bar" with ""
+    And a file named "baz" with ""
+    And a file named "qux" with ""
+    And a file named "quux" with ""
+    When I successfully run `turtle`
+    Then the stdout should contain exactly:
+      """
+      bar
+      baz
+      """
+
   Scenario: Run a rule with an output variable
     Given a file named "build.ninja" with:
       """

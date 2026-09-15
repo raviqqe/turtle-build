@@ -119,6 +119,7 @@ fn compile_module<'a>(
 
                 variables.extend([
                     ("in", inputs.join(" ").into()),
+                    ("in_newline", inputs.join("\n").into()),
                     ("out", outputs.join(" ").into()),
                 ]);
 
@@ -752,6 +753,92 @@ mod tests {
                         vec!["bar".into()],
                         Rule::new("baz", None),
                         vec!["baz".into(), "blah".into()]
+                    )
+                    .into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn interpolate_in_newline_variable_in_command() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast_rule("foo", &[("command", "$in_newline")]).into(),
+                        ast_explicit_build(
+                            vec!["bar".into()],
+                            "foo",
+                            vec!["baz".into(), "qux".into()],
+                            vec![]
+                        )
+                        .into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_config(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(
+                        vec!["bar".into()],
+                        Rule::new("baz\nqux", None),
+                        vec!["baz".into(), "qux".into()]
+                    )
+                    .into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn interpolate_in_newline_variable_with_implicit_and_order_only_inputs() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast_rule("foo", &[("command", "$in_newline")]).into(),
+                        ast::Build::new(
+                            vec!["bar".into()],
+                            vec![],
+                            "foo",
+                            vec!["baz".into(), "qux".into()],
+                            vec!["blah".into()],
+                            vec!["corge".into()],
+                            vec![]
+                        )
+                        .into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH
+            )
+            .unwrap(),
+            create_simple_config(
+                [(
+                    "bar".into(),
+                    Build::new(
+                        vec!["bar".into()],
+                        vec![],
+                        Some(Rule::new("baz\nqux", None)),
+                        vec!["baz".into(), "qux".into(), "blah".into()],
+                        vec!["corge".into()],
+                        None
                     )
                     .into()
                 )]

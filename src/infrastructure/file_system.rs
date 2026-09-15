@@ -248,7 +248,6 @@ fn stringify_error(error: Box<dyn Error + '_>) -> String {
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
-    use std::fs;
     use tempfile::tempdir;
 
     fn sum_bytes(content: &[u8]) -> u64 {

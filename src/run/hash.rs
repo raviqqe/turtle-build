@@ -109,7 +109,7 @@ mod tests {
     use super::{super::RunOptions, *};
     use crate::{
         build_graph::BuildGraph,
-        context::Context as ApplicationContext,
+        context::Context,
         infrastructure::{FakeCommandRunner, FakeConsole, FakeDatabase, FakeFileSystem},
         ir::{Config, HeaderDependency},
     };
@@ -118,9 +118,9 @@ mod tests {
     use pretty_assertions::{assert_eq, assert_ne};
     use std::time::SystemTime;
 
-    fn create_context(file_system: &FakeFileSystem, builds: Vec<Build>) -> Context {
-        Context::new(
-            ApplicationContext::new(
+    fn create_context(file_system: &FakeFileSystem, builds: Vec<Build>) -> RunContext {
+        RunContext::new(
+            Context::new(
                 FakeCommandRunner::default(),
                 FakeConsole::default(),
                 FakeDatabase::default(),

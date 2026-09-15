@@ -794,6 +794,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fail_with_missing_order_only_input() {
+        assert_eq!(
+            run(
+                &create_context(
+                    &Default::default(),
+                    &Default::default(),
+                    &Default::default()
+                ),
+                create_simple_config(
+                    vec![Build::new(
+                        vec!["foo".into()],
+                        vec![],
+                        Rule::new("touch foo", None).into(),
+                        vec![],
+                        vec!["bar".into()],
+                        None,
+                    )],
+                    &["foo"],
+                ),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await,
+            Err(BuildError::FileNotFound("bar".into()))
+        );
+    }
+
+    #[tokio::test]
     async fn report_source_of_missing_input() {
         let context = create_context(
             &Default::default(),

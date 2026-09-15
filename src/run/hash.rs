@@ -103,3 +103,155 @@ fn hash_command(build: &Build, hasher: &mut impl Hasher) {
     rule.map(Rule::command).hash(hasher);
     rule.and_then(Rule::header_dependency).hash(hasher);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{super::RunOptions, *};
+    use crate::{
+        build_graph::BuildGraph,
+        context::Context as ApplicationContext,
+        infrastructure::{FakeCommandRunner, FakeConsole, FakeDatabase, FakeFileSystem},
+        ir::{Config, HeaderDependency},
+    };
+    use alloc::sync::Arc;
+    use core::time::Duration;
+    use pretty_assertions::{assert_eq, assert_ne};
+    use std::time::SystemTime;
+
+    fn create_context(file_system: &FakeFileSystem, builds: Vec<Build>) -> Context {
+        Context::new(
+            ApplicationContext::new(
+                FakeCommandRunner::default(),
+                FakeConsole::default(),
+                FakeDatabase::default(),
+                file_system.clone(),
+            )
+            .into(),
+            Config::new(
+                builds
+                    .into_iter()
+                    .map(|build| (build.outputs()[0].clone(), Arc::new(build)))
+                    .collect(),
+                Default::default(),
+                Default::default(),
+                None,
+            )
+            .into(),
+            BuildGraph::new(&Default::default()),
+            RunOptions {
+                debug: false,
+                profile: false,
+            },
+        )
+    }
+
+    #[tokio::test]
+    async fn keep_timestamp_hash_format() {
+        let file_system = FakeFileSystem::default();
+        let build = Build::new(
+            vec!["foo.o".into()],
+            vec![],
+            Rule::new("cc foo.c", None).into(),
+            vec!["foo.c".into(), "foo.h".into()],
+            vec![],
+            None,
+        );
+        let modified_times = [
+            SystemTime::UNIX_EPOCH,
+            SystemTime::UNIX_EPOCH + Duration::from_secs(1),
+        ];
+        let mut hasher = DefaultHasher::new();
+
+        file_system.write_file("foo.c", "");
+        file_system.write_file("foo.h", "");
+
+        Some("cc foo.c").hash(&mut hasher);
+        None::<&HeaderDependency>.hash(&mut hasher);
+
+        for time in modified_times {
+            time.hash(&mut hasher);
+        }
+
+        assert_eq!(
+            calculate_timestamp_hash(
+                &create_context(&file_system, vec![]),
+                &build,
+                &["foo.c", "foo.h"],
+                &[]
+            )
+            .await,
+            Ok(hasher.finish())
+        );
+    }
+
+    #[tokio::test]
+    async fn distinguish_file_hashes_in_content_hash() {
+        let file_system = FakeFileSystem::default();
+        let build = Build::new(
+            vec!["foo".into()],
+            vec![],
+            Rule::new("cat bar baz", None).into(),
+            vec!["bar".into(), "baz".into()],
+            vec![],
+            None,
+        );
+        let context = create_context(&file_system, vec![]);
+
+        file_system.write_file("bar", "1");
+        file_system.write_file("baz", "2");
+
+        let hash = calculate_content_hash(&context, &build, &["bar", "baz"], &[]).await;
+
+        file_system.write_file("bar", "2");
+        file_system.write_file("baz", "1");
+
+        assert_ne!(
+            hash,
+            calculate_content_hash(&context, &build, &["bar", "baz"], &[]).await
+        );
+    }
+
+    #[tokio::test]
+    async fn randomize_hash_of_phony_build_without_inputs() {
+        let build = Build::new(vec!["foo".into()], vec![], None, vec![], vec![], None);
+        let context = create_context(&Default::default(), vec![]);
+
+        assert_ne!(
+            calculate_timestamp_hash(&context, &build, &[], &[]).await,
+            calculate_timestamp_hash(&context, &build, &[], &[]).await
+        );
+    }
+
+    #[tokio::test]
+    async fn fail_with_phony_input_not_built() {
+        let context = create_context(
+            &Default::default(),
+            vec![Build::new(
+                vec!["bar".into()],
+                vec![],
+                None,
+                vec![],
+                vec![],
+                None,
+            )],
+        );
+
+        assert_eq!(
+            calculate_content_hash(
+                &context,
+                &Build::new(
+                    vec!["foo".into()],
+                    vec![],
+                    None,
+                    vec!["bar".into()],
+                    vec![],
+                    None,
+                ),
+                &[],
+                &["bar"],
+            )
+            .await,
+            Err(BuildError::InputNotBuilt("bar".into()))
+        );
+    }
+}

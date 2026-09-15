@@ -142,6 +142,25 @@ Feature: Build statement
       hello
       """
 
+  Scenario: Rebuild a dependent of an implicit output updated in the same run
+    Given a file named "build.ninja" with:
+      """
+      rule gen
+        command = cat $in > $out && cat $in > bar
+
+      rule cp
+        command = cp $in $out
+
+      build foo | bar: gen baz
+      build qux: cp bar
+
+      """
+    And a file named "baz" with "1"
+    When I successfully run `turtle`
+    And a file named "baz" with "2"
+    And I successfully run `turtle`
+    Then the file named "qux" should contain "2"
+
   Scenario: Build an output from multiple outputs of a build
     Given a file named "build.ninja" with:
       """
@@ -157,6 +176,20 @@ Feature: Build statement
       """
     When I successfully run `turtle baz`
     Then the file named "baz" should exist
+
+  Scenario: Build a requested output without checking inputs of other builds
+    Given a file named "build.ninja" with:
+      """
+      rule cp
+        command = cp $in $out
+
+      build foo: cp bar
+      build baz: cp qux
+
+      """
+    And a file named "bar" with ""
+    When I successfully run `turtle foo`
+    Then the file named "foo" should exist
 
   Scenario: Do not rebuild an up-to-date output
     Given a file named "build.ninja" with:

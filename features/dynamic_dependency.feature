@@ -37,6 +37,28 @@ Feature: Dynamic dependency
     When I successfully run `turtle`
     Then the stdout should contain exactly "ok"
 
+  Scenario: Rebuild a dependent of a dynamic input updated in the same run
+    Given a file named "build.ninja" with:
+      """
+      rule cp
+        command = cp $in $out
+      rule cat
+        command = cat bar > $out
+      rule dd
+        command = printf 'ninja_dyndep_version = 1\nbuild foo: dyndep | bar\n' > $out
+
+      build foo: cat || foo.dd
+        dyndep = foo.dd
+      build foo.dd: dd
+      build bar: cp baz
+
+      """
+    And a file named "baz" with "1"
+    When I successfully run `turtle`
+    And a file named "baz" with "2"
+    And I successfully run `turtle`
+    Then the file named "foo" should contain "2"
+
   Scenario: Use a dyndep file declared in a rule
     Given a file named "build.ninja" with:
       """

@@ -74,6 +74,34 @@ Feature: Rule statement
     When I run `turtle`
     Then the exit status should not be 0
 
+  Scenario: Fail to run rules with a shared missing input
+    Given a file named "build.ninja" with:
+      """
+      rule cp
+        command = cp $in $out
+
+      build foo: cp baz
+      build bar: cp baz
+
+      """
+    When I run `turtle`
+    Then the exit status should not be 0
+    And the stderr should contain "baz"
+
+  Scenario: Fail to run a rule with an input under a regular file
+    Given a file named "build.ninja" with:
+      """
+      rule cp
+        command = cp $in $out
+
+      build foo: cp bar/baz
+
+      """
+    And a file named "bar" with ""
+    When I run `turtle`
+    Then the exit status should not be 0
+    And the stderr should contain "bar/baz"
+
   Scenario: Run a rule with an input variable
     Given a file named "build.ninja" with:
       """

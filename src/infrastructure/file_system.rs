@@ -134,6 +134,9 @@ impl FileSystem for OsFileSystem {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions::assert_eq;
+    use std::fs;
+    use tempfile::tempdir;
 
     #[test]
     fn limit_open_files() {
@@ -146,5 +149,69 @@ mod tests {
             OsFileSystem::new(usize::MAX).semaphore.available_permits(),
             Semaphore::MAX_PERMITS
         );
+    }
+
+    #[tokio::test]
+    async fn read_file_to_string() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("foo");
+        let mut buffer = "foo".to_owned();
+
+        fs::write(&path, "bar").unwrap();
+
+        FileSystem::read_file_to_string(&OsFileSystem::new(1), &path, &mut buffer)
+            .await
+            .unwrap();
+
+        assert_eq!(buffer, "foobar");
+    }
+
+    #[tokio::test]
+    async fn fail_to_read_missing_file_to_string() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("foo");
+
+        assert!(
+            FileSystem::read_file_to_string(&OsFileSystem::new(1), &path, &mut String::new())
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains(&path.display().to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn check_file_existence() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("foo");
+        let file_system = OsFileSystem::new(1);
+
+        assert!(!file_system.exists(&path).await.unwrap());
+
+        fs::write(&path, "").unwrap();
+
+        assert!(file_system.exists(&path).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn create_directory() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("foo").join("bar");
+
+        OsFileSystem::new(1).create_directory(&path).await.unwrap();
+
+        assert!(fs::metadata(&path).unwrap().is_dir());
+    }
+
+    #[tokio::test]
+    async fn remove_file() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("foo");
+
+        fs::write(&path, "").unwrap();
+
+        OsFileSystem::new(1).remove_file(&path).await.unwrap();
+
+        assert!(!path.try_exists().unwrap());
     }
 }

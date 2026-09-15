@@ -50,9 +50,7 @@ pub fn compile(
         outputs: Default::default(),
         default_outputs: Default::default(),
         source_map: Default::default(),
-        pools: [(CONSOLE_POOL.into(), Some(Pool::Console))]
-            .into_iter()
-            .collect(),
+        pools: [(CONSOLE_POOL.into(), Some(Pool::Console))].into(),
     };
     let mut module_state = ModuleState {
         rules: TrainMap::new(),

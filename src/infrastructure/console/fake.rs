@@ -33,4 +33,8 @@ impl Console for FakeConsole {
 
         Ok(())
     }
+
+    async fn flush(&mut self) -> Result<(), Box<dyn Error>> {
+        Ok(())
+    }
 }

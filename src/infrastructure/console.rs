@@ -12,4 +12,5 @@ use core::error::Error;
 pub trait Console {
     async fn write_stdout(&mut self, buffer: &[u8]) -> Result<(), Box<dyn Error>>;
     async fn write_stderr(&mut self, buffer: &[u8]) -> Result<(), Box<dyn Error>>;
+    async fn flush(&mut self) -> Result<(), Box<dyn Error>>;
 }

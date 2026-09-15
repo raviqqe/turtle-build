@@ -16,7 +16,8 @@ use crate::{
     debug,
     error::BuildError,
     hash_type::HashType,
-    ir::{Build, Config, Rule},
+    infrastructure::Console,
+    ir::{Build, Config, Pool, Rule},
     parse::parse_dynamic,
     profile,
 };
@@ -26,7 +27,11 @@ use futures::future::{FutureExt, try_join_all};
 use itertools::Itertools;
 pub use options::RunOptions;
 use std::{path::Path, process::Output};
-use tokio::{spawn, time::Instant, try_join};
+use tokio::{
+    join, spawn,
+    sync::{MutexGuard, OwnedSemaphorePermit, Semaphore},
+    time::Instant,
+};
 
 /// Runs builds.
 pub async fn run(
@@ -361,30 +366,53 @@ fn classify_inputs<'a>(
 }
 
 async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildError> {
-    let ((output, duration), mut console) = try_join!(
-        async {
-            let start_time = Instant::now();
-            let output = context
-                .application()
-                .command_runner()
-                .run(rule.command())
-                .await?;
+    let ((output, duration), mut console) = if rule.pool() == Some(&Pool::Console) {
+        // Keep a console locked while a command writes to it directly.
+        let mut console = write_description(context, rule).await?;
 
-            Ok::<_, BuildError>((output, Instant::now() - start_time))
-        },
-        async {
-            let mut console = context.application().console().lock().await;
+        console.flush().await?;
 
-            if let Some(description) = rule.description() {
-                console.write_stderr(description.as_bytes()).await?;
-                console.write_stderr(b"\n").await?;
-            }
+        let start_time = Instant::now();
+        let status = context
+            .application()
+            .command_runner()
+            .run_with_console(rule.command())
+            .await?;
 
-            debug!(context, console, "command: {}", rule.command());
+        (
+            (
+                Output {
+                    status,
+                    stdout: vec![],
+                    stderr: vec![],
+                },
+                Instant::now() - start_time,
+            ),
+            console,
+        )
+    } else {
+        // Acquire a pool before a console lock not to wait for the pool while holding the lock.
+        let permit = acquire_pool(context, rule.pool()).await?;
+        // Do not use `try_join!` not to release the pool before the command finishes.
+        let (output, console) = join!(
+            async {
+                let start_time = Instant::now();
+                let output = context
+                    .application()
+                    .command_runner()
+                    .run(rule.command())
+                    .await?;
 
-            Ok(console)
-        }
-    )?;
+                // Release the pool before waiting for the console lock.
+                drop(permit);
+
+                Ok::<_, BuildError>((output, Instant::now() - start_time))
+            },
+            write_description(context, rule)
+        );
+
+        (output?, console?)
+    };
 
     profile!(context, console, "duration: {} ms", duration.as_millis());
 
@@ -409,6 +437,42 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildErro
     }
 
     Ok(output)
+}
+
+async fn write_description<'a>(
+    context: &'a RunContext,
+    rule: &Rule,
+) -> Result<MutexGuard<'a, Box<dyn Console + Send + Sync>>, BuildError> {
+    let mut console = context.application().console().lock().await;
+
+    if let Some(description) = rule.description() {
+        console.write_stderr(description.as_bytes()).await?;
+        console.write_stderr(b"\n").await?;
+    }
+
+    debug!(context, console, "command: {}", rule.command());
+
+    Ok(console)
+}
+
+async fn acquire_pool(
+    context: &RunContext,
+    pool: Option<&Pool>,
+) -> Result<Option<OwnedSemaphorePermit>, BuildError> {
+    let Some(Pool::Limited { name, depth }) = pool else {
+        return Ok(None);
+    };
+
+    // Do not inline this to avoid holding a lock of pools across an await point.
+    let semaphore = context
+        .pools()
+        .entry_async(name.clone())
+        .await
+        .or_insert_with(|| Semaphore::new(depth.get().min(Semaphore::MAX_PERMITS)).into())
+        .get()
+        .clone();
+
+    Ok(Some(semaphore.acquire_owned().await?))
 }
 
 fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> BuildError {
@@ -444,6 +508,8 @@ mod tests {
         infrastructure::{FakeCommandRunner, FakeConsole, FakeDatabase, FakeFileSystem},
         ir::HeaderDependency,
     };
+    use core::{num::NonZeroUsize, pin::pin};
+    use futures::poll;
     use pretty_assertions::assert_eq;
     use regex::Regex;
     #[cfg(unix)]
@@ -1671,6 +1737,396 @@ mod tests {
                 vec!["foo".into()]
             )))
         );
+    }
+
+    const POLL_COUNT: usize = 8;
+
+    fn limited_pool(name: &str, depth: usize) -> Option<Pool> {
+        Some(Pool::Limited {
+            name: name.into(),
+            depth: NonZeroUsize::new(depth).unwrap(),
+        })
+    }
+
+    fn pool_build(output: &str, pool: Option<Pool>) -> Build {
+        explicit_build(
+            vec![output.into()],
+            Rule::new(format!("touch {output}"), None).with_pool(pool),
+            vec![],
+        )
+    }
+
+    fn create_run_context(command_runner: &FakeCommandRunner, console: &FakeConsole) -> RunContext {
+        RunContext::new(
+            create_context(command_runner, console, &Default::default()),
+            create_simple_config(vec![], &[]),
+            BuildGraph::new(&Default::default()),
+            DEFAULT_OPTIONS,
+        )
+    }
+
+    #[tokio::test]
+    async fn run_builds_concurrently() {
+        let command_runner = FakeCommandRunner::default();
+
+        run(
+            &create_context(&command_runner, &Default::default(), &Default::default()),
+            create_simple_config(
+                vec![
+                    pool_build("foo", None),
+                    pool_build("bar", None),
+                    pool_build("baz", None),
+                ],
+                &["foo", "bar", "baz"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(command_runner.max_concurrency(), 3);
+    }
+
+    #[tokio::test]
+    async fn limit_concurrency_of_builds_in_pool() {
+        let command_runner = FakeCommandRunner::default();
+
+        run(
+            &create_context(&command_runner, &Default::default(), &Default::default()),
+            create_simple_config(
+                vec![
+                    pool_build("foo", limited_pool("qux", 1)),
+                    pool_build("bar", limited_pool("qux", 1)),
+                    pool_build("baz", limited_pool("qux", 1)),
+                ],
+                &["foo", "bar", "baz"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(command_runner.commands().len(), 3);
+        assert_eq!(command_runner.max_concurrency(), 1);
+    }
+
+    #[tokio::test]
+    async fn limit_concurrency_of_builds_in_pool_with_depth_of_two() {
+        let command_runner = FakeCommandRunner::default();
+
+        run(
+            &create_context(&command_runner, &Default::default(), &Default::default()),
+            create_simple_config(
+                vec![
+                    pool_build("foo", limited_pool("quux", 2)),
+                    pool_build("bar", limited_pool("quux", 2)),
+                    pool_build("baz", limited_pool("quux", 2)),
+                    pool_build("qux", limited_pool("quux", 2)),
+                ],
+                &["foo", "bar", "baz", "qux"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(command_runner.commands().len(), 4);
+        assert_eq!(command_runner.max_concurrency(), 2);
+    }
+
+    #[tokio::test]
+    async fn run_builds_in_different_pools_concurrently() {
+        let command_runner = FakeCommandRunner::default();
+
+        run(
+            &create_context(&command_runner, &Default::default(), &Default::default()),
+            create_simple_config(
+                vec![
+                    pool_build("foo", limited_pool("baz", 1)),
+                    pool_build("bar", limited_pool("qux", 1)),
+                ],
+                &["foo", "bar"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(command_runner.max_concurrency(), 2);
+    }
+
+    #[tokio::test]
+    async fn run_build_in_pool_of_huge_depth() {
+        let command_runner = FakeCommandRunner::default();
+
+        run(
+            &create_context(&command_runner, &Default::default(), &Default::default()),
+            create_simple_config(
+                vec![pool_build("foo", limited_pool("bar", usize::MAX))],
+                &["foo"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(command_runner.commands(), ["touch foo"]);
+    }
+
+    #[tokio::test]
+    async fn run_build_in_console_pool() {
+        let command_runner = FakeCommandRunner::new(
+            [(
+                "touch foo".into(),
+                Output {
+                    status: ExitStatus::default(),
+                    stdout: b"bar\n".into(),
+                    stderr: b"baz\n".into(),
+                },
+            )]
+            .into_iter()
+            .collect(),
+        );
+        let console = FakeConsole::default();
+
+        run(
+            &create_context(&command_runner, &console, &Default::default()),
+            create_simple_config(
+                vec![explicit_build(
+                    vec!["foo".into()],
+                    Rule::new("touch foo", Some("build foo".into())).with_pool(Some(Pool::Console)),
+                    vec![],
+                )],
+                &["foo"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(command_runner.commands(), Vec::<String>::new());
+        assert_eq!(command_runner.console_commands(), ["touch foo"]);
+        assert_eq!(console.stdout(), "");
+        assert_eq!(console.stderr(), "build foo\n");
+    }
+
+    #[tokio::test]
+    async fn limit_concurrency_of_builds_in_console_pool() {
+        let command_runner = FakeCommandRunner::default();
+
+        run(
+            &create_context(&command_runner, &Default::default(), &Default::default()),
+            create_simple_config(
+                vec![
+                    pool_build("foo", Some(Pool::Console)),
+                    pool_build("bar", Some(Pool::Console)),
+                    pool_build("baz", Some(Pool::Console)),
+                ],
+                &["foo", "bar", "baz"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(command_runner.console_commands().len(), 3);
+        assert_eq!(command_runner.max_concurrency(), 1);
+    }
+
+    #[tokio::test]
+    async fn run_build_concurrently_with_build_in_console_pool() {
+        let command_runner = FakeCommandRunner::default();
+
+        run(
+            &create_context(&command_runner, &Default::default(), &Default::default()),
+            create_simple_config(
+                vec![
+                    pool_build("foo", Some(Pool::Console)),
+                    pool_build("bar", None),
+                ],
+                &[],
+            ),
+            // Specify outputs in order to run the build in the console pool first.
+            &["foo".into(), "bar".into()],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(command_runner.max_concurrency(), 2);
+    }
+
+    #[tokio::test]
+    async fn fail_build_in_console_pool() {
+        assert_eq!(
+            run(
+                &create_context(
+                    &FakeCommandRunner::new(
+                        [("exit 1".into(), failed_output())].into_iter().collect(),
+                    ),
+                    &Default::default(),
+                    &Default::default(),
+                ),
+                create_simple_config(
+                    vec![explicit_build(
+                        vec!["foo".into()],
+                        Rule::new("exit 1", None).with_pool(Some(Pool::Console)),
+                        vec![],
+                    )],
+                    &["foo"],
+                ),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await,
+            Err(BuildError::Build)
+        );
+    }
+
+    #[tokio::test]
+    async fn write_debug_log_of_failed_build_in_console_pool() {
+        let console = FakeConsole::default();
+
+        assert_eq!(
+            run(
+                &create_context(
+                    &FakeCommandRunner::new(
+                        [("exit 1".into(), failed_output())].into_iter().collect(),
+                    ),
+                    &console,
+                    &Default::default(),
+                ),
+                create_simple_config(
+                    vec![explicit_build(
+                        vec!["foo".into()],
+                        Rule::new("exit 1", None).with_pool(Some(Pool::Console)),
+                        vec![],
+                    )],
+                    &["foo"],
+                ),
+                &[],
+                RunOptions {
+                    debug: true,
+                    profile: false,
+                },
+            )
+            .await,
+            Err(BuildError::Build)
+        );
+        assert_eq!(
+            console.stderr(),
+            "turtle: command: exit 1\nturtle: exit status: 1\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn lock_console_during_command_in_console_pool() {
+        let command_runner = FakeCommandRunner::default();
+        let context = create_run_context(&command_runner, &Default::default());
+        let rule = Rule::new("foo", None).with_pool(Some(Pool::Console));
+        let mut future = pin!(run_rule(&context, &rule));
+
+        assert!(poll!(&mut future).is_pending());
+        assert_eq!(command_runner.console_commands(), ["foo"]);
+        assert!(context.application().console().try_lock().is_err());
+
+        future.await.unwrap();
+
+        assert!(context.application().console().try_lock().is_ok());
+    }
+
+    #[tokio::test]
+    async fn wait_for_console_before_command_in_console_pool() {
+        let command_runner = FakeCommandRunner::default();
+        let context = create_run_context(&command_runner, &Default::default());
+        let rule = Rule::new("foo", None).with_pool(Some(Pool::Console));
+        let console = context.application().console().lock().await;
+        let mut future = pin!(run_rule(&context, &rule));
+
+        for _ in 0..POLL_COUNT {
+            assert!(poll!(&mut future).is_pending());
+        }
+
+        assert_eq!(command_runner.console_commands(), Vec::<String>::new());
+
+        drop(console);
+        future.await.unwrap();
+
+        assert_eq!(command_runner.console_commands(), ["foo"]);
+    }
+
+    #[tokio::test]
+    async fn run_command_in_pool_while_console_is_locked() {
+        let command_runner = FakeCommandRunner::default();
+        let context = create_run_context(&command_runner, &Default::default());
+        let rule = Rule::new("foo", None).with_pool(limited_pool("bar", 1));
+        let console = context.application().console().lock().await;
+        let mut future = pin!(run_rule(&context, &rule));
+
+        for _ in 0..POLL_COUNT {
+            assert!(poll!(&mut future).is_pending());
+        }
+
+        assert_eq!(command_runner.commands(), ["foo"]);
+
+        drop(console);
+        future.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn release_pool_before_waiting_for_console() {
+        let command_runner = FakeCommandRunner::default();
+        let context = create_run_context(&command_runner, &Default::default());
+        let foo = Rule::new("foo", None).with_pool(limited_pool("baz", 1));
+        let bar = Rule::new("bar", None).with_pool(limited_pool("baz", 1));
+        let console = context.application().console().lock().await;
+        let mut foo_future = pin!(run_rule(&context, &foo));
+        let mut bar_future = pin!(run_rule(&context, &bar));
+
+        for _ in 0..POLL_COUNT {
+            assert!(poll!(&mut foo_future).is_pending());
+        }
+
+        for _ in 0..POLL_COUNT {
+            assert!(poll!(&mut bar_future).is_pending());
+        }
+
+        assert_eq!(command_runner.commands(), ["foo", "bar"]);
+
+        drop(console);
+        foo_future.await.unwrap();
+        bar_future.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn wait_for_pool_before_locking_console() {
+        let command_runner = FakeCommandRunner::default();
+        let console = FakeConsole::default();
+        let context = create_run_context(&command_runner, &console);
+        let rule = Rule::new("foo", Some("foo".into())).with_pool(limited_pool("bar", 1));
+        let permit = acquire_pool(&context, rule.pool()).await.unwrap();
+        let mut future = pin!(run_rule(&context, &rule));
+
+        for _ in 0..POLL_COUNT {
+            assert!(poll!(&mut future).is_pending());
+        }
+
+        assert_eq!(command_runner.commands(), Vec::<String>::new());
+        assert_eq!(console.stderr(), "");
+        assert!(context.application().console().try_lock().is_ok());
+
+        drop(permit);
+        future.await.unwrap();
+
+        assert_eq!(command_runner.commands(), ["foo"]);
+        assert_eq!(console.stderr(), "foo\n");
     }
 
     #[test]

@@ -9,7 +9,7 @@ use alloc::sync::Arc;
 use core::pin::Pin;
 use futures::future::Shared;
 use scc::HashMap;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 
 type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<(), BuildError>> + Send>>>;
 
@@ -18,6 +18,7 @@ pub struct RunContext {
     config: Arc<Config>,
     build_futures: HashMap<BuildId, BuildFuture>,
     build_graph: Mutex<BuildGraph>,
+    pools: HashMap<Arc<str>, Arc<Semaphore>>,
     options: RunOptions,
 }
 
@@ -33,6 +34,7 @@ impl RunContext {
             build_graph: build_graph.into(),
             config,
             build_futures: HashMap::new(),
+            pools: HashMap::new(),
             options,
         }
     }
@@ -51,6 +53,10 @@ impl RunContext {
 
     pub const fn build_graph(&self) -> &Mutex<BuildGraph> {
         &self.build_graph
+    }
+
+    pub const fn pools(&self) -> &HashMap<Arc<str>, Arc<Semaphore>> {
+        &self.pools
     }
 
     pub const fn options(&self) -> &RunOptions {

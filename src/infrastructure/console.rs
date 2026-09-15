@@ -11,6 +11,7 @@ use tokio::io::{AsyncWriteExt, Stderr, Stdout, stderr, stdout};
 pub trait Console {
     async fn write_stdout(&mut self, buffer: &[u8]) -> Result<(), Box<dyn Error>>;
     async fn write_stderr(&mut self, buffer: &[u8]) -> Result<(), Box<dyn Error>>;
+    async fn flush(&mut self) -> Result<(), Box<dyn Error>>;
 }
 
 /// A console backed by an operating system.
@@ -46,6 +47,13 @@ impl Console for OsConsole {
 
     async fn write_stderr(&mut self, src: &[u8]) -> Result<(), Box<dyn Error>> {
         self.stderr.write_all(src).await?;
+
+        Ok(())
+    }
+
+    async fn flush(&mut self) -> Result<(), Box<dyn Error>> {
+        self.stdout.flush().await?;
+        self.stderr.flush().await?;
 
         Ok(())
     }

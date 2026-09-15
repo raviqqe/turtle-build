@@ -1,24 +1,29 @@
-use super::{BuildFuture, options::RunOptions};
+use super::options::RunOptions;
 use crate::{
+    BuildError,
     build_graph::BuildGraph,
-    context::Context as ApplicationContext,
+    context::Context,
     ir::{BuildId, Config},
 };
 use alloc::sync::Arc;
+use core::pin::Pin;
+use futures::future::Shared;
 use scc::HashMap;
 use tokio::sync::Mutex;
 
-pub struct Context {
-    application: Arc<ApplicationContext>,
+type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<(), BuildError>> + Send>>>;
+
+pub struct RunContext {
+    application: Arc<Context>,
     config: Arc<Config>,
     build_futures: HashMap<BuildId, BuildFuture>,
     build_graph: Mutex<BuildGraph>,
     options: RunOptions,
 }
 
-impl Context {
+impl RunContext {
     pub fn new(
-        application: Arc<ApplicationContext>,
+        application: Arc<Context>,
         config: Arc<Config>,
         build_graph: BuildGraph,
         options: RunOptions,
@@ -32,7 +37,7 @@ impl Context {
         }
     }
 
-    pub fn application(&self) -> &ApplicationContext {
+    pub fn application(&self) -> &Context {
         &self.application
     }
 

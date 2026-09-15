@@ -1,4 +1,4 @@
-use super::context::Context;
+use super::context::RunContext;
 use crate::{
     error::BuildError,
     hash_type::HashType,
@@ -10,7 +10,7 @@ use std::collections::hash_map::DefaultHasher;
 const BUFFER_CAPACITY: usize = 1 << 10;
 
 pub async fn calculate_timestamp_hash(
-    context: &Context,
+    context: &RunContext,
     build: &Build,
     file_inputs: &[&str],
     phony_inputs: &[&str],
@@ -41,7 +41,7 @@ pub async fn calculate_timestamp_hash(
 }
 
 pub async fn calculate_content_hash(
-    context: &Context,
+    context: &RunContext,
     build: &Build,
     file_inputs: &[&str],
     phony_inputs: &[&str],
@@ -73,7 +73,7 @@ pub async fn calculate_content_hash(
     Ok(hasher.finish())
 }
 
-fn get_build_hash(context: &Context, r#type: HashType, input: &str) -> Result<u64, BuildError> {
+fn get_build_hash(context: &RunContext, r#type: HashType, input: &str) -> Result<u64, BuildError> {
     context
         .application()
         .database()

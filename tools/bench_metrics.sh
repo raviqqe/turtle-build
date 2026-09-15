@@ -6,6 +6,11 @@ cd $(dirname $0)/../bench
 
 jq -n --arg os $1 '{
   key: $os,
-  name: "build time on \($os) (ms)",
-  metrics: [inputs.results[] | {key: .command, value: (.mean * 1000)}]
+  name: "build time relative to Ninja on \($os) (%)",
+  metrics: [
+    inputs.results | INDEX(.parameters.tool) | {
+      key: (.turtle.command | capture("\\((?<name>.+)\\)").name),
+      value: (.turtle.mean / .ninja.mean * 100)
+    }
+  ]
 }' */tmp/*.json

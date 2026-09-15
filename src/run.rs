@@ -1,4 +1,5 @@
 mod context;
+mod file_cache;
 mod hash;
 mod header_dependency;
 mod log;
@@ -6,7 +7,7 @@ mod options;
 
 use self::{
     context::RunContext,
-    hash::{calculate_content_hash, calculate_timestamp_hash},
+    hash::{calculate_content_hash, calculate_timestamp_hash, hash_content},
     header_dependency::{exclude_show_includes, read_header_dependencies},
 };
 use crate::{
@@ -23,10 +24,16 @@ use crate::{
 use alloc::sync::Arc;
 use async_recursion::async_recursion;
 use futures::future::{FutureExt, try_join_all};
-use itertools::Itertools;
+use itertools::{Either, Itertools};
 pub use options::RunOptions;
-use std::{path::Path, process::Output};
-use tokio::{spawn, time::Instant, try_join};
+use std::{
+    path::{Path, PathBuf},
+    process::Output,
+    time::SystemTime,
+};
+use tokio::{join, spawn, time::Instant, try_join};
+
+type FileState<T> = Result<Option<T>, BuildError>;
 
 /// Runs builds.
 pub async fn run(
@@ -110,14 +117,25 @@ async fn run_build(context: Arc<RunContext>, build: &Arc<Build>) -> Result<(), B
 
 async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), BuildError> {
     spawn(async move {
-        try_join_all(
-            build
+        let outputs = build
+            .outputs()
+            .iter()
+            .chain(build.implicit_outputs())
+            .map(AsRef::as_ref)
+            .collect::<Vec<_>>();
+        let outputs_exist = build_inputs(
+            &context,
+            &build
                 .inputs()
                 .iter()
                 .chain(build.order_only_inputs())
-                .map(|input| build_input(context.clone(), input)),
+                .map(AsRef::as_ref)
+                .collect::<Vec<_>>(),
+            &outputs,
         )
-        .await?;
+        .await?
+        .iter()
+        .all(|state| matches!(state, Ok(Some(_))));
 
         // TODO Consider caching dynamic modules.
         let dynamic_config = if let Some(dynamic_module) = build.dynamic_module() {
@@ -153,12 +171,19 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             &[]
         };
 
-        try_join_all(
-            dynamic_inputs
-                .iter()
-                .map(|input| build_input(context.clone(), input)),
+        build_inputs(
+            &context,
+            &dynamic_inputs.iter().map(AsRef::as_ref).collect::<Vec<_>>(),
+            &[],
         )
         .await?;
+
+        // Commands of inputs can update outputs of phony builds.
+        if build.rule().is_none() {
+            for output in &outputs {
+                context.file_cache().invalidate(output).await;
+            }
+        }
 
         let header_dependencies = if build.rule().is_some() {
             let dependencies = context
@@ -178,33 +203,52 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         } else {
             vec![]
         };
-
-        let outputs_exist = try_join_all(
-            build
-                .outputs()
-                .iter()
-                .chain(build.implicit_outputs())
-                .map(|path| check_file_existence(&context, path)),
-        )
-        .await
-        .is_ok();
         let (phony_inputs, file_inputs) =
             classify_inputs(&context, &build, dynamic_inputs, &header_dependencies);
-        let mut timestamp_hash =
-            calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
+        let stored_timestamp_hash = if outputs_exist {
+            context
+                .application()
+                .database()
+                .get_hash(HashType::Timestamp, build.id())?
+        } else {
+            None
+        };
+        // Content hashes are always needed without a stored timestamp hash.
+        let (modified_times, content_hashes) = if stored_timestamp_hash.is_some() {
+            (get_modified_times(&context, &file_inputs).await, None)
+        } else {
+            let (modified_times, content_hashes) = join!(
+                get_modified_times(&context, &file_inputs),
+                get_content_hashes(&context, &file_inputs)
+            );
 
-        if outputs_exist
-            && Some(timestamp_hash)
-                == context
-                    .application()
-                    .database()
-                    .get_hash(HashType::Timestamp, build.id())?
+            (modified_times, Some(content_hashes))
+        };
+        let modified_times = collect_modified_times(&context, &file_inputs, modified_times)?;
+
+        if Some(calculate_timestamp_hash(
+            &context,
+            &build,
+            &modified_times,
+            &phony_inputs,
+        )?) == stored_timestamp_hash
         {
             return Ok(());
         }
 
-        let mut content_hash =
-            calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
+        let content_hashes = match content_hashes {
+            Some(content_hashes) => content_hashes,
+            None => get_content_hashes(&context, &file_inputs).await,
+        };
+        let (mut timestamp_hash, mut content_hash) = calculate_hashes(
+            &context,
+            &build,
+            dynamic_inputs,
+            &file_inputs,
+            modified_times,
+            content_hashes,
+            &phony_inputs,
+        )?;
 
         if outputs_exist
             && Some(content_hash)
@@ -215,16 +259,9 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         {
             return Ok(());
         } else if let Some(rule) = build.rule() {
-            try_join_all(
-                build
-                    .outputs()
-                    .iter()
-                    .chain(build.implicit_outputs())
-                    .map(|path| prepare_directory(&context, path.as_ref())),
-            )
-            .await?;
+            prepare_directories(&context, &outputs).await?;
 
-            let output = run_rule(&context, rule).await?;
+            let output = run_rule_and_invalidate_outputs(&context, rule, &outputs).await?;
             let new_header_dependencies = read_header_dependencies(&context, rule, &output).await?;
 
             context
@@ -248,11 +285,20 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                     filter_existing_header_dependencies(&context, &new_header_dependencies).await?;
                 let (phony_inputs, file_inputs) =
                     classify_inputs(&context, &build, dynamic_inputs, &header_dependencies);
+                let (modified_times, content_hashes) = join!(
+                    get_modified_times(&context, &file_inputs),
+                    get_content_hashes(&context, &file_inputs)
+                );
 
-                timestamp_hash =
-                    calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
-                content_hash =
-                    calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
+                (timestamp_hash, content_hash) = calculate_hashes(
+                    &context,
+                    &build,
+                    dynamic_inputs,
+                    &file_inputs,
+                    collect_modified_times(&context, &file_inputs, modified_times)?,
+                    content_hashes,
+                    &phony_inputs,
+                )?;
             }
         }
 
@@ -271,63 +317,216 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
     .await?
 }
 
-async fn build_input(context: Arc<RunContext>, input: &str) -> Result<(), BuildError> {
-    if let Some(build) = context.config().outputs().get(input) {
-        run_build(context.clone(), build).await
-    } else {
-        check_file_existence(&context, input).await
-    }
+// Builds inputs, checks existence of source inputs, and returns states of the
+// given paths.
+async fn build_inputs(
+    context: &Arc<RunContext>,
+    inputs: &[&str],
+    paths: &[&str],
+) -> Result<Vec<FileState<SystemTime>>, BuildError> {
+    let (builds, sources): (Vec<_>, Vec<_>) = inputs.iter().partition_map(|&input| {
+        context
+            .config()
+            .outputs()
+            .get(input)
+            .map_or(Either::Right(input), Either::Left)
+    });
+
+    let ((), states) = try_join!(
+        async {
+            try_join_all(
+                builds
+                    .into_iter()
+                    .map(|build| run_build(context.clone(), build)),
+            )
+            .await?;
+
+            Ok::<_, BuildError>(())
+        },
+        async {
+            let mut states = get_modified_times(
+                context,
+                &sources.iter().chain(paths).copied().collect::<Vec<_>>(),
+            )
+            .await;
+            let path_states = states.split_off(sources.len());
+
+            for (source, state) in sources.iter().zip(states) {
+                if state?.is_none() {
+                    return Err(file_not_found(context, source));
+                }
+            }
+
+            Ok(path_states)
+        }
+    )?;
+
+    Ok(states)
 }
 
 async fn filter_existing_header_dependencies(
-    context: &RunContext,
+    context: &Arc<RunContext>,
     dependencies: &[String],
 ) -> Result<Vec<String>, BuildError> {
-    let mut existing_dependencies = vec![];
-
-    for dependency in dependencies {
-        if context
-            .application()
-            .file_system()
-            .exists(dependency.as_ref())
-            .await?
-        {
-            existing_dependencies.push(dependency.clone());
-        }
-    }
-
-    Ok(existing_dependencies)
+    dependencies
+        .iter()
+        .zip(
+            get_modified_times(
+                context,
+                &dependencies.iter().map(String::as_str).collect::<Vec<_>>(),
+            )
+            .await,
+        )
+        .filter_map(|(dependency, state)| {
+            state
+                .map(|time| time.map(|_| dependency.clone()))
+                .transpose()
+        })
+        .collect()
 }
 
-async fn check_file_existence(context: &RunContext, path: &str) -> Result<(), BuildError> {
-    if !context
+async fn prepare_directories(context: &RunContext, outputs: &[&str]) -> Result<(), BuildError> {
+    try_join_all(
+        outputs
+            .iter()
+            .filter_map(|output| Path::new(output).parent())
+            .filter(|directory| !directory.as_os_str().is_empty())
+            .unique()
+            .map(|directory| async move {
+                context
+                    .application()
+                    .file_system()
+                    .create_directory(directory)
+                    .await
+                    .map_err(BuildError::from)
+            }),
+    )
+    .await?;
+
+    Ok(())
+}
+
+async fn get_modified_times(
+    context: &Arc<RunContext>,
+    paths: &[&str],
+) -> Vec<FileState<SystemTime>> {
+    context
+        .file_cache()
+        .modified_times()
+        .get(paths, |paths| {
+            let context = context.clone();
+
+            async move {
+                Ok(context
+                    .application()
+                    .file_system()
+                    .modified_times(to_paths(&paths))
+                    .await?
+                    .into_iter()
+                    .map(|result| result.map_err(BuildError::from))
+                    .collect())
+            }
+        })
+        .await
+}
+
+async fn get_content_hashes(context: &Arc<RunContext>, paths: &[&str]) -> Vec<FileState<u64>> {
+    context
+        .file_cache()
+        .content_hashes()
+        .get(paths, |paths| {
+            let context = context.clone();
+
+            async move {
+                Ok(context
+                    .application()
+                    .file_system()
+                    .hash_files(to_paths(&paths), hash_content)
+                    .await?
+                    .into_iter()
+                    .map(|result| result.map_err(BuildError::from))
+                    .collect())
+            }
+        })
+        .await
+}
+
+fn to_paths(paths: &[Arc<str>]) -> Vec<PathBuf> {
+    paths
+        .iter()
+        .map(|path| PathBuf::from(path.as_ref()))
+        .collect()
+}
+
+fn collect_modified_times(
+    context: &RunContext,
+    paths: &[&str],
+    states: Vec<FileState<SystemTime>>,
+) -> Result<Vec<SystemTime>, BuildError> {
+    paths
+        .iter()
+        .zip(states)
+        .map(|(path, state)| state?.ok_or_else(|| file_not_found(context, path)))
+        .collect()
+}
+
+fn calculate_hashes(
+    context: &RunContext,
+    build: &Build,
+    dynamic_inputs: &[Arc<str>],
+    file_inputs: &[&str],
+    modified_times: Vec<SystemTime>,
+    content_hashes: Vec<FileState<u64>>,
+    phony_inputs: &[&str],
+) -> Result<(u64, u64), BuildError> {
+    let (modified_times, content_hashes): (Vec<_>, Vec<_>) = retain_existing_files(
+        file_inputs.iter().copied().zip(
+            modified_times
+                .into_iter()
+                .zip(content_hashes.into_iter().collect::<Result<Vec<_>, _>>()?),
+        ),
+        &build
+            .inputs()
+            .iter()
+            .chain(dynamic_inputs)
+            .map(AsRef::as_ref)
+            .collect::<Vec<_>>(),
+    )
+    .map_err(|input| file_not_found(context, input))?
+    .into_iter()
+    .unzip();
+
+    Ok((
+        calculate_timestamp_hash(context, build, &modified_times, phony_inputs)?,
+        calculate_content_hash(context, build, &content_hashes, phony_inputs)?,
+    ))
+}
+
+// Drops header dependencies deleted by other builds after their existence checks
+// but fails on missing explicit or dynamic inputs.
+fn retain_existing_files<'a>(
+    files: impl IntoIterator<Item = (&'a str, (SystemTime, Option<u64>))>,
+    explicit_inputs: &[&str],
+) -> Result<Vec<(SystemTime, u64)>, &'a str> {
+    files
+        .into_iter()
+        .filter_map(|(file, (modified_time, content_hash))| {
+            content_hash.map_or_else(
+                || explicit_inputs.contains(&file).then_some(Err(file)),
+                |content_hash| Some(Ok((modified_time, content_hash))),
+            )
+        })
+        .collect()
+}
+
+fn file_not_found(context: &RunContext, path: &str) -> BuildError {
+    context
         .application()
-        .file_system()
-        .exists(path.as_ref())
-        .await?
-    {
-        return Err(BuildError::FileNotFound(
-            context
-                .application()
-                .database()
-                .get_source(path)?
-                .unwrap_or_else(|| path.into()),
-        ));
-    }
-
-    Ok(())
-}
-
-async fn prepare_directory(context: &RunContext, path: impl AsRef<Path>) -> Result<(), BuildError> {
-    if let Some(directory) = path.as_ref().parent() {
-        context
-            .application()
-            .file_system()
-            .create_directory(directory)
-            .await?;
-    }
-
-    Ok(())
+        .database()
+        .get_source(path)
+        .map_or_else(Into::into, |source| {
+            BuildError::FileNotFound(source.unwrap_or_else(|| path.into()))
+        })
 }
 
 fn classify_inputs<'a>(
@@ -358,6 +557,21 @@ fn classify_inputs<'a>(
             .unique()
             .collect(),
     )
+}
+
+// Invalidates outputs even if a command fails because it can still update them.
+async fn run_rule_and_invalidate_outputs(
+    context: &RunContext,
+    rule: &Rule,
+    outputs: &[&str],
+) -> Result<Output, BuildError> {
+    let output = run_rule(context, rule).await;
+
+    for path in outputs {
+        context.file_cache().invalidate(path).await;
+    }
+
+    output
 }
 
 async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildError> {
@@ -1707,5 +1921,355 @@ mod tests {
             ),
             (vec!["bar"], vec!["baz", "qux", "quux", "corge"])
         );
+    }
+
+    mod file_state {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        fn count_requests(requests: &[PathBuf], path: &str) -> usize {
+            requests
+                .iter()
+                .filter(|request| request.as_path() == Path::new(path))
+                .count()
+        }
+
+        fn create_chain_config() -> Arc<Config> {
+            create_simple_config(
+                vec![
+                    explicit_build(
+                        vec!["foo".into()],
+                        Rule::new("cp bar foo", None),
+                        vec!["bar".into()],
+                    ),
+                    explicit_build(vec!["bar".into()], Rule::new("touch bar", None), vec![]),
+                ],
+                &["foo"],
+            )
+        }
+
+        fn create_run_context(context: Arc<Context>) -> Arc<RunContext> {
+            RunContext::new(
+                context,
+                create_simple_config(vec![], &[]),
+                BuildGraph::new(&Default::default()),
+                DEFAULT_OPTIONS,
+            )
+            .into()
+        }
+
+        #[tokio::test]
+        async fn look_up_shared_input_once() {
+            let file_system = FakeFileSystem::default();
+
+            file_system.write_file("baz", "");
+
+            run(
+                &create_context(&Default::default(), &Default::default(), &file_system),
+                create_simple_config(
+                    vec![
+                        explicit_build(
+                            vec!["foo".into()],
+                            Rule::new("cp baz foo", None),
+                            vec!["baz".into()],
+                        ),
+                        explicit_build(
+                            vec!["bar".into()],
+                            Rule::new("cp baz bar", None),
+                            vec!["baz".into()],
+                        ),
+                    ],
+                    &["foo", "bar"],
+                ),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(
+                count_requests(&file_system.modified_time_requests(), "baz"),
+                1
+            );
+            assert_eq!(count_requests(&file_system.content_requests(), "baz"), 1);
+        }
+
+        #[tokio::test]
+        async fn look_up_shared_header_dependency_once() {
+            let file_system = FakeFileSystem::default();
+            let context = create_context(&Default::default(), &Default::default(), &file_system);
+            let builds = vec![
+                explicit_build(
+                    vec!["foo.o".into()],
+                    Rule::new("cc foo.c", None),
+                    vec!["foo.c".into()],
+                ),
+                explicit_build(
+                    vec!["bar.o".into()],
+                    Rule::new("cc bar.c", None),
+                    vec!["bar.c".into()],
+                ),
+            ];
+
+            for build in &builds {
+                context
+                    .database()
+                    .set_header_dependencies(build.id(), &["foo.h".into()])
+                    .unwrap();
+            }
+
+            file_system.write_file("foo.c", "");
+            file_system.write_file("bar.c", "");
+            file_system.write_file("foo.h", "");
+
+            run(
+                &context,
+                create_simple_config(builds, &["foo.o", "bar.o"]),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(
+                count_requests(&file_system.modified_time_requests(), "foo.h"),
+                1
+            );
+        }
+
+        #[tokio::test]
+        async fn look_up_output_again_after_rule() {
+            let file_system = FakeFileSystem::default();
+
+            file_system.write_file("bar", "");
+
+            run(
+                &create_context(&Default::default(), &Default::default(), &file_system),
+                create_chain_config(),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(
+                count_requests(&file_system.modified_time_requests(), "bar"),
+                2
+            );
+        }
+
+        #[tokio::test]
+        async fn look_up_output_again_after_failed_rule() {
+            let file_system = FakeFileSystem::default();
+            let context = create_run_context(create_context(
+                &FakeCommandRunner::new([("exit 1".into(), failed_output())].into_iter().collect()),
+                &Default::default(),
+                &file_system,
+            ));
+
+            file_system.write_file("foo", "");
+            get_modified_times(&context, &["foo"]).await;
+
+            assert_eq!(
+                run_rule_and_invalidate_outputs(&context, &Rule::new("exit 1", None), &["foo"])
+                    .await,
+                Err(BuildError::Build)
+            );
+
+            get_modified_times(&context, &["foo"]).await;
+
+            assert_eq!(
+                count_requests(&file_system.modified_time_requests(), "foo"),
+                2
+            );
+        }
+
+        #[tokio::test]
+        async fn look_up_output_of_phony_build_again_after_inputs() {
+            let file_system = FakeFileSystem::default();
+            let context = create_context(&Default::default(), &Default::default(), &file_system);
+            let build = explicit_build(vec!["foo".into()], Rule::new("touch foo", None), vec![]);
+
+            context
+                .database()
+                .set_header_dependencies(build.id(), &["bar".into()])
+                .unwrap();
+
+            file_system.write_file("bar", "");
+            file_system.write_file("baz", "");
+
+            run(
+                &context,
+                create_simple_config(
+                    vec![
+                        build,
+                        Build::new(
+                            vec!["bar".into()],
+                            vec![],
+                            None,
+                            vec!["baz".into()],
+                            vec![],
+                            None,
+                        ),
+                        explicit_build(vec!["baz".into()], Rule::new("touch baz", None), vec![]),
+                    ],
+                    &["foo"],
+                ),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(
+                count_requests(&file_system.modified_time_requests(), "bar"),
+                2
+            );
+        }
+
+        #[tokio::test]
+        async fn reuse_output_state_of_up_to_date_build() {
+            let command_runner = FakeCommandRunner::default();
+            let file_system = FakeFileSystem::default();
+            let context = create_context(&command_runner, &Default::default(), &file_system);
+
+            file_system.write_file("foo", "");
+            file_system.write_file("bar", "");
+
+            run(&context, create_chain_config(), &[], DEFAULT_OPTIONS)
+                .await
+                .unwrap();
+
+            let count = count_requests(&file_system.modified_time_requests(), "bar");
+
+            run(&context, create_chain_config(), &[], DEFAULT_OPTIONS)
+                .await
+                .unwrap();
+
+            assert_eq!(command_runner.commands(), ["touch bar", "cp bar foo"]);
+            assert_eq!(
+                count_requests(&file_system.modified_time_requests(), "bar") - count,
+                1
+            );
+        }
+
+        #[tokio::test]
+        async fn fail_with_missing_output_of_rule() {
+            assert_eq!(
+                run(
+                    &create_context(
+                        &Default::default(),
+                        &Default::default(),
+                        &Default::default()
+                    ),
+                    create_chain_config(),
+                    &[],
+                    DEFAULT_OPTIONS,
+                )
+                .await,
+                Err(BuildError::FileNotFound("bar".into()))
+            );
+        }
+
+        #[tokio::test]
+        async fn skip_directory_creation_for_top_level_output() {
+            let context = create_context(
+                &Default::default(),
+                &Default::default(),
+                &Default::default(),
+            );
+
+            run(
+                &context,
+                create_simple_config(
+                    vec![explicit_build(
+                        vec!["foo".into()],
+                        Rule::new("touch foo", None),
+                        vec![],
+                    )],
+                    &["foo"],
+                ),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert!(!context.file_system().exists("".as_ref()).await.unwrap());
+        }
+
+        #[test]
+        fn drop_missing_header_dependency() {
+            let time = |seconds| SystemTime::UNIX_EPOCH + core::time::Duration::from_secs(seconds);
+
+            assert_eq!(
+                retain_existing_files(
+                    [
+                        ("foo.c", (time(1), Some(1))),
+                        ("foo.h", (time(2), None)),
+                        ("bar.h", (time(3), Some(3))),
+                    ],
+                    &["foo.c"],
+                ),
+                Ok(vec![(time(1), 1), (time(3), 3)])
+            );
+        }
+
+        #[test]
+        fn fail_with_missing_explicit_input() {
+            assert_eq!(
+                retain_existing_files(
+                    [
+                        ("foo.h", (SystemTime::UNIX_EPOCH, None)),
+                        ("foo.c", (SystemTime::UNIX_EPOCH, None)),
+                    ],
+                    &["foo.c"],
+                ),
+                Err("foo.c")
+            );
+        }
+
+        #[test]
+        fn drop_missing_header_dependency_from_hashes() {
+            let context = create_run_context(create_context(
+                &Default::default(),
+                &Default::default(),
+                &Default::default(),
+            ));
+            let build = explicit_build(vec!["foo".into()], Rule::new("", None), vec![]);
+
+            assert_eq!(
+                calculate_hashes(
+                    &context,
+                    &build,
+                    &[],
+                    &["bar"],
+                    vec![SystemTime::UNIX_EPOCH],
+                    vec![Ok(None)],
+                    &[],
+                ),
+                calculate_hashes(&context, &build, &[], &[], vec![], vec![], &[])
+            );
+        }
+
+        #[test]
+        fn fail_with_missing_dynamic_input() {
+            assert_eq!(
+                calculate_hashes(
+                    &create_run_context(create_context(
+                        &Default::default(),
+                        &Default::default(),
+                        &Default::default(),
+                    )),
+                    &explicit_build(vec!["foo".into()], Rule::new("", None), vec![]),
+                    &["bar".into()],
+                    &["bar"],
+                    vec![SystemTime::UNIX_EPOCH],
+                    vec![Ok(None)],
+                    &[],
+                ),
+                Err(BuildError::FileNotFound("bar".into()))
+            );
+        }
     }
 }

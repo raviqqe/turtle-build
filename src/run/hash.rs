@@ -5,48 +5,54 @@ use crate::{
     ir::{Build, Rule},
 };
 use core::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
+use std::{collections::hash_map::DefaultHasher, time::SystemTime};
 
-const BUFFER_CAPACITY: usize = 1 << 10;
-
-pub async fn calculate_timestamp_hash(
-    context: &RunContext,
-    build: &Build,
-    file_inputs: &[&str],
-    phony_inputs: &[&str],
-) -> Result<u64, BuildError> {
-    if let Some(hash) = calculate_phony_hash(build, file_inputs, phony_inputs) {
-        return Ok(hash);
-    }
-
+pub fn hash_content(content: &[u8]) -> u64 {
     let mut hasher = DefaultHasher::new();
 
-    hash_command(build, &mut hasher);
+    content.hash(&mut hasher);
 
-    for input in file_inputs {
-        context
-            .application()
-            .file_system()
-            .metadata(input.as_ref())
-            .await?
-            .modified_time()
-            .hash(&mut hasher);
-    }
-
-    for &input in phony_inputs {
-        get_build_hash(context, HashType::Timestamp, input)?.hash(&mut hasher);
-    }
-
-    Ok(hasher.finish())
+    hasher.finish()
 }
 
-pub async fn calculate_content_hash(
+pub fn calculate_timestamp_hash(
     context: &RunContext,
     build: &Build,
-    file_inputs: &[&str],
+    modified_times: &[SystemTime],
     phony_inputs: &[&str],
 ) -> Result<u64, BuildError> {
-    if let Some(hash) = calculate_phony_hash(build, file_inputs, phony_inputs) {
+    calculate_hash(
+        context,
+        build,
+        HashType::Timestamp,
+        modified_times,
+        phony_inputs,
+    )
+}
+
+pub fn calculate_content_hash(
+    context: &RunContext,
+    build: &Build,
+    content_hashes: &[u64],
+    phony_inputs: &[&str],
+) -> Result<u64, BuildError> {
+    calculate_hash(
+        context,
+        build,
+        HashType::Content,
+        content_hashes,
+        phony_inputs,
+    )
+}
+
+fn calculate_hash(
+    context: &RunContext,
+    build: &Build,
+    r#type: HashType,
+    file_hashes: &[impl Hash],
+    phony_inputs: &[&str],
+) -> Result<u64, BuildError> {
+    if let Some(hash) = calculate_phony_hash(build, file_hashes.len(), phony_inputs) {
         return Ok(hash);
     }
 
@@ -54,20 +60,12 @@ pub async fn calculate_content_hash(
 
     hash_command(build, &mut hasher);
 
-    let mut buffer = Vec::with_capacity(BUFFER_CAPACITY);
-
-    for input in file_inputs {
-        context
-            .application()
-            .file_system()
-            .read_file(input.as_ref(), &mut buffer)
-            .await?;
-        buffer.hash(&mut hasher);
-        buffer.clear();
+    for hash in file_hashes {
+        hash.hash(&mut hasher);
     }
 
     for &input in phony_inputs {
-        get_build_hash(context, HashType::Content, input)?.hash(&mut hasher);
+        get_build_hash(context, r#type, input)?.hash(&mut hasher);
     }
 
     Ok(hasher.finish())
@@ -89,8 +87,12 @@ fn get_build_hash(context: &RunContext, r#type: HashType, input: &str) -> Result
         .ok_or_else(|| BuildError::InputNotBuilt(input.into()))
 }
 
-fn calculate_phony_hash(build: &Build, file_inputs: &[&str], phony_inputs: &[&str]) -> Option<u64> {
-    if build.rule().is_none() && file_inputs.is_empty() && phony_inputs.is_empty() {
+fn calculate_phony_hash(
+    build: &Build,
+    file_input_count: usize,
+    phony_inputs: &[&str],
+) -> Option<u64> {
+    if build.rule().is_none() && file_input_count == 0 && phony_inputs.is_empty() {
         Some(rand::random())
     } else {
         None
@@ -116,15 +118,14 @@ mod tests {
     use alloc::sync::Arc;
     use core::time::Duration;
     use pretty_assertions::{assert_eq, assert_ne};
-    use std::time::SystemTime;
 
-    fn create_context(file_system: &FakeFileSystem, builds: Vec<Build>) -> RunContext {
+    fn create_context(builds: Vec<Build>) -> RunContext {
         RunContext::new(
             Context::new(
                 FakeCommandRunner::default(),
                 FakeConsole::default(),
                 FakeDatabase::default(),
-                file_system.clone(),
+                FakeFileSystem::default(),
             )
             .into(),
             Config::new(
@@ -145,9 +146,8 @@ mod tests {
         )
     }
 
-    #[tokio::test]
-    async fn keep_timestamp_hash_format() {
-        let file_system = FakeFileSystem::default();
+    #[test]
+    fn keep_timestamp_hash_format() {
         let build = Build::new(
             vec!["foo.o".into()],
             vec![],
@@ -162,9 +162,6 @@ mod tests {
         ];
         let mut hasher = DefaultHasher::new();
 
-        file_system.write_file("foo.c", "");
-        file_system.write_file("foo.h", "");
-
         Some("cc foo.c").hash(&mut hasher);
         None::<&HeaderDependency>.hash(&mut hasher);
 
@@ -173,20 +170,23 @@ mod tests {
         }
 
         assert_eq!(
-            calculate_timestamp_hash(
-                &create_context(&file_system, vec![]),
-                &build,
-                &["foo.c", "foo.h"],
-                &[]
-            )
-            .await,
+            calculate_timestamp_hash(&create_context(vec![]), &build, &modified_times, &[]),
             Ok(hasher.finish())
         );
     }
 
-    #[tokio::test]
-    async fn distinguish_file_hashes_in_content_hash() {
-        let file_system = FakeFileSystem::default();
+    #[test]
+    fn hash_same_content_equally() {
+        assert_eq!(hash_content(b"foo"), hash_content(b"foo"));
+    }
+
+    #[test]
+    fn hash_different_content_differently() {
+        assert_ne!(hash_content(b"foo"), hash_content(b"bar"));
+    }
+
+    #[test]
+    fn distinguish_file_hashes_in_content_hash() {
         let build = Build::new(
             vec!["foo".into()],
             vec![],
@@ -195,46 +195,35 @@ mod tests {
             vec![],
             None,
         );
-        let context = create_context(&file_system, vec![]);
-
-        file_system.write_file("bar", "1");
-        file_system.write_file("baz", "2");
-
-        let hash = calculate_content_hash(&context, &build, &["bar", "baz"], &[]).await;
-
-        file_system.write_file("bar", "2");
-        file_system.write_file("baz", "1");
+        let context = create_context(vec![]);
 
         assert_ne!(
-            hash,
-            calculate_content_hash(&context, &build, &["bar", "baz"], &[]).await
+            calculate_content_hash(&context, &build, &[1, 2], &[]),
+            calculate_content_hash(&context, &build, &[2, 1], &[])
         );
     }
 
-    #[tokio::test]
-    async fn randomize_hash_of_phony_build_without_inputs() {
+    #[test]
+    fn randomize_hash_of_phony_build_without_inputs() {
         let build = Build::new(vec!["foo".into()], vec![], None, vec![], vec![], None);
-        let context = create_context(&Default::default(), vec![]);
+        let context = create_context(vec![]);
 
         assert_ne!(
-            calculate_timestamp_hash(&context, &build, &[], &[]).await,
-            calculate_timestamp_hash(&context, &build, &[], &[]).await
+            calculate_timestamp_hash(&context, &build, &[], &[]),
+            calculate_timestamp_hash(&context, &build, &[], &[])
         );
     }
 
-    #[tokio::test]
-    async fn fail_with_phony_input_not_built() {
-        let context = create_context(
-            &Default::default(),
-            vec![Build::new(
-                vec!["bar".into()],
-                vec![],
-                None,
-                vec![],
-                vec![],
-                None,
-            )],
-        );
+    #[test]
+    fn fail_with_phony_input_not_built() {
+        let context = create_context(vec![Build::new(
+            vec!["bar".into()],
+            vec![],
+            None,
+            vec![],
+            vec![],
+            None,
+        )]);
 
         assert_eq!(
             calculate_content_hash(
@@ -249,8 +238,7 @@ mod tests {
                 ),
                 &[],
                 &["bar"],
-            )
-            .await,
+            ),
             Err(BuildError::InputNotBuilt("bar".into()))
         );
     }

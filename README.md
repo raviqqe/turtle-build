@@ -63,7 +63,7 @@ Turtle aims to support full syntax of the Ninja build files. It also supports ba
 - [x] Global variables
 - [x] Build-local variables
 - [x] `in` and `out` special variable
-- [ ] `in_newline` special variable
+- [x] `in_newline` special variable
 
 #### Command line arguments
 

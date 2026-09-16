@@ -402,6 +402,8 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildErro
         (output?, console?)
     };
 
+    context.file_cache().invalidate().await;
+
     profile!(context, console, "duration: {} ms", duration.as_millis());
 
     console
@@ -1536,6 +1538,95 @@ mod tests {
         )
         .await
         .unwrap();
+    }
+
+    #[tokio::test]
+    async fn check_header_dependency_shared_by_builds_once() {
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&Default::default(), &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![
+                explicit_build(
+                    vec!["foo.o".into()],
+                    Rule::new("cc foo.c", None).with_header_dependency(Some(
+                        HeaderDependency::Make {
+                            path: "foo.d".into(),
+                        },
+                    )),
+                    vec!["foo.c".into()],
+                ),
+                explicit_build(
+                    vec!["bar.o".into()],
+                    Rule::new("cc bar.c", None).with_header_dependency(Some(
+                        HeaderDependency::Make {
+                            path: "bar.d".into(),
+                        },
+                    )),
+                    vec!["bar.c".into()],
+                ),
+            ],
+            &["foo.o", "bar.o"],
+        );
+        let count_requests = || {
+            file_system
+                .metadata_requests()
+                .iter()
+                .filter(|path| path.as_path() == Path::new("baz.h"))
+                .count()
+        };
+
+        file_system.write_file("foo.o", "");
+        file_system.write_file("foo.c", "");
+        file_system.write_file("foo.d", "foo.o: baz.h\n");
+        file_system.write_file("bar.o", "");
+        file_system.write_file("bar.c", "");
+        file_system.write_file("bar.d", "bar.o: baz.h\n");
+        file_system.write_file("baz.h", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        let request_count = count_requests();
+
+        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+        assert_eq!(count_requests() - request_count, 1);
+    }
+
+    #[tokio::test]
+    async fn query_input_again_after_command() {
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&Default::default(), &Default::default(), &file_system);
+        let build = explicit_build(
+            vec!["foo.o".into()],
+            Rule::new("cc foo.c", None).with_header_dependency(Some(HeaderDependency::Make {
+                path: "foo.d".into(),
+            })),
+            vec!["foo.c".into()],
+        );
+
+        file_system.write_file("foo.c", "");
+        file_system.write_file("foo.h", "");
+        file_system.write_file("foo.d", "foo.o: foo.h\n");
+
+        run(
+            &context,
+            create_simple_config(vec![build], &["foo.o"]),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            file_system
+                .metadata_requests()
+                .iter()
+                .filter(|path| path.as_path() == Path::new("foo.c"))
+                .count(),
+            2
+        );
     }
 
     #[tokio::test]

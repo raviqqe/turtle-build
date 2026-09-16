@@ -49,6 +49,11 @@ impl FileCache {
         .await
     }
 
+    pub async fn invalidate(&self) {
+        self.metadata.clear_async().await;
+        self.content_hashes.clear_async().await;
+    }
+
     async fn get<T: Copy, E, F: Future<Output = Result<T, E>>>(
         cache: &Cache<T>,
         path: &Path,
@@ -313,6 +318,113 @@ mod tests {
             file_system.write_file("foo", "");
 
             assert!(cache.content_hash("foo".as_ref()).await.is_ok());
+        }
+    }
+
+    mod invalidate {
+        use super::*;
+        use core::{pin::pin, task::Poll};
+        use futures::poll;
+        use pretty_assertions::{assert_eq, assert_ne};
+        use tokio::sync::Notify;
+
+        #[tokio::test]
+        async fn check_existence_again() {
+            let file_system = FakeFileSystem::default();
+            let cache = create_cache(&file_system);
+
+            file_system.write_file("foo", "");
+
+            assert_eq!(cache.exists("foo".as_ref()).await, Ok(true));
+
+            file_system.remove_file("foo".as_ref()).await.unwrap();
+            cache.invalidate().await;
+
+            assert_eq!(cache.exists("foo".as_ref()).await, Ok(false));
+        }
+
+        #[tokio::test]
+        async fn get_metadata_again() {
+            let file_system = FakeFileSystem::default();
+            let cache = create_cache(&file_system);
+
+            file_system.write_file("foo", "");
+
+            let metadata = cache.metadata("foo".as_ref()).await;
+
+            file_system.write_file("foo", "");
+            cache.invalidate().await;
+
+            assert_ne!(cache.metadata("foo".as_ref()).await, metadata);
+        }
+
+        #[tokio::test]
+        async fn hash_content_again() {
+            let file_system = FakeFileSystem::default();
+            let cache = create_cache(&file_system);
+
+            file_system.write_file("foo", "1");
+
+            let hash = cache.content_hash("foo".as_ref()).await;
+
+            file_system.write_file("foo", "2");
+            cache.invalidate().await;
+
+            assert_ne!(cache.content_hash("foo".as_ref()).await, hash);
+        }
+
+        #[tokio::test]
+        async fn cache_metadata_fetched_after_invalidation() {
+            let file_system = FakeFileSystem::default();
+            let cache = create_cache(&file_system);
+
+            file_system.write_file("foo", "");
+            cache.metadata("foo".as_ref()).await.unwrap();
+            file_system.write_file("foo", "");
+            cache.invalidate().await;
+
+            let metadata = cache.metadata("foo".as_ref()).await;
+
+            file_system.write_file("foo", "");
+
+            assert_eq!(cache.metadata("foo".as_ref()).await, metadata);
+        }
+
+        #[tokio::test]
+        async fn fetch_again_during_in_flight_fetch() {
+            let cache = create_cache(&Default::default());
+            let notify = Notify::new();
+            let mut future = pin!(FileCache::get(
+                &cache.content_hashes,
+                "foo".as_ref(),
+                || async {
+                    notify.notified().await;
+
+                    Ok::<_, FileError>(1)
+                }
+            ));
+
+            assert!(poll!(&mut future).is_pending());
+            assert_eq!(poll!(pin!(cache.invalidate())), Poll::Ready(()));
+            assert_eq!(
+                poll!(pin!(FileCache::get(
+                    &cache.content_hashes,
+                    "foo".as_ref(),
+                    || async { Ok::<_, FileError>(2) }
+                ))),
+                Poll::Ready(Ok(2))
+            );
+
+            notify.notify_one();
+
+            assert_eq!(future.await, Ok(1));
+            assert_eq!(
+                FileCache::get(&cache.content_hashes, "foo".as_ref(), || async {
+                    Ok::<_, FileError>(3)
+                })
+                .await,
+                Ok(2)
+            );
         }
     }
 

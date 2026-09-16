@@ -161,6 +161,27 @@ Feature: Build statement
     And I successfully run `turtle`
     Then the file named "qux" should contain "2"
 
+  @turtle
+  Scenario: Rebuild a dependent of a file updated by an order-only input in the same run
+    Given a file named "build.ninja" with:
+      """
+      rule gen
+        command = sleep 1 && cp $in bar && touch $out
+
+      rule cp
+        command = cp $in $out
+
+      build baz: gen qux
+      build foo: cp bar || baz
+
+      """
+    And a file named "qux" with "1"
+    When I successfully run `turtle baz`
+    And I successfully run `turtle foo`
+    And a file named "qux" with "2"
+    And I successfully run `turtle foo`
+    Then the file named "foo" should contain "2"
+
   Scenario: Build an output from multiple outputs of a build
     Given a file named "build.ninja" with:
       """

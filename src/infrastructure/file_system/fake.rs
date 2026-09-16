@@ -18,6 +18,7 @@ pub struct FakeFileSystem {
     files: Arc<Mutex<HashMap<PathBuf, FakeFile>>>,
     directories: Arc<Mutex<HashSet<PathBuf>>>,
     clock: Arc<AtomicU64>,
+    metadata_requests: Arc<Mutex<Vec<PathBuf>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -38,6 +39,10 @@ impl FakeFileSystem {
         );
     }
 
+    pub fn metadata_requests(&self) -> Vec<PathBuf> {
+        self.metadata_requests.lock().unwrap().clone()
+    }
+
     fn file(&self, path: &Path) -> Result<FakeFile, FileError> {
         self.files
             .lock()
@@ -45,6 +50,10 @@ impl FakeFileSystem {
             .get(path)
             .cloned()
             .ok_or_else(|| FileError::new("file not found"))
+    }
+
+    fn request_metadata(&self, path: &Path) {
+        self.metadata_requests.lock().unwrap().push(path.into());
     }
 }
 
@@ -59,11 +68,15 @@ impl FileSystem for FakeFileSystem {
     }
 
     async fn exists(&self, path: &Path) -> Result<bool, FileError> {
+        self.request_metadata(path);
+
         Ok(self.files.lock().unwrap().contains_key(path)
             || self.directories.lock().unwrap().contains(path))
     }
 
     async fn metadata(&self, path: &Path) -> Result<Option<Metadata>, FileError> {
+        self.request_metadata(path);
+
         Ok(self
             .files
             .lock()

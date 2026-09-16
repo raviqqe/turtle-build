@@ -59,7 +59,7 @@ Turtle aims to support full syntax of the Ninja build files. It also supports ba
 - [x] `default` statement
 - [x] `include` statement
 - [x] `subninja` statement
-- [ ] `pool` statement
+- [x] `pool` statement
 - [x] Global variables
 - [x] Build-local variables
 - [x] `in` and `out` special variable

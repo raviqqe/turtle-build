@@ -1,5 +1,6 @@
 use super::Build;
 use alloc::sync::Arc;
+use core::num::NonZeroUsize;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -7,6 +8,7 @@ pub struct Config {
     outputs: HashMap<Arc<str>, Arc<Build>>,
     default_outputs: HashSet<Arc<str>>,
     source_map: HashMap<Arc<str>, Arc<str>>,
+    pools: HashMap<Arc<str>, NonZeroUsize>,
     build_directory: Option<Arc<str>>,
 }
 
@@ -15,12 +17,14 @@ impl Config {
         outputs: HashMap<Arc<str>, Arc<Build>>,
         default_outputs: HashSet<Arc<str>>,
         source_map: HashMap<Arc<str>, Arc<str>>,
+        pools: HashMap<Arc<str>, NonZeroUsize>,
         build_directory: Option<Arc<str>>,
     ) -> Self {
         Self {
             outputs,
             default_outputs,
             source_map,
+            pools,
             build_directory,
         }
     }
@@ -35,6 +39,10 @@ impl Config {
 
     pub const fn source_map(&self) -> &HashMap<Arc<str>, Arc<str>> {
         &self.source_map
+    }
+
+    pub const fn pools(&self) -> &HashMap<Arc<str>, NonZeroUsize> {
+        &self.pools
     }
 
     pub const fn build_directory(&self) -> Option<&Arc<str>> {

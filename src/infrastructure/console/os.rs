@@ -39,4 +39,11 @@ impl Console for OsConsole {
 
         Ok(())
     }
+
+    async fn flush(&mut self) -> Result<(), Box<dyn Error>> {
+        self.stdout.flush().await?;
+        self.stderr.flush().await?;
+
+        Ok(())
+    }
 }

@@ -7,7 +7,7 @@ use core::{
     error::Error,
     fmt::{self, Display, Formatter},
 };
-use tokio::{io, task::JoinError};
+use tokio::{io, sync::AcquireError, task::JoinError};
 
 /// A build error.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -78,6 +78,12 @@ impl Display for BuildError {
 
 impl From<Box<dyn Error>> for BuildError {
     fn from(error: Box<dyn Error>) -> Self {
+        Self::Other(error.to_string())
+    }
+}
+
+impl From<AcquireError> for BuildError {
+    fn from(error: AcquireError) -> Self {
         Self::Other(error.to_string())
     }
 }

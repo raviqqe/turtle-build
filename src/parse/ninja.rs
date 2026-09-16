@@ -1,6 +1,6 @@
 use crate::ast::{
-    Build, DefaultOutput, DynamicBuild, DynamicModule, Include, Module, Rule, Statement, Submodule,
-    VariableDefinition,
+    Build, DefaultOutput, DynamicBuild, DynamicModule, Include, Module, Pool, Rule, Statement,
+    Submodule, VariableDefinition,
 };
 use nom::{
     IResult, Parser,
@@ -40,6 +40,7 @@ fn statement(input: &str) -> IResult<&str, Statement> {
         into(build),
         into(default),
         into(include),
+        into(pool),
         into(rule),
         into(submodule),
         into(variable_definition),
@@ -82,6 +83,26 @@ fn rule(input: &str) -> IResult<&str, Rule> {
                 .iter()
                 .any(|definition| definition.name() == "command")
                 .then(|| Rule::new(name, variable_definitions))
+        },
+    )
+    .parse(input)
+}
+
+fn pool(input: &str) -> IResult<&str, Pool> {
+    map_opt(
+        (
+            keyword("pool"),
+            identifier,
+            line_break,
+            many1(preceded(indent, variable_definition)),
+        ),
+        |(_, name, _, variable_definitions)| {
+            let depth = variable_definitions.last()?;
+
+            variable_definitions
+                .iter()
+                .all(|definition| definition.name() == "depth")
+                .then(|| Pool::new(name, depth.value()))
         },
     )
     .parse(input)
@@ -317,6 +338,14 @@ mod tests {
             module("rule-x = foo\n").unwrap().1,
             Module::new(vec![VariableDefinition::new("rule-x", "foo").into()])
         );
+        assert_eq!(
+            module("pool foo\n depth = 42\n").unwrap().1,
+            Module::new(vec![Pool::new("foo", "42").into()])
+        );
+        assert_eq!(
+            module("pool-x = foo\n").unwrap().1,
+            Module::new(vec![VariableDefinition::new("pool-x", "foo").into()])
+        );
     }
 
     #[test]
@@ -447,6 +476,53 @@ mod tests {
                 ]
             )
         );
+    }
+
+    #[test]
+    fn parse_pool() {
+        assert_eq!(
+            pool("pool foo\n depth = 42\n").unwrap().1,
+            Pool::new("foo", "42")
+        );
+        assert_eq!(
+            pool("pool foo-bar.baz\n depth = 42\n").unwrap().1,
+            Pool::new("foo-bar.baz", "42")
+        );
+        assert_eq!(
+            pool("pool foo\n depth = $x\n").unwrap().1,
+            Pool::new("foo", "$x")
+        );
+        assert_eq!(
+            pool("pool foo\n # bar\n depth = 42\n").unwrap().1,
+            Pool::new("foo", "42")
+        );
+    }
+
+    #[test]
+    fn parse_pool_with_duplicate_depth() {
+        assert_eq!(
+            pool("pool foo\n depth = 1\n depth = 2\n").unwrap().1,
+            Pool::new("foo", "2")
+        );
+    }
+
+    #[test]
+    fn reject_pool_with_invalid_name() {
+        assert!(pool("pool\n depth = 1\n").is_err());
+        assert!(pool("pool $foo\n depth = 1\n").is_err());
+        assert!(pool("pool foo bar\n depth = 1\n").is_err());
+    }
+
+    #[test]
+    fn reject_pool_without_depth() {
+        assert!(pool("pool foo\n").is_err());
+        assert!(module("pool foo\ndepth = 1\n").is_err());
+    }
+
+    #[test]
+    fn reject_pool_with_unknown_variable() {
+        assert!(pool("pool foo\n depth = 1\n bar = 2\n").is_err());
+        assert!(module("pool foo\n depth = 1\n bar = 2\n").is_err());
     }
 
     #[test]

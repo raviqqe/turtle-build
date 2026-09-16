@@ -47,6 +47,7 @@ jobs:
   bench:
     needs:
       - command
+      - report
     if: always()
     runs-on: ubuntu-latest
     steps:

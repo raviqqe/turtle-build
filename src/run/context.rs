@@ -56,12 +56,10 @@ impl RunContext {
         &self.config
     }
 
-    // TODO Rename this `futures`.
-    pub fn build_futures(&self) -> &HashMap<BuildId, BuildFuture> {
+    pub const fn build_futures(&self) -> &HashMap<BuildId, BuildFuture> {
         &self.build_futures
     }
 
-    // TODO Rename this `graph`.
     pub const fn build_graph(&self) -> &Mutex<BuildGraph> {
         &self.build_graph
     }

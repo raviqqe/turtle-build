@@ -1,10 +1,7 @@
-use crate::infrastructure::CommandRunner;
+use crate::infrastructure::{CommandError, CommandRunner};
 use alloc::sync::Arc;
 use async_trait::async_trait;
-use core::{
-    error::Error,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use core::sync::atomic::{AtomicUsize, Ordering};
 use std::{
     collections::HashMap,
     process::{ExitStatus, Output},
@@ -64,13 +61,13 @@ impl FakeCommandRunner {
 
 #[async_trait]
 impl CommandRunner for FakeCommandRunner {
-    async fn run(&self, command: &str) -> Result<Output, Box<dyn Error>> {
+    async fn run(&self, command: &str) -> Result<Output, CommandError> {
         self.commands.lock().unwrap().push(command.into());
 
         Ok(self.execute(command).await)
     }
 
-    async fn run_with_console(&self, command: &str) -> Result<ExitStatus, Box<dyn Error>> {
+    async fn run_with_console(&self, command: &str) -> Result<ExitStatus, CommandError> {
         self.console_commands.lock().unwrap().push(command.into());
 
         Ok(self.execute(command).await.status)

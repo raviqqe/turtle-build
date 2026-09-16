@@ -1,9 +1,8 @@
 use super::Metadata;
-use crate::infrastructure::FileSystem;
+use crate::infrastructure::{FileError, FileSystem};
 use alloc::sync::Arc;
 use async_trait::async_trait;
 use core::{
-    error::Error,
     str,
     sync::atomic::{AtomicU64, Ordering},
     time::Duration,
@@ -40,60 +39,55 @@ impl FakeFileSystem {
         );
     }
 
-    fn file(&self, path: &Path) -> Result<FakeFile, Box<dyn Error>> {
-        Ok(self
-            .files
+    fn file(&self, path: &Path) -> Result<FakeFile, FileError> {
+        self.files
             .lock()
             .unwrap()
             .get(path)
             .cloned()
-            .ok_or("file not found")?)
+            .ok_or_else(|| FileError::new("file not found"))
     }
 }
 
 #[async_trait]
 impl FileSystem for FakeFileSystem {
-    async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
+    async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), FileError> {
         buffer.extend(self.file(path)?.content);
 
         Ok(())
     }
 
-    async fn read_file_to_string(
-        &self,
-        path: &Path,
-        buffer: &mut String,
-    ) -> Result<(), Box<dyn Error>> {
-        buffer.push_str(str::from_utf8(&self.file(path)?.content)?);
+    async fn read_file_to_string(&self, path: &Path, buffer: &mut String) -> Result<(), FileError> {
+        buffer.push_str(str::from_utf8(&self.file(path)?.content).map_err(FileError::new)?);
 
         Ok(())
     }
 
-    async fn exists(&self, path: &Path) -> Result<bool, Box<dyn Error>> {
+    async fn exists(&self, path: &Path) -> Result<bool, FileError> {
         Ok(self.files.lock().unwrap().contains_key(path)
             || self.directories.lock().unwrap().contains(path))
     }
 
-    async fn metadata(&self, path: &Path) -> Result<Metadata, Box<dyn Error>> {
+    async fn metadata(&self, path: &Path) -> Result<Metadata, FileError> {
         Ok(Metadata::new(self.file(path)?.modified_time, false))
     }
 
-    async fn create_directory(&self, path: &Path) -> Result<(), Box<dyn Error>> {
+    async fn create_directory(&self, path: &Path) -> Result<(), FileError> {
         self.directories.lock().unwrap().insert(path.into());
 
         Ok(())
     }
 
-    async fn canonicalize_path(&self, path: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    async fn canonicalize_path(&self, path: &Path) -> Result<PathBuf, FileError> {
         Ok(path.into())
     }
 
-    async fn remove_file(&self, path: &Path) -> Result<(), Box<dyn Error>> {
+    async fn remove_file(&self, path: &Path) -> Result<(), FileError> {
         self.files
             .lock()
             .unwrap()
             .remove(path)
-            .ok_or("file not found")?;
+            .ok_or_else(|| FileError::new("file not found"))?;
 
         Ok(())
     }

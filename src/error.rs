@@ -1,6 +1,10 @@
 use crate::{
-    build_graph::BuildGraphError, compile::CompileError, ir::Build,
-    module_dependency::ModuleDependencyError, parse::ParseError,
+    build_graph::BuildGraphError,
+    compile::CompileError,
+    infrastructure::{CommandError, ConsoleError, DatabaseError, FileError},
+    ir::Build,
+    module_dependency::ModuleDependencyError,
+    parse::ParseError,
 };
 use alloc::sync::Arc;
 use core::{
@@ -16,12 +20,20 @@ pub enum BuildError {
     Build,
     /// A build graph error.
     BuildGraph(BuildGraphError),
+    /// A command error.
+    Command(CommandError),
     /// A compile error.
     Compile(CompileError),
+    /// A console error.
+    Console(ConsoleError),
+    /// A database error.
+    Database(DatabaseError),
     /// A default output not found.
     DefaultOutputNotFound(Arc<str>),
     /// A dynamic dependency not found.
     DynamicDependencyNotFound(Arc<Build>),
+    /// A file error.
+    File(FileError),
     /// A file not found.
     FileNotFound(String),
     /// An input not built.
@@ -44,7 +56,10 @@ impl Display for BuildError {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
             Self::Build => write!(formatter, "build failed"),
+            Self::Command(error) => write!(formatter, "{error}"),
             Self::Compile(error) => write!(formatter, "{error}"),
+            Self::Console(error) => write!(formatter, "{error}"),
+            Self::Database(error) => write!(formatter, "{error}"),
             Self::DefaultOutputNotFound(output) => {
                 write!(formatter, "default output \"{output}\" not found")
             }
@@ -56,6 +71,7 @@ impl Display for BuildError {
                     build.dynamic_module().unwrap()
                 )
             }
+            Self::File(error) => write!(formatter, "{error}"),
             Self::FileNotFound(path) => write!(formatter, "file \"{path}\" not found"),
             Self::InputNotBuilt(input) => {
                 write!(formatter, "input \"{input}\" not built yet")
@@ -76,21 +92,39 @@ impl Display for BuildError {
     }
 }
 
-impl From<Box<dyn Error>> for BuildError {
-    fn from(error: Box<dyn Error>) -> Self {
-        Self::Other(error.to_string())
-    }
-}
-
 impl From<AcquireError> for BuildError {
     fn from(error: AcquireError) -> Self {
         Self::Other(error.to_string())
     }
 }
 
+impl From<CommandError> for BuildError {
+    fn from(error: CommandError) -> Self {
+        Self::Command(error)
+    }
+}
+
 impl From<CompileError> for BuildError {
     fn from(error: CompileError) -> Self {
         Self::Compile(error)
+    }
+}
+
+impl From<ConsoleError> for BuildError {
+    fn from(error: ConsoleError) -> Self {
+        Self::Console(error)
+    }
+}
+
+impl From<DatabaseError> for BuildError {
+    fn from(error: DatabaseError) -> Self {
+        Self::Database(error)
+    }
+}
+
+impl From<FileError> for BuildError {
+    fn from(error: FileError) -> Self {
+        Self::File(error)
     }
 }
 

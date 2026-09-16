@@ -1,7 +1,6 @@
-use crate::infrastructure::Console;
+use crate::infrastructure::{Console, ConsoleError};
 use alloc::sync::Arc;
 use async_trait::async_trait;
-use core::error::Error;
 use std::sync::Mutex;
 
 #[derive(Clone, Debug, Default)]
@@ -32,9 +31,9 @@ impl FakeConsole {
         String::from_utf8(self.flushed_stderr.lock().unwrap().clone()).unwrap()
     }
 
-    fn check_failure(&self) -> Result<(), Box<dyn Error>> {
+    fn check_failure(&self) -> Result<(), ConsoleError> {
         if self.failing {
-            Err("console failure".into())
+            Err(ConsoleError::new("console failure"))
         } else {
             Ok(())
         }
@@ -43,21 +42,21 @@ impl FakeConsole {
 
 #[async_trait]
 impl Console for FakeConsole {
-    async fn write_stdout(&mut self, buffer: &[u8]) -> Result<(), Box<dyn Error>> {
+    async fn write_stdout(&mut self, buffer: &[u8]) -> Result<(), ConsoleError> {
         self.check_failure()?;
         self.stdout.lock().unwrap().extend_from_slice(buffer);
 
         Ok(())
     }
 
-    async fn write_stderr(&mut self, buffer: &[u8]) -> Result<(), Box<dyn Error>> {
+    async fn write_stderr(&mut self, buffer: &[u8]) -> Result<(), ConsoleError> {
         self.check_failure()?;
         self.stderr.lock().unwrap().extend_from_slice(buffer);
 
         Ok(())
     }
 
-    async fn flush(&mut self) -> Result<(), Box<dyn Error>> {
+    async fn flush(&mut self) -> Result<(), ConsoleError> {
         *self.flushed_stderr.lock().unwrap() = self.stderr.lock().unwrap().clone();
 
         Ok(())

@@ -1,6 +1,5 @@
-use crate::infrastructure::Console;
+use crate::infrastructure::{Console, ConsoleError};
 use async_trait::async_trait;
-use core::error::Error;
 use tokio::io::{AsyncWriteExt, Stderr, Stdout, stderr, stdout};
 
 /// A console backed by an operating system.
@@ -28,19 +27,19 @@ impl Default for OsConsole {
 
 #[async_trait]
 impl Console for OsConsole {
-    async fn write_stdout(&mut self, src: &[u8]) -> Result<(), Box<dyn Error>> {
+    async fn write_stdout(&mut self, src: &[u8]) -> Result<(), ConsoleError> {
         self.stdout.write_all(src).await?;
 
         Ok(())
     }
 
-    async fn write_stderr(&mut self, src: &[u8]) -> Result<(), Box<dyn Error>> {
+    async fn write_stderr(&mut self, src: &[u8]) -> Result<(), ConsoleError> {
         self.stderr.write_all(src).await?;
 
         Ok(())
     }
 
-    async fn flush(&mut self) -> Result<(), Box<dyn Error>> {
+    async fn flush(&mut self) -> Result<(), ConsoleError> {
         self.stdout.flush().await?;
         self.stderr.flush().await?;
 

@@ -1,7 +1,10 @@
-use crate::{hash_type::HashType, infrastructure::Database, ir::BuildId};
+use crate::{
+    hash_type::HashType,
+    infrastructure::{Database, DatabaseError},
+    ir::BuildId,
+};
 use alloc::collections::BTreeSet;
 use async_trait::async_trait;
-use core::error::Error;
 use std::{collections::HashMap, path::Path, sync::Mutex};
 
 #[derive(Debug, Default)]
@@ -24,21 +27,21 @@ impl FakeDatabase {
 
 #[async_trait]
 impl Database for FakeDatabase {
-    fn initialize(&self, _: &Path) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self, _: &Path) -> Result<(), DatabaseError> {
         Ok(())
     }
 
-    fn get_hash(&self, r#type: HashType, id: BuildId) -> Result<Option<u64>, Box<dyn Error>> {
+    fn get_hash(&self, r#type: HashType, id: BuildId) -> Result<Option<u64>, DatabaseError> {
         Ok(self.hashes(r#type).lock().unwrap().get(&id).copied())
     }
 
-    fn set_hash(&self, r#type: HashType, id: BuildId, hash: u64) -> Result<(), Box<dyn Error>> {
+    fn set_hash(&self, r#type: HashType, id: BuildId, hash: u64) -> Result<(), DatabaseError> {
         self.hashes(r#type).lock().unwrap().insert(id, hash);
 
         Ok(())
     }
 
-    fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<String>, Box<dyn Error>> {
+    fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<String>, DatabaseError> {
         Ok(self
             .header_dependencies
             .lock()
@@ -52,7 +55,7 @@ impl Database for FakeDatabase {
         &self,
         id: BuildId,
         dependencies: &[String],
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), DatabaseError> {
         self.header_dependencies
             .lock()
             .unwrap()
@@ -61,21 +64,21 @@ impl Database for FakeDatabase {
         Ok(())
     }
 
-    fn get_outputs(&self) -> Result<Vec<String>, Box<dyn Error>> {
+    fn get_outputs(&self) -> Result<Vec<String>, DatabaseError> {
         Ok(self.outputs.lock().unwrap().iter().cloned().collect())
     }
 
-    fn set_output(&self, path: &str) -> Result<(), Box<dyn Error>> {
+    fn set_output(&self, path: &str) -> Result<(), DatabaseError> {
         self.outputs.lock().unwrap().insert(path.into());
 
         Ok(())
     }
 
-    fn get_source(&self, output: &str) -> Result<Option<String>, Box<dyn Error>> {
+    fn get_source(&self, output: &str) -> Result<Option<String>, DatabaseError> {
         Ok(self.sources.lock().unwrap().get(output).cloned())
     }
 
-    fn set_source(&self, output: &str, source: &str) -> Result<(), Box<dyn Error>> {
+    fn set_source(&self, output: &str, source: &str) -> Result<(), DatabaseError> {
         self.sources
             .lock()
             .unwrap()
@@ -84,7 +87,7 @@ impl Database for FakeDatabase {
         Ok(())
     }
 
-    async fn flush(&self) -> Result<(), Box<dyn Error>> {
+    async fn flush(&self) -> Result<(), DatabaseError> {
         Ok(())
     }
 }

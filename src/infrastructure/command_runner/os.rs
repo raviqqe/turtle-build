@@ -1,6 +1,5 @@
-use crate::infrastructure::CommandRunner;
+use crate::infrastructure::{CommandError, CommandRunner};
 use async_trait::async_trait;
-use core::error::Error;
 use std::process::{ExitStatus, Output, Stdio};
 use tokio::{process::Command, sync::Semaphore};
 
@@ -36,7 +35,7 @@ impl OsCommandRunner {
 
 #[async_trait]
 impl CommandRunner for OsCommandRunner {
-    async fn run(&self, command: &str) -> Result<Output, Box<dyn Error>> {
+    async fn run(&self, command: &str) -> Result<Output, CommandError> {
         let _permit = self.semaphore.acquire().await?;
 
         Ok(Self::create_command(command)
@@ -45,7 +44,7 @@ impl CommandRunner for OsCommandRunner {
             .await?)
     }
 
-    async fn run_with_console(&self, command: &str) -> Result<ExitStatus, Box<dyn Error>> {
+    async fn run_with_console(&self, command: &str) -> Result<ExitStatus, CommandError> {
         let _permit = self.semaphore.acquire().await?;
 
         // Inherit standard input, output, and error.

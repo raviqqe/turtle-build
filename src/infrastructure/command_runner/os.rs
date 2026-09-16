@@ -37,26 +37,18 @@ impl OsCommandRunner {
 #[async_trait]
 impl CommandRunner for OsCommandRunner {
     async fn run(&self, command: &str) -> Result<Output, Box<dyn Error>> {
-        let permit = self.semaphore.acquire().await?;
+        let _permit = self.semaphore.acquire().await?;
 
-        let output = Self::create_command(command)
+        Ok(Self::create_command(command)
             .stdin(Stdio::null())
             .output()
-            .await?;
-
-        drop(permit);
-
-        Ok(output)
+            .await?)
     }
 
     async fn run_with_console(&self, command: &str) -> Result<ExitStatus, Box<dyn Error>> {
-        let permit = self.semaphore.acquire().await?;
+        let _permit = self.semaphore.acquire().await?;
 
         // Inherit standard input, output, and error.
-        let status = Self::create_command(command).status().await?;
-
-        drop(permit);
-
-        Ok(status)
+        Ok(Self::create_command(command).status().await?)
     }
 }

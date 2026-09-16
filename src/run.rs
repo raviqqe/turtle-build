@@ -396,7 +396,6 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildErro
                     .run(rule.command())
                     .await?;
 
-                // Release the pool before waiting for the console lock.
                 drop(permit);
 
                 Ok::<_, BuildError>((output, Instant::now() - start_time))

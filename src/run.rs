@@ -27,11 +27,7 @@ use futures::future::{FutureExt, try_join_all};
 use itertools::Itertools;
 pub use options::RunOptions;
 use std::{path::Path, process::Output};
-use tokio::{
-    join, spawn,
-    sync::{MutexGuard, SemaphorePermit},
-    time::Instant,
-};
+use tokio::{join, spawn, sync::MutexGuard, time::Instant};
 
 /// Runs builds.
 pub async fn run(
@@ -392,7 +388,7 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildErro
         )
     } else {
         // Wait for a pool before locking a console so that the lock is not held while waiting.
-        let permit = acquire_pool(context, rule.pool()).await?;
+        let permit = context.pool(rule.pool()).await?;
         // Keep the pool until its command finishes even if writing to the console fails.
         let (output, console) = join!(
             async {
@@ -453,17 +449,6 @@ async fn write_description<'a>(
     debug!(context, console, "command: {}", rule.command());
 
     Ok(console)
-}
-
-async fn acquire_pool<'a>(
-    context: &'a RunContext,
-    pool: Option<&Pool>,
-) -> Result<Option<SemaphorePermit<'a>>, BuildError> {
-    let Some(Pool::Limited(name)) = pool else {
-        return Ok(None);
-    };
-
-    Ok(Some(context.pools()[name].acquire().await?))
 }
 
 fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> BuildError {
@@ -2081,7 +2066,7 @@ mod tests {
         let console = FakeConsole::default();
         let context = create_run_context(&command_runner, &console, &[("bar", 1)]);
         let rule = Rule::new("foo", Some("foo".into())).with_pool(limited_pool("bar"));
-        let permit = acquire_pool(&context, rule.pool()).await.unwrap();
+        let permit = context.pool(rule.pool()).await.unwrap();
         let mut future = pin!(run_rule(&context, &rule));
 
         for _ in 0..POLL_COUNT {

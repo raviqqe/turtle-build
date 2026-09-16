@@ -3,13 +3,13 @@ use crate::{
     BuildError,
     build_graph::BuildGraph,
     context::Context,
-    ir::{BuildId, Config},
+    ir::{BuildId, Config, Pool},
 };
 use alloc::sync::Arc;
 use core::pin::Pin;
 use futures::future::Shared;
 use scc::HashMap;
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::{Mutex, Semaphore, SemaphorePermit};
 
 type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<(), BuildError>> + Send>>>;
 
@@ -66,8 +66,15 @@ impl RunContext {
         &self.build_graph
     }
 
-    pub const fn pools(&self) -> &std::collections::HashMap<Arc<str>, Semaphore> {
-        &self.pools
+    pub async fn pool(
+        &self,
+        pool: Option<&Pool>,
+    ) -> Result<Option<SemaphorePermit<'_>>, BuildError> {
+        let Some(Pool::Limited(name)) = pool else {
+            return Ok(None);
+        };
+
+        Ok(Some(self.pools[name].acquire().await?))
     }
 
     pub const fn options(&self) -> &RunOptions {

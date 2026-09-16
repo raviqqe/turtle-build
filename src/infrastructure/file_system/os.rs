@@ -26,7 +26,16 @@ impl OsFileSystem {
         }
     }
 
+    fn error(error: io::Error, path: &Path) -> String {
+        format!("{}: {}", error, path.display())
+    }
+}
+
+#[async_trait]
+impl FileSystem for OsFileSystem {
     async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
+        let _permit = self.semaphore.acquire().await?;
+
         File::open(path)
             .await
             .map_err(|error| Self::error(error, path))?
@@ -42,6 +51,8 @@ impl OsFileSystem {
         path: &Path,
         buffer: &mut String,
     ) -> Result<(), Box<dyn Error>> {
+        let _permit = self.semaphore.acquire().await?;
+
         File::open(path)
             .await
             .map_err(|error| Self::error(error, path))?
@@ -50,29 +61,6 @@ impl OsFileSystem {
             .map_err(|error| Self::error(error, path))?;
 
         Ok(())
-    }
-
-    fn error(error: io::Error, path: &Path) -> String {
-        format!("{}: {}", error, path.display())
-    }
-}
-
-#[async_trait]
-impl FileSystem for OsFileSystem {
-    async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
-        let _permit = self.semaphore.acquire().await?;
-
-        self.read_file(path, buffer).await
-    }
-
-    async fn read_file_to_string(
-        &self,
-        path: &Path,
-        buffer: &mut String,
-    ) -> Result<(), Box<dyn Error>> {
-        let _permit = self.semaphore.acquire().await?;
-
-        self.read_file_to_string(path, buffer).await
     }
 
     async fn exists(&self, path: &Path) -> Result<bool, Box<dyn Error>> {
@@ -139,7 +127,8 @@ mod tests {
 
         fs::write(&path, "bar").unwrap();
 
-        FileSystem::read_file_to_string(&OsFileSystem::new(1), &path, &mut buffer)
+        OsFileSystem::new(1)
+            .read_file_to_string(&path, &mut buffer)
             .await
             .unwrap();
 
@@ -152,7 +141,8 @@ mod tests {
         let path = directory.path().join("foo");
 
         assert!(
-            FileSystem::read_file_to_string(&OsFileSystem::new(1), &path, &mut String::new())
+            OsFileSystem::new(1)
+                .read_file_to_string(&path, &mut String::new())
                 .await
                 .unwrap_err()
                 .to_string()

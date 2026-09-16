@@ -1,4 +1,3 @@
-/// Logs a debug message.
 macro_rules! debug {
     ($context:expr, $console:expr, $template:literal, $($value:expr),+) => {
         if $context.options().debug {
@@ -7,7 +6,6 @@ macro_rules! debug {
     };
 }
 
-/// Logs a profile message.
 macro_rules! profile {
     ($context:expr, $console:expr, $template:literal, $($value:expr),+) => {
         if $context.options().profile {
@@ -16,7 +14,6 @@ macro_rules! profile {
     };
 }
 
-/// Logs a message.
 macro_rules! log {
     ($console:expr, $template:literal, $($value:expr),+) => {
         $console.write_stderr(

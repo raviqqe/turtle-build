@@ -386,9 +386,7 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildErro
             console,
         )
     } else {
-        // Wait for a pool before locking a console so that the lock is not held while waiting.
         let permit = context.pool(rule.pool()).await?;
-        // Keep the pool until its command finishes even if writing to the console fails.
         let (output, console) = join!(
             async {
                 let start_time = Instant::now();

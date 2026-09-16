@@ -26,6 +26,7 @@ impl CommandRunner for OsCommandRunner {
 
         let output = if cfg!(target_os = "windows") {
             let components = command.split_whitespace().collect::<Vec<_>>();
+
             Command::new(components[0])
                 .args(&components[1..])
                 .output()

@@ -1,25 +1,22 @@
 /// Logs a debug message.
-#[macro_export]
 macro_rules! debug {
     ($context:expr, $console:expr, $template:literal, $($value:expr),+) => {
         if $context.options().debug {
-            $crate::log!($console, $template, $($value),+);
+            $crate::run::log::log!($console, $template, $($value),+);
         }
     };
 }
 
 /// Logs a profile message.
-#[macro_export]
 macro_rules! profile {
     ($context:expr, $console:expr, $template:literal, $($value:expr),+) => {
         if $context.options().profile {
-            $crate::log!($console, $template, $($value),+);
+            $crate::run::log::log!($console, $template, $($value),+);
         }
     };
 }
 
 /// Logs a message.
-#[macro_export]
 macro_rules! log {
     ($console:expr, $template:literal, $($value:expr),+) => {
         $console.write_stderr(
@@ -28,3 +25,5 @@ macro_rules! log {
         $console.write_stderr("\n".as_bytes()).await?;
     };
 }
+
+pub(crate) use {debug, log, profile};

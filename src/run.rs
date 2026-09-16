@@ -8,17 +8,16 @@ use self::{
     context::RunContext,
     hash::{calculate_content_hash, calculate_timestamp_hash},
     header_dependency::{exclude_show_includes, read_header_dependencies},
+    log::{debug, profile},
 };
 use crate::{
     build_graph::{BuildGraph, BuildGraphError},
     compile::compile_dynamic,
     context::Context,
-    debug,
     error::BuildError,
     hash_type::HashType,
     ir::{Build, Config, Rule},
     parse::parse_dynamic,
-    profile,
 };
 use alloc::sync::Arc;
 use async_recursion::async_recursion;

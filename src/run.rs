@@ -363,7 +363,6 @@ fn classify_inputs<'a>(
 
 async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildError> {
     let ((output, duration), mut console) = if rule.pool() == Some(&Pool::Console) {
-        // Keep a console locked while a command writes to it directly.
         let mut console = write_description(context, rule).await?;
 
         console.flush().await?;

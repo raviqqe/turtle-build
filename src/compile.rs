@@ -256,8 +256,10 @@ fn compile_pool(
 
     Ok(if name.as_ref() == CONSOLE_POOL {
         Some(Pool::Console)
+    } else if depth.is_some() {
+        Some(Pool::Limited(name.clone()))
     } else {
-        depth.map(|_| Pool::Limited(name.clone()))
+        None
     })
 }
 

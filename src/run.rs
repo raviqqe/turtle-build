@@ -367,7 +367,7 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildErro
 
         console.flush().await?;
 
-        let start_time = Instant::now();
+        let time = Instant::now();
         let status = context
             .application()
             .command_runner()
@@ -381,7 +381,7 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildErro
                     stdout: vec![],
                     stderr: vec![],
                 },
-                Instant::now() - start_time,
+                Instant::now() - time,
             ),
             console,
         )
@@ -389,7 +389,7 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildErro
         let permit = context.pool(rule.pool()).await?;
         let (output, console) = join!(
             async {
-                let start_time = Instant::now();
+                let time = Instant::now();
                 let output = context
                     .application()
                     .command_runner()
@@ -398,7 +398,7 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildErro
 
                 drop(permit);
 
-                Ok::<_, BuildError>((output, Instant::now() - start_time))
+                Ok::<_, BuildError>((output, Instant::now() - time))
             },
             write_description(context, rule)
         );

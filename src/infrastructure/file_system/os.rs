@@ -1,7 +1,6 @@
 use super::Metadata;
-use crate::infrastructure::FileSystem;
+use crate::infrastructure::{FileError, FileSystem};
 use async_trait::async_trait;
-use core::error::Error;
 use std::{
     io,
     path::{Path, PathBuf},
@@ -26,14 +25,14 @@ impl OsFileSystem {
         }
     }
 
-    fn error(error: io::Error, path: &Path) -> String {
-        format!("{}: {}", error, path.display())
+    fn error(error: io::Error, path: &Path) -> FileError {
+        FileError::new(format!("{}: {}", error, path.display()))
     }
 }
 
 #[async_trait]
 impl FileSystem for OsFileSystem {
-    async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
+    async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), FileError> {
         let _permit = self.semaphore.acquire().await?;
 
         File::open(path)
@@ -46,11 +45,7 @@ impl FileSystem for OsFileSystem {
         Ok(())
     }
 
-    async fn read_file_to_string(
-        &self,
-        path: &Path,
-        buffer: &mut String,
-    ) -> Result<(), Box<dyn Error>> {
+    async fn read_file_to_string(&self, path: &Path, buffer: &mut String) -> Result<(), FileError> {
         let _permit = self.semaphore.acquire().await?;
 
         File::open(path)
@@ -63,20 +58,20 @@ impl FileSystem for OsFileSystem {
         Ok(())
     }
 
-    async fn exists(&self, path: &Path) -> Result<bool, Box<dyn Error>> {
-        Ok(fs::try_exists(path)
+    async fn exists(&self, path: &Path) -> Result<bool, FileError> {
+        fs::try_exists(path)
             .await
-            .map_err(|error| Self::error(error, path))?)
+            .map_err(|error| Self::error(error, path))
     }
 
-    async fn metadata(&self, path: &Path) -> Result<Metadata, Box<dyn Error>> {
+    async fn metadata(&self, path: &Path) -> Result<Metadata, FileError> {
         Ok(fs::metadata(path)
             .await
             .map_err(|error| Self::error(error, path))?
             .try_into()?)
     }
 
-    async fn create_directory(&self, path: &Path) -> Result<(), Box<dyn Error>> {
+    async fn create_directory(&self, path: &Path) -> Result<(), FileError> {
         fs::create_dir_all(path)
             .await
             .map_err(|error| Self::error(error, path))?;
@@ -84,13 +79,13 @@ impl FileSystem for OsFileSystem {
         Ok(())
     }
 
-    async fn canonicalize_path(&self, path: &Path) -> Result<PathBuf, Box<dyn Error>> {
-        Ok(fs::canonicalize(path)
+    async fn canonicalize_path(&self, path: &Path) -> Result<PathBuf, FileError> {
+        fs::canonicalize(path)
             .await
-            .map_err(|error| Self::error(error, path))?)
+            .map_err(|error| Self::error(error, path))
     }
 
-    async fn remove_file(&self, path: &Path) -> Result<(), Box<dyn Error>> {
+    async fn remove_file(&self, path: &Path) -> Result<(), FileError> {
         fs::remove_file(path)
             .await
             .map_err(|error| Self::error(error, path))?;

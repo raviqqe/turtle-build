@@ -1,6 +1,10 @@
-use crate::{hash_type::HashType, infrastructure::Database, ir::BuildId};
+use crate::{
+    hash_type::HashType,
+    infrastructure::{Database, DatabaseError},
+    ir::BuildId,
+};
 use async_trait::async_trait;
-use core::{error::Error, str};
+use core::str;
 use fjall::{Keyspace, KeyspaceCreateOptions, PersistMode};
 use once_cell::sync::OnceCell;
 use std::{path::Path, sync::LazyLock};
@@ -43,11 +47,13 @@ impl FjallDatabase {
         }
     }
 
-    fn database(&self) -> Result<&FjallDatabaseInner, Box<dyn Error>> {
-        Ok(self.database.get().ok_or("database not initialized")?)
+    fn database(&self) -> Result<&FjallDatabaseInner, DatabaseError> {
+        self.database
+            .get()
+            .ok_or_else(|| DatabaseError::new("database not initialized"))
     }
 
-    fn hash_keyspace(&self, r#type: HashType) -> Result<&Keyspace, Box<dyn Error>> {
+    fn hash_keyspace(&self, r#type: HashType) -> Result<&Keyspace, DatabaseError> {
         let database = self.database()?;
 
         Ok(match r#type {
@@ -59,7 +65,7 @@ impl FjallDatabase {
 
 #[async_trait]
 impl Database for FjallDatabase {
-    fn initialize(&self, path: &Path) -> Result<(), Box<dyn Error>> {
+    fn initialize(&self, path: &Path) -> Result<(), DatabaseError> {
         let database = fjall::Database::builder(path).open()?;
         let open = |name: &str| database.keyspace(name, KeyspaceCreateOptions::default);
 
@@ -72,12 +78,12 @@ impl Database for FjallDatabase {
                 source: open(SOURCE_KEYSPACE_NAME)?,
                 database,
             })
-            .map_err(|_| "database already initialized")?;
+            .map_err(|_| DatabaseError::new("database already initialized"))?;
 
         Ok(())
     }
 
-    fn get_hash(&self, r#type: HashType, id: BuildId) -> Result<Option<u64>, Box<dyn Error>> {
+    fn get_hash(&self, r#type: HashType, id: BuildId) -> Result<Option<u64>, DatabaseError> {
         Ok(self
             .hash_keyspace(r#type)?
             .get(id.to_bytes())?
@@ -87,7 +93,7 @@ impl Database for FjallDatabase {
             .transpose()?)
     }
 
-    fn set_hash(&self, r#type: HashType, id: BuildId, hash: u64) -> Result<(), Box<dyn Error>> {
+    fn set_hash(&self, r#type: HashType, id: BuildId, hash: u64) -> Result<(), DatabaseError> {
         self.hash_keyspace(r#type)?.insert(
             id.to_bytes(),
             bincode::encode_to_vec(hash, *BINCODE_CONFIG)?,
@@ -96,7 +102,7 @@ impl Database for FjallDatabase {
         Ok(())
     }
 
-    fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<String>, Box<dyn Error>> {
+    fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<String>, DatabaseError> {
         Ok(self
             .database()?
             .header_dependency
@@ -112,7 +118,7 @@ impl Database for FjallDatabase {
         &self,
         id: BuildId,
         dependencies: &[String],
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), DatabaseError> {
         self.database()?.header_dependency.insert(
             id.to_bytes(),
             bincode::encode_to_vec(dependencies, *BINCODE_CONFIG)?,
@@ -121,7 +127,7 @@ impl Database for FjallDatabase {
         Ok(())
     }
 
-    fn get_outputs(&self) -> Result<Vec<String>, Box<dyn Error>> {
+    fn get_outputs(&self) -> Result<Vec<String>, DatabaseError> {
         self.database()?
             .output
             .iter()
@@ -129,27 +135,27 @@ impl Database for FjallDatabase {
             .collect::<Result<_, _>>()
     }
 
-    fn set_output(&self, path: &str) -> Result<(), Box<dyn Error>> {
+    fn set_output(&self, path: &str) -> Result<(), DatabaseError> {
         self.database()?.output.insert(path, [])?;
 
         Ok(())
     }
 
-    fn get_source(&self, output: &str) -> Result<Option<String>, Box<dyn Error>> {
+    fn get_source(&self, output: &str) -> Result<Option<String>, DatabaseError> {
         self.database()?
             .source
             .get(output)?
-            .map(|source| Ok::<_, Box<dyn Error>>(str::from_utf8(&source)?.into()))
+            .map(|source| Ok::<_, DatabaseError>(str::from_utf8(&source)?.into()))
             .transpose()
     }
 
-    fn set_source(&self, output: &str, source: &str) -> Result<(), Box<dyn Error>> {
+    fn set_source(&self, output: &str, source: &str) -> Result<(), DatabaseError> {
         self.database()?.source.insert(output, source)?;
 
         Ok(())
     }
 
-    async fn flush(&self) -> Result<(), Box<dyn Error>> {
+    async fn flush(&self) -> Result<(), DatabaseError> {
         let database = self.database()?.database.clone();
 
         spawn_blocking(move || database.persist(PersistMode::SyncAll)).await??;

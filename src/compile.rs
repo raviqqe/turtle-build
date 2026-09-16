@@ -257,7 +257,7 @@ fn compile_pool(
     Ok(if name.as_ref() == CONSOLE_POOL {
         Some(Pool::Console)
     } else {
-        depth.map(|_| Pool::Limited { name: name.clone() })
+        depth.map(|_| Pool::Limited(name.clone()))
     })
 }
 
@@ -415,7 +415,7 @@ mod tests {
     }
 
     fn limited_pool(name: &str) -> Option<Pool> {
-        Some(Pool::Limited { name: name.into() })
+        Some(Pool::Limited(name.into()))
     }
 
     #[test]

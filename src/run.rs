@@ -459,7 +459,7 @@ async fn acquire_pool<'a>(
     context: &'a RunContext,
     pool: Option<&Pool>,
 ) -> Result<Option<SemaphorePermit<'a>>, BuildError> {
-    let Some(Pool::Limited { name }) = pool else {
+    let Some(Pool::Limited(name)) = pool else {
         return Ok(None);
     };
 
@@ -586,7 +586,7 @@ mod tests {
     }
 
     fn limited_pool(name: &str) -> Option<Pool> {
-        Some(Pool::Limited { name: name.into() })
+        Some(Pool::Limited(name.into()))
     }
 
     fn pool_build(output: &str, pool: Option<Pool>) -> Build {

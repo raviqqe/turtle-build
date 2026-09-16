@@ -16,6 +16,8 @@ use tokio::{io, sync::AcquireError, task::JoinError};
 /// A build error.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BuildError {
+    /// A semaphore acquisition error.
+    Acquire(String),
     /// A build failure.
     Build,
     /// A build graph error.
@@ -40,10 +42,12 @@ pub enum BuildError {
     InputNotBuilt(String),
     /// An input not found.
     InputNotFound(String),
+    /// An I/O error.
+    Io(String),
+    /// A task join error.
+    Join(String),
     /// A module dependency error.
     ModuleDependency(ModuleDependencyError),
-    /// Other errors.
-    Other(String),
     /// An output not found.
     OutputNotFound(String),
     /// A parse error.
@@ -55,6 +59,9 @@ impl Error for BuildError {}
 impl Display for BuildError {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
+            Self::Acquire(message) | Self::Io(message) | Self::Join(message) => {
+                write!(formatter, "{message}")
+            }
             Self::Build => write!(formatter, "build failed"),
             Self::Command(error) => write!(formatter, "{error}"),
             Self::Compile(error) => write!(formatter, "{error}"),
@@ -82,7 +89,6 @@ impl Display for BuildError {
             Self::ModuleDependency(error) => {
                 write!(formatter, "{error}")
             }
-            Self::Other(message) => write!(formatter, "{message}"),
             Self::OutputNotFound(output) => {
                 write!(formatter, "output \"{output}\" not found")
             }
@@ -94,7 +100,7 @@ impl Display for BuildError {
 
 impl From<AcquireError> for BuildError {
     fn from(error: AcquireError) -> Self {
-        Self::Other(error.to_string())
+        Self::Acquire(error.to_string())
     }
 }
 
@@ -130,13 +136,13 @@ impl From<FileError> for BuildError {
 
 impl From<io::Error> for BuildError {
     fn from(error: io::Error) -> Self {
-        Self::Other(error.to_string())
+        Self::Io(error.to_string())
     }
 }
 
 impl From<JoinError> for BuildError {
     fn from(error: JoinError) -> Self {
-        Self::Other(error.to_string())
+        Self::Join(error.to_string())
     }
 }
 
@@ -155,5 +161,34 @@ impl From<ParseError> for BuildError {
 impl From<BuildGraphError> for BuildError {
     fn from(error: BuildGraphError) -> Self {
         Self::BuildGraph(error)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_acquire() {
+        assert_eq!(
+            BuildError::Acquire("semaphore closed".into()).to_string(),
+            "semaphore closed"
+        );
+    }
+
+    #[test]
+    fn display_io() {
+        assert_eq!(
+            BuildError::Io("permission denied".into()).to_string(),
+            "permission denied"
+        );
+    }
+
+    #[test]
+    fn display_join() {
+        assert_eq!(
+            BuildError::Join("task cancelled".into()).to_string(),
+            "task cancelled"
+        );
     }
 }

@@ -6,8 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use tokio::{
-    fs::{self, File},
-    io::AsyncReadExt,
+    fs::{canonicalize, create_dir_all, metadata, read, read_to_string, remove_file, try_exists},
     sync::Semaphore,
 };
 
@@ -32,47 +31,35 @@ impl OsFileSystem {
 
 #[async_trait]
 impl FileSystem for OsFileSystem {
-    async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), FileError> {
+    async fn read_file(&self, path: &Path) -> Result<Vec<u8>, FileError> {
         let _permit = self.semaphore.acquire().await?;
 
-        File::open(path)
-            .await
-            .map_err(|error| Self::error(error, path))?
-            .read_to_end(buffer)
-            .await
-            .map_err(|error| Self::error(error, path))?;
-
-        Ok(())
+        read(path).await.map_err(|error| Self::error(error, path))
     }
 
-    async fn read_file_to_string(&self, path: &Path, buffer: &mut String) -> Result<(), FileError> {
+    async fn read_file_to_string(&self, path: &Path) -> Result<String, FileError> {
         let _permit = self.semaphore.acquire().await?;
 
-        File::open(path)
+        read_to_string(path)
             .await
-            .map_err(|error| Self::error(error, path))?
-            .read_to_string(buffer)
-            .await
-            .map_err(|error| Self::error(error, path))?;
-
-        Ok(())
+            .map_err(|error| Self::error(error, path))
     }
 
     async fn exists(&self, path: &Path) -> Result<bool, FileError> {
-        fs::try_exists(path)
+        try_exists(path)
             .await
             .map_err(|error| Self::error(error, path))
     }
 
     async fn metadata(&self, path: &Path) -> Result<Metadata, FileError> {
-        Ok(fs::metadata(path)
+        Ok(metadata(path)
             .await
             .map_err(|error| Self::error(error, path))?
             .try_into()?)
     }
 
     async fn create_directory(&self, path: &Path) -> Result<(), FileError> {
-        fs::create_dir_all(path)
+        create_dir_all(path)
             .await
             .map_err(|error| Self::error(error, path))?;
 
@@ -80,13 +67,13 @@ impl FileSystem for OsFileSystem {
     }
 
     async fn canonicalize_path(&self, path: &Path) -> Result<PathBuf, FileError> {
-        fs::canonicalize(path)
+        canonicalize(path)
             .await
             .map_err(|error| Self::error(error, path))
     }
 
     async fn remove_file(&self, path: &Path) -> Result<(), FileError> {
-        fs::remove_file(path)
+        remove_file(path)
             .await
             .map_err(|error| Self::error(error, path))?;
 
@@ -98,7 +85,7 @@ impl FileSystem for OsFileSystem {
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
-    use std::fs;
+    use std::fs::{metadata, write};
     use tempfile::tempdir;
 
     #[test]
@@ -115,19 +102,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_file() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("foo");
+
+        write(&path, "bar").unwrap();
+
+        assert_eq!(OsFileSystem::new(1).read_file(&path).await.unwrap(), b"bar");
+    }
+
+    #[tokio::test]
+    async fn fail_to_read_missing_file() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("foo");
+
+        assert!(
+            OsFileSystem::new(1)
+                .read_file(&path)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains(&path.display().to_string())
+        );
+    }
+
+    #[tokio::test]
     async fn read_file_to_string() {
         let directory = tempdir().unwrap();
         let path = directory.path().join("foo");
-        let mut buffer = "foo".to_owned();
 
-        fs::write(&path, "bar").unwrap();
+        write(&path, "bar").unwrap();
 
-        OsFileSystem::new(1)
-            .read_file_to_string(&path, &mut buffer)
-            .await
-            .unwrap();
-
-        assert_eq!(buffer, "foobar");
+        assert_eq!(
+            OsFileSystem::new(1)
+                .read_file_to_string(&path)
+                .await
+                .unwrap(),
+            "bar"
+        );
     }
 
     #[tokio::test]
@@ -137,7 +149,7 @@ mod tests {
 
         assert!(
             OsFileSystem::new(1)
-                .read_file_to_string(&path, &mut String::new())
+                .read_file_to_string(&path)
                 .await
                 .unwrap_err()
                 .to_string()
@@ -153,7 +165,7 @@ mod tests {
 
         assert!(!file_system.exists(&path).await.unwrap());
 
-        fs::write(&path, "").unwrap();
+        write(&path, "").unwrap();
 
         assert!(file_system.exists(&path).await.unwrap());
     }
@@ -165,7 +177,7 @@ mod tests {
 
         OsFileSystem::new(1).create_directory(&path).await.unwrap();
 
-        assert!(fs::metadata(&path).unwrap().is_dir());
+        assert!(metadata(&path).unwrap().is_dir());
     }
 
     #[tokio::test]
@@ -173,7 +185,7 @@ mod tests {
         let directory = tempdir().unwrap();
         let path = directory.path().join("foo");
 
-        fs::write(&path, "").unwrap();
+        write(&path, "").unwrap();
 
         OsFileSystem::new(1).remove_file(&path).await.unwrap();
 

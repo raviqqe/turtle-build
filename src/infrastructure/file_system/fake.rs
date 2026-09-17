@@ -3,7 +3,6 @@ use crate::infrastructure::{FileError, FileSystem};
 use alloc::sync::Arc;
 use async_trait::async_trait;
 use core::{
-    str,
     sync::atomic::{AtomicU64, Ordering},
     time::Duration,
 };
@@ -51,16 +50,12 @@ impl FakeFileSystem {
 
 #[async_trait]
 impl FileSystem for FakeFileSystem {
-    async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), FileError> {
-        buffer.extend(self.file(path)?.content);
-
-        Ok(())
+    async fn read_file(&self, path: &Path) -> Result<Vec<u8>, FileError> {
+        Ok(self.file(path)?.content)
     }
 
-    async fn read_file_to_string(&self, path: &Path, buffer: &mut String) -> Result<(), FileError> {
-        buffer.push_str(str::from_utf8(&self.file(path)?.content).map_err(FileError::new)?);
-
-        Ok(())
+    async fn read_file_to_string(&self, path: &Path) -> Result<String, FileError> {
+        String::from_utf8(self.file(path)?.content).map_err(FileError::new)
     }
 
     async fn exists(&self, path: &Path) -> Result<bool, FileError> {

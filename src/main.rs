@@ -162,14 +162,7 @@ async fn parse_modules(
     let mut dependencies = HashMap::new();
 
     while let Some(path) = paths.pop() {
-        let mut source = String::new();
-
-        context
-            .file_system()
-            .read_file_to_string(&path, &mut source)
-            .await?;
-
-        let module = parse(&source)?;
+        let module = parse(&context.file_system().read_file_to_string(&path).await?)?;
 
         let submodule_paths = try_join_all(
             module

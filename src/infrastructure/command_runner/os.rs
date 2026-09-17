@@ -37,11 +37,14 @@ impl OsCommandRunner {
 impl CommandRunner for OsCommandRunner {
     async fn run(&self, command: &str) -> Result<Output, CommandError> {
         let _permit = self.semaphore.acquire().await?;
+        let mut process = Self::create_command(command);
 
-        Ok(Self::create_command(command)
-            .stdin(Stdio::null())
-            .output()
-            .await?)
+        // Detach a command from a terminal so that it cannot read input meant for
+        // a command in the console pool.
+        #[cfg(unix)]
+        process.process_group(0);
+
+        Ok(process.stdin(Stdio::null()).output().await?)
     }
 
     async fn run_with_console(&self, command: &str) -> Result<ExitStatus, CommandError> {
@@ -49,5 +52,25 @@ impl CommandRunner for OsCommandRunner {
 
         // Inherit standard input, output, and error.
         Ok(Self::create_command(command).status().await?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // cspell: ignore pgid
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn run_command_in_own_process_group() {
+        let output = OsCommandRunner::new(1)
+            .run("ps -o pid= -o pgid= -p $$")
+            .await
+            .unwrap();
+        let output = String::from_utf8(output.stdout).unwrap();
+        let ids = output.split_whitespace().collect::<Vec<_>>();
+
+        assert_eq!(ids.len(), 2);
+        assert_eq!(ids[0], ids[1]);
     }
 }

@@ -1,3 +1,4 @@
+locale: en
 coverage:
   if: false
 diff:

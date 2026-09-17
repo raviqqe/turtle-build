@@ -1,5 +1,6 @@
 use std::{fs, io, time::SystemTime};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Metadata {
     modified_time: SystemTime,
     directory: bool,

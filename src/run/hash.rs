@@ -23,8 +23,7 @@ pub async fn calculate_timestamp_hash(
 
     for input in file_inputs {
         context
-            .application()
-            .file_system()
+            .file_cache()
             .metadata(input.as_ref())
             .await?
             .modified_time()
@@ -179,6 +178,31 @@ mod tests {
             )
             .await,
             Ok(hasher.finish())
+        );
+    }
+
+    #[tokio::test]
+    async fn cache_modified_times_in_timestamp_hash() {
+        let file_system = FakeFileSystem::default();
+        let build = Build::new(
+            vec!["foo".into()],
+            vec![],
+            Rule::new("cat bar", None).into(),
+            vec!["bar".into()],
+            vec![],
+            None,
+        );
+        let context = create_context(&file_system, vec![]);
+
+        file_system.write_file("bar", "");
+
+        let hash = calculate_timestamp_hash(&context, &build, &["bar"], &[]).await;
+
+        file_system.write_file("bar", "");
+
+        assert_eq!(
+            hash,
+            calculate_timestamp_hash(&context, &build, &["bar"], &[]).await
         );
     }
 

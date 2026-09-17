@@ -536,6 +536,41 @@ Feature: C and C++ header dependencies
     And I successfully run `turtle`
     Then the file named "bar.o" should contain "#define G 2"
 
+  Scenario: Rebuild with a header dependency regenerated behind a phony output and discovered by another build
+    Given a file named "build.ninja" with:
+      """
+      rule cp
+        command = cp $in $out
+
+      rule gen
+        command = sleep 1 && cp $in gen.h && touch $out
+
+      rule cc
+        command = printf '$out: %s\n' "$$(cat $in)" > $out.d && cp $in $out
+        depfile = $out.d
+        deps = gcc
+
+      rule cc_header
+        command = printf '$out: $in gen.h\n' > $out.d && cat $in gen.h > $out
+        depfile = $out.d
+        deps = gcc
+
+      build gen.h.tmp: cp gen.h.in
+      build gen.stamp: gen gen.h.tmp
+      build gen.h: phony gen.stamp
+      build foo.o: cc foo.c
+      build bar.o: cc_header bar.c || gen.h
+
+      """
+    And a file named "foo.c" with "foo.c"
+    And a file named "bar.c" with "int main(void) { return 0; }"
+    And a file named "gen.h.in" with "#define G 1"
+    When I successfully run `turtle`
+    And a file named "foo.c" with "gen.h"
+    And a file named "gen.h.in" with "#define G 2"
+    And I successfully run `turtle`
+    Then the file named "bar.o" should contain "#define G 2"
+
   Scenario: Report an error for a cycle through a header dependency on the next run
     Given a file named "build.ninja" with:
       """

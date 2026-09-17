@@ -159,21 +159,27 @@ Feature: Pool statement
         pool = one
 
       rule sleep
-        command = sleep 0.5 && touch $out
+        command = sleep 1 && touch $out
 
-      build foo.o: cc
-        header = foo.h
-      build bar.o: cc
-        header = bar.h
-      build baz: sleep
+      build a.o: cc
+        header = a.h
+      build b.o: cc
+        header = b.h
+      build c.o: cc
+        header = c.h
+      build d.o: cc
+        header = d.h
+      build hold: sleep
 
       """
-    And a file named "foo.h" with ""
-    And a file named "bar.h" with ""
+    And a file named "a.h" with ""
+    And a file named "b.h" with ""
+    And a file named "c.h" with ""
+    And a file named "d.h" with ""
     When I successfully run `turtle -j 4`
-    And a file named "bar.h" with "bar"
+    And a file named "b.h" with "b"
     And I successfully run `turtle -j 4`
-    Then the file named "bar.o" should contain "bar"
+    Then the file named "b.o" should contain "b"
 
   Scenario: Build a phony output in a console pool
     Given a file named "build.ninja" with:

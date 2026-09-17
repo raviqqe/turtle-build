@@ -12,7 +12,7 @@ type Cache<T> = HashMap<PathBuf, Arc<OnceCell<T>>>;
 
 pub struct FileCache {
     file_system: Arc<dyn FileSystem + Send + Sync>,
-    existences: Cache<bool>,
+    existences: Cache<()>,
     content_hashes: Cache<u64>,
 }
 
@@ -26,7 +26,19 @@ impl FileCache {
     }
 
     pub async fn exists(&self, path: &Path) -> Result<bool, FileError> {
-        Self::get(&self.existences, path, || self.file_system.exists(path)).await
+        match Self::get(&self.existences, path, || async {
+            self.file_system
+                .exists(path)
+                .await?
+                .then_some(())
+                .ok_or(None)
+        })
+        .await
+        {
+            Ok(()) => Ok(true),
+            Err(None) => Ok(false),
+            Err(Some(error)) => Err(error),
+        }
     }
 
     pub async fn content_hash(&self, path: &Path) -> Result<u64, FileError> {
@@ -37,11 +49,11 @@ impl FileCache {
         .await
     }
 
-    async fn get<T: Copy, F: Future<Output = Result<T, FileError>>>(
+    async fn get<T: Copy, E, F: Future<Output = Result<T, E>>>(
         cache: &Cache<T>,
         path: &Path,
         fetch: impl FnOnce() -> F,
-    ) -> Result<T, FileError> {
+    ) -> Result<T, E> {
         // Do not inline this to avoid holding a lock of a cache across an await point.
         let cell = cache
             .entry_async(path.into())
@@ -94,11 +106,13 @@ mod tests {
             let file_system = FakeFileSystem::default();
             let cache = create_cache(&file_system);
 
-            assert_eq!(cache.exists("foo".as_ref()).await, Ok(false));
-
             file_system.write_file("foo", "");
 
-            assert_eq!(cache.exists("foo".as_ref()).await, Ok(false));
+            assert_eq!(cache.exists("foo".as_ref()).await, Ok(true));
+
+            file_system.remove_file("foo".as_ref()).await.unwrap();
+
+            assert_eq!(cache.exists("foo".as_ref()).await, Ok(true));
         }
 
         #[tokio::test]
@@ -106,11 +120,22 @@ mod tests {
             let file_system = FakeFileSystem::default();
             let cache = create_cache(&file_system);
 
+            file_system.write_file("foo", "");
+
+            assert_eq!(cache.exists("foo".as_ref()).await, Ok(true));
+            assert_eq!(cache.exists("bar".as_ref()).await, Ok(false));
+        }
+
+        #[tokio::test]
+        async fn do_not_cache_missing_file() {
+            let file_system = FakeFileSystem::default();
+            let cache = create_cache(&file_system);
+
             assert_eq!(cache.exists("foo".as_ref()).await, Ok(false));
 
-            file_system.write_file("bar", "");
+            file_system.write_file("foo", "");
 
-            assert_eq!(cache.exists("bar".as_ref()).await, Ok(true));
+            assert_eq!(cache.exists("foo".as_ref()).await, Ok(true));
         }
     }
 
@@ -199,12 +224,14 @@ mod tests {
             let mut first = pin!(FileCache::get(&cache, "foo".as_ref(), || async {
                 notify.notified().await;
 
-                Ok(1)
+                Ok::<_, FileError>(1)
             }));
 
             assert!(poll!(&mut first).is_pending());
 
-            let mut second = pin!(FileCache::get(&cache, "foo".as_ref(), || async { Ok(2) }));
+            let mut second = pin!(FileCache::get(&cache, "foo".as_ref(), || async {
+                Ok::<_, FileError>(2)
+            }));
 
             assert!(poll!(&mut second).is_pending());
 
@@ -217,10 +244,17 @@ mod tests {
         async fn fetch_again_after_cancelled_fetch() {
             let cache = Cache::default();
 
-            assert!(poll!(pin!(FileCache::get(&cache, "foo".as_ref(), pending))).is_pending());
+            assert!(
+                poll!(pin!(FileCache::get(
+                    &cache,
+                    "foo".as_ref(),
+                    pending::<Result<_, FileError>>
+                )))
+                .is_pending()
+            );
 
             assert_eq!(
-                FileCache::get(&cache, "foo".as_ref(), || async { Ok(1) }).await,
+                FileCache::get(&cache, "foo".as_ref(), || async { Ok::<_, FileError>(1) }).await,
                 Ok(1)
             );
         }
@@ -231,7 +265,7 @@ mod tests {
             let mut future = pin!(FileCache::get(
                 &cache,
                 "foo".as_ref(),
-                pending::<Result<(), _>>
+                pending::<Result<(), FileError>>
             ));
 
             assert!(poll!(&mut future).is_pending());
@@ -241,7 +275,7 @@ mod tests {
                     poll!(pin!(FileCache::get(
                         &cache,
                         index.to_string().as_ref(),
-                        || async { Ok(()) }
+                        || async { Ok::<_, FileError>(()) }
                     ))),
                     Poll::Ready(Ok(()))
                 );

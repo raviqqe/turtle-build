@@ -23,6 +23,7 @@ use crate::{
 };
 use alloc::sync::Arc;
 use async_recursion::async_recursion;
+use core::convert::identity;
 use futures::future::{FutureExt, try_join_all};
 use itertools::Itertools;
 pub use options::RunOptions;
@@ -180,15 +181,21 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             vec![]
         };
 
+        // Do not use the file cache to avoid caching metadata of outputs before the rule runs.
         let outputs_exist = try_join_all(
             build
                 .outputs()
                 .iter()
                 .chain(build.implicit_outputs())
-                .map(|path| check_file_existence(&context, path)),
+                .map(|path| {
+                    context
+                        .application()
+                        .file_system()
+                        .exists(path.as_ref().as_ref())
+                }),
         )
         .await
-        .is_ok();
+        .is_ok_and(|existences| existences.into_iter().all(identity));
         let (phony_inputs, file_inputs) =
             classify_inputs(&context, &build, dynamic_inputs, &header_dependencies);
         let mut timestamp_hash =

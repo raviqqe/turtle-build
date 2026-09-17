@@ -51,11 +51,12 @@ impl FileSystem for OsFileSystem {
             .map_err(|error| Self::error(error, path))
     }
 
-    async fn metadata(&self, path: &Path) -> Result<Metadata, FileError> {
-        Ok(metadata(path)
-            .await
-            .map_err(|error| Self::error(error, path))?
-            .try_into()?)
+    async fn metadata(&self, path: &Path) -> Result<Option<Metadata>, FileError> {
+        match metadata(path).await {
+            Ok(metadata) => Ok(Some(metadata.try_into()?)),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(Self::error(error, path)),
+        }
     }
 
     async fn create_directory(&self, path: &Path) -> Result<(), FileError> {
@@ -168,6 +169,67 @@ mod tests {
         write(&path, "").unwrap();
 
         assert!(file_system.exists(&path).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn get_metadata_of_file() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("foo");
+
+        write(&path, "").unwrap();
+
+        assert_eq!(
+            OsFileSystem::new(1).metadata(&path).await.unwrap(),
+            Some(Metadata::new(
+                metadata(&path).unwrap().modified().unwrap(),
+                false
+            ))
+        );
+    }
+
+    #[tokio::test]
+    async fn get_metadata_of_directory() {
+        let directory = tempdir().unwrap();
+
+        assert_eq!(
+            OsFileSystem::new(1)
+                .metadata(directory.path())
+                .await
+                .unwrap(),
+            Some(Metadata::new(
+                metadata(directory.path()).unwrap().modified().unwrap(),
+                true
+            ))
+        );
+    }
+
+    #[tokio::test]
+    async fn get_metadata_of_missing_file() {
+        let directory = tempdir().unwrap();
+
+        assert_eq!(
+            OsFileSystem::new(1)
+                .metadata(&directory.path().join("foo"))
+                .await,
+            Ok(None)
+        );
+    }
+
+    #[tokio::test]
+    async fn fail_to_get_metadata_under_file() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("foo");
+
+        write(&path, "").unwrap();
+
+        assert!(
+            OsFileSystem::new(1)
+                .metadata(&path.join("bar"))
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains(&path.join("bar").display().to_string())
+        );
     }
 
     #[tokio::test]

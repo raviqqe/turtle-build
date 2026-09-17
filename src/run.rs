@@ -181,7 +181,6 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             vec![]
         };
 
-        // Do not use the file cache to avoid caching metadata of outputs before the rule runs.
         let outputs_exist = try_join_all(
             build
                 .outputs()

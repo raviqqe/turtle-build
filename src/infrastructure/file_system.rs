@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 
 #[async_trait]
 pub trait FileSystem {
-    async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), FileError>;
-    async fn read_file_to_string(&self, path: &Path, buffer: &mut String) -> Result<(), FileError>;
+    async fn read_file(&self, path: &Path) -> Result<Vec<u8>, FileError>;
+    async fn read_file_to_string(&self, path: &Path) -> Result<String, FileError>;
     async fn exists(&self, path: &Path) -> Result<bool, FileError>;
     async fn metadata(&self, path: &Path) -> Result<Metadata, FileError>;
     async fn create_directory(&self, path: &Path) -> Result<(), FileError>;

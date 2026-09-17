@@ -5,11 +5,7 @@ use std::{
     io,
     path::{Path, PathBuf},
 };
-use tokio::{
-    fs::{self, File},
-    io::AsyncReadExt,
-    sync::Semaphore,
-};
+use tokio::{fs, sync::Semaphore};
 
 /// A file system backed by an operating system.
 #[derive(Debug)]
@@ -32,30 +28,20 @@ impl OsFileSystem {
 
 #[async_trait]
 impl FileSystem for OsFileSystem {
-    async fn read_file(&self, path: &Path, buffer: &mut Vec<u8>) -> Result<(), FileError> {
+    async fn read_file(&self, path: &Path) -> Result<Vec<u8>, FileError> {
         let _permit = self.semaphore.acquire().await?;
 
-        File::open(path)
+        fs::read(path)
             .await
-            .map_err(|error| Self::error(error, path))?
-            .read_to_end(buffer)
-            .await
-            .map_err(|error| Self::error(error, path))?;
-
-        Ok(())
+            .map_err(|error| Self::error(error, path))
     }
 
-    async fn read_file_to_string(&self, path: &Path, buffer: &mut String) -> Result<(), FileError> {
+    async fn read_file_to_string(&self, path: &Path) -> Result<String, FileError> {
         let _permit = self.semaphore.acquire().await?;
 
-        File::open(path)
+        fs::read_to_string(path)
             .await
-            .map_err(|error| Self::error(error, path))?
-            .read_to_string(buffer)
-            .await
-            .map_err(|error| Self::error(error, path))?;
-
-        Ok(())
+            .map_err(|error| Self::error(error, path))
     }
 
     async fn exists(&self, path: &Path) -> Result<bool, FileError> {

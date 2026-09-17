@@ -13,6 +13,10 @@ pub async fn read_header_dependencies(
     rule: &Rule,
     output: &Output,
 ) -> Result<Vec<String>, BuildError> {
+    if !output.status.success() {
+        return Ok(vec![]);
+    }
+
     let dependencies = match rule.header_dependency() {
         None => vec![],
         Some(HeaderDependency::Make { path } | HeaderDependency::Gcc { path }) => {

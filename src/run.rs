@@ -224,8 +224,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             )
             .await?;
 
-            let output = run_rule(&context, rule).await?;
-            let new_header_dependencies = read_header_dependencies(&context, rule, &output).await?;
+            let new_header_dependencies = run_rule(&context, rule).await?;
 
             context
                 .application()
@@ -360,8 +359,10 @@ fn classify_inputs<'a>(
     )
 }
 
-async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildError> {
-    let ((output, duration), mut console) = if rule.pool() == Some(&Pool::Console) {
+async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Vec<String>, BuildError> {
+    let ((output, header_dependencies, duration), mut console) = if rule.pool()
+        == Some(&Pool::Console)
+    {
         let mut console = write_description(context, rule).await?;
 
         console.flush().await?;
@@ -372,16 +373,15 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildErro
             .command_runner()
             .run_with_console(rule.command())
             .await?;
+        let output = Output {
+            status,
+            stdout: vec![],
+            stderr: vec![],
+        };
+        let header_dependencies = read_header_dependencies(context, rule, &output).await?;
 
         (
-            (
-                Output {
-                    status,
-                    stdout: vec![],
-                    stderr: vec![],
-                },
-                Instant::now() - time,
-            ),
+            (output, header_dependencies, Instant::now() - time),
             console,
         )
     } else {
@@ -394,10 +394,13 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildErro
                     .command_runner()
                     .run(rule.command())
                     .await?;
+                // Read a dependency file before releasing a pool so that commands sharing
+                // one dependency file do not overwrite it for each other.
+                let header_dependencies = read_header_dependencies(context, rule, &output).await?;
 
                 drop(permit);
 
-                Ok::<_, BuildError>((output, Instant::now() - time))
+                Ok::<_, BuildError>((output, header_dependencies, Instant::now() - time))
             },
             write_description(context, rule)
         );
@@ -427,7 +430,7 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildErro
         return Err(BuildError::Build);
     }
 
-    Ok(output)
+    Ok(header_dependencies)
 }
 
 async fn write_description<'a>(
@@ -1990,6 +1993,26 @@ mod tests {
         assert_eq!(console.flushed_stderr(), "bar\n");
 
         future.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn read_header_dependencies_of_command() {
+        let file_system = FakeFileSystem::default();
+
+        file_system.write_file("foo.d", "foo.o: foo.h\n");
+
+        let context = RunContext::new(
+            create_context(&Default::default(), &Default::default(), &file_system),
+            create_simple_config(vec![], &[]),
+            BuildGraph::new(&Default::default()),
+            DEFAULT_OPTIONS,
+        );
+        let rule =
+            Rule::new("cc foo.c", None).with_header_dependency(Some(HeaderDependency::Make {
+                path: "foo.d".into(),
+            }));
+
+        assert_eq!(run_rule(&context, &rule).await.unwrap(), ["foo.h"]);
     }
 
     #[tokio::test]

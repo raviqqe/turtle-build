@@ -146,6 +146,35 @@ Feature: Pool statement
     When I successfully run `turtle`
     Then the file named "bar" should exist
 
+  Scenario: Read a dependency file before running another build in the same pool
+    Given a file named "build.ninja" with:
+      """
+      pool one
+        depth = 1
+
+      rule cc
+        command = printf '%s: %s\n' $out $header > shared.d && cat $header > $out
+        deps = gcc
+        depfile = shared.d
+        pool = one
+
+      rule sleep
+        command = sleep 0.5 && touch $out
+
+      build foo.o: cc
+        header = foo.h
+      build bar.o: cc
+        header = bar.h
+      build baz: sleep
+
+      """
+    And a file named "foo.h" with ""
+    And a file named "bar.h" with ""
+    When I successfully run `turtle -j 4`
+    And a file named "bar.h" with "bar"
+    And I successfully run `turtle -j 4`
+    Then the file named "bar.o" should contain "bar"
+
   Scenario: Build a phony output in a console pool
     Given a file named "build.ninja" with:
       """

@@ -12,7 +12,6 @@ type Cache<T> = HashMap<PathBuf, Arc<OnceCell<T>>>;
 
 pub struct FileCache {
     file_system: Arc<dyn FileSystem + Send + Sync>,
-    existences: Cache<()>,
     metadata: Cache<Metadata>,
     content_hashes: Cache<u64>,
 }
@@ -21,30 +20,25 @@ impl FileCache {
     pub fn new(file_system: Arc<dyn FileSystem + Send + Sync>) -> Self {
         Self {
             file_system,
-            existences: HashMap::new(),
             metadata: HashMap::new(),
             content_hashes: HashMap::new(),
         }
     }
 
     pub async fn exists(&self, path: &Path) -> Result<bool, FileError> {
-        match Self::get(&self.existences, path, || async {
-            self.file_system
-                .exists(path)
-                .await?
-                .then_some(())
-                .ok_or(None)
+        Ok(self.metadata(path).await?.is_some())
+    }
+
+    pub async fn metadata(&self, path: &Path) -> Result<Option<Metadata>, FileError> {
+        match Self::get(&self.metadata, path, || async {
+            self.file_system.metadata(path).await?.ok_or(None)
         })
         .await
         {
-            Ok(()) => Ok(true),
-            Err(None) => Ok(false),
+            Ok(metadata) => Ok(Some(metadata)),
+            Err(None) => Ok(None),
             Err(Some(error)) => Err(error),
         }
-    }
-
-    pub async fn metadata(&self, path: &Path) -> Result<Metadata, FileError> {
-        Self::get(&self.metadata, path, || self.file_system.metadata(path)).await
     }
 
     pub async fn content_hash(&self, path: &Path) -> Result<u64, FileError> {
@@ -90,6 +84,18 @@ mod tests {
             let file_system = FakeFileSystem::default();
 
             file_system.write_file("foo", "");
+
+            assert_eq!(
+                create_cache(&file_system).exists("foo".as_ref()).await,
+                Ok(true)
+            );
+        }
+
+        #[tokio::test]
+        async fn check_directory() {
+            let file_system = FakeFileSystem::default();
+
+            file_system.create_directory("foo".as_ref()).await.unwrap();
 
             assert_eq!(
                 create_cache(&file_system).exists("foo".as_ref()).await,
@@ -159,7 +165,17 @@ mod tests {
 
             assert_eq!(
                 create_cache(&file_system).metadata("foo".as_ref()).await,
-                Ok(Metadata::new(SystemTime::UNIX_EPOCH, false))
+                Ok(Some(Metadata::new(SystemTime::UNIX_EPOCH, false)))
+            );
+        }
+
+        #[tokio::test]
+        async fn get_missing_file() {
+            assert_eq!(
+                create_cache(&Default::default())
+                    .metadata("foo".as_ref())
+                    .await,
+                Ok(None)
             );
         }
 
@@ -187,37 +203,47 @@ mod tests {
 
             assert_eq!(
                 cache.metadata("foo".as_ref()).await,
-                Ok(Metadata::new(SystemTime::UNIX_EPOCH, false))
+                Ok(Some(Metadata::new(SystemTime::UNIX_EPOCH, false)))
             );
             assert_eq!(
                 cache.metadata("bar".as_ref()).await,
-                Ok(Metadata::new(
+                Ok(Some(Metadata::new(
                     SystemTime::UNIX_EPOCH + Duration::from_secs(1),
                     false
-                ))
+                )))
             );
         }
 
         #[tokio::test]
-        async fn fail_to_get_missing_file() {
-            assert_eq!(
-                create_cache(&Default::default())
-                    .metadata("foo".as_ref())
-                    .await,
-                Err(FileError::new("file not found"))
-            );
-        }
-
-        #[tokio::test]
-        async fn get_file_created_after_error() {
+        async fn cache_metadata_on_existence_check() {
             let file_system = FakeFileSystem::default();
             let cache = create_cache(&file_system);
 
-            cache.metadata("foo".as_ref()).await.unwrap_err();
+            file_system.write_file("foo", "");
+
+            assert_eq!(cache.exists("foo".as_ref()).await, Ok(true));
 
             file_system.write_file("foo", "");
 
-            assert!(cache.metadata("foo".as_ref()).await.is_ok());
+            assert_eq!(
+                cache.metadata("foo".as_ref()).await,
+                Ok(Some(Metadata::new(SystemTime::UNIX_EPOCH, false)))
+            );
+        }
+
+        #[tokio::test]
+        async fn do_not_cache_missing_file() {
+            let file_system = FakeFileSystem::default();
+            let cache = create_cache(&file_system);
+
+            assert_eq!(cache.metadata("foo".as_ref()).await, Ok(None));
+
+            file_system.write_file("foo", "");
+
+            assert_eq!(
+                cache.metadata("foo".as_ref()).await,
+                Ok(Some(Metadata::new(SystemTime::UNIX_EPOCH, false)))
+            );
         }
     }
 

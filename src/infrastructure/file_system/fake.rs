@@ -63,8 +63,20 @@ impl FileSystem for FakeFileSystem {
             || self.directories.lock().unwrap().contains(path))
     }
 
-    async fn metadata(&self, path: &Path) -> Result<Metadata, FileError> {
-        Ok(Metadata::new(self.file(path)?.modified_time, false))
+    async fn metadata(&self, path: &Path) -> Result<Option<Metadata>, FileError> {
+        Ok(self
+            .files
+            .lock()
+            .unwrap()
+            .get(path)
+            .map(|file| Metadata::new(file.modified_time, false))
+            .or_else(|| {
+                self.directories
+                    .lock()
+                    .unwrap()
+                    .contains(path)
+                    .then_some(Metadata::new(SystemTime::UNIX_EPOCH, true))
+            }))
     }
 
     async fn create_directory(&self, path: &Path) -> Result<(), FileError> {

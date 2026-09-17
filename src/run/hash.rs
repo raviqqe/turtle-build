@@ -21,11 +21,12 @@ pub async fn calculate_timestamp_hash(
 
     hash_command(build, &mut hasher);
 
-    for input in file_inputs {
+    for &input in file_inputs {
         context
             .file_cache()
             .metadata(input.as_ref())
             .await?
+            .ok_or_else(|| BuildError::FileNotFound(input.into()))?
             .modified_time()
             .hash(&mut hasher);
     }
@@ -314,6 +315,27 @@ mod tests {
         assert_ne!(
             calculate_timestamp_hash(&context, &build, &[], &[]).await,
             calculate_timestamp_hash(&context, &build, &[], &[]).await
+        );
+    }
+
+    #[tokio::test]
+    async fn fail_with_missing_file_input() {
+        assert_eq!(
+            calculate_timestamp_hash(
+                &create_context(&Default::default(), vec![]),
+                &Build::new(
+                    vec!["foo".into()],
+                    vec![],
+                    Rule::new("cat bar", None).into(),
+                    vec!["bar".into()],
+                    vec![],
+                    None,
+                ),
+                &["bar"],
+                &[],
+            )
+            .await,
+            Err(BuildError::FileNotFound("bar".into()))
         );
     }
 

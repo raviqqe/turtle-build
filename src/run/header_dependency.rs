@@ -24,11 +24,7 @@ pub async fn read_header_dependencies(
     };
 
     if let Some(HeaderDependency::Gcc { path }) = rule.header_dependency()
-        && context
-            .application()
-            .file_system()
-            .exists(path.as_ref())
-            .await?
+        && context.file_cache().exists(path.as_ref()).await?
     {
         context
             .application()
@@ -57,12 +53,7 @@ pub fn exclude_show_includes<'a>(rule: &Rule, output: &'a [u8]) -> Cow<'a, [u8]>
 }
 
 async fn read_depfile(context: &RunContext, path: &str) -> Result<Vec<String>, BuildError> {
-    if !context
-        .application()
-        .file_system()
-        .exists(path.as_ref())
-        .await?
-    {
+    if !context.file_cache().exists(path.as_ref()).await? {
         return Ok(vec![]);
     }
 

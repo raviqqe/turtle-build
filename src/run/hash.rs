@@ -54,9 +54,8 @@ pub async fn calculate_content_hash(
 
     for input in file_inputs {
         context
-            .application()
-            .file_system()
-            .read_file(input.as_ref())
+            .file_cache()
+            .content_hash(input.as_ref())
             .await?
             .hash(&mut hasher);
     }
@@ -109,7 +108,10 @@ mod tests {
         ir::{Config, HeaderDependency},
     };
     use alloc::sync::Arc;
-    use core::time::Duration;
+    use core::{
+        hash::{BuildHasher, BuildHasherDefault},
+        time::Duration,
+    };
     use pretty_assertions::{assert_eq, assert_ne};
     use std::time::SystemTime;
 
@@ -181,6 +183,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn keep_content_hash_format() {
+        let file_system = FakeFileSystem::default();
+        let build = Build::new(
+            vec!["foo.o".into()],
+            vec![],
+            Rule::new("cc foo.c", None).into(),
+            vec!["foo.c".into(), "foo.h".into()],
+            vec![],
+            None,
+        );
+        let mut hasher = DefaultHasher::new();
+
+        file_system.write_file("foo.c", "foo");
+        file_system.write_file("foo.h", "bar");
+
+        Some("cc foo.c").hash(&mut hasher);
+        None::<&HeaderDependency>.hash(&mut hasher);
+
+        for content in ["foo", "bar"] {
+            BuildHasherDefault::<DefaultHasher>::default()
+                .hash_one(content.as_bytes())
+                .hash(&mut hasher);
+        }
+
+        assert_eq!(
+            calculate_content_hash(
+                &create_context(&file_system, vec![]),
+                &build,
+                &["foo.c", "foo.h"],
+                &[]
+            )
+            .await,
+            Ok(hasher.finish())
+        );
+    }
+
+    #[tokio::test]
     async fn distinguish_file_hashes_in_content_hash() {
         let file_system = FakeFileSystem::default();
         let build = Build::new(
@@ -191,19 +230,55 @@ mod tests {
             vec![],
             None,
         );
-        let context = create_context(&file_system, vec![]);
 
         file_system.write_file("bar", "1");
         file_system.write_file("baz", "2");
 
-        let hash = calculate_content_hash(&context, &build, &["bar", "baz"], &[]).await;
+        let hash = calculate_content_hash(
+            &create_context(&file_system, vec![]),
+            &build,
+            &["bar", "baz"],
+            &[],
+        )
+        .await;
 
         file_system.write_file("bar", "2");
         file_system.write_file("baz", "1");
 
         assert_ne!(
             hash,
-            calculate_content_hash(&context, &build, &["bar", "baz"], &[]).await
+            calculate_content_hash(
+                &create_context(&file_system, vec![]),
+                &build,
+                &["bar", "baz"],
+                &[]
+            )
+            .await
+        );
+    }
+
+    #[tokio::test]
+    async fn cache_file_hashes_in_content_hash() {
+        let file_system = FakeFileSystem::default();
+        let build = Build::new(
+            vec!["foo".into()],
+            vec![],
+            Rule::new("cat bar", None).into(),
+            vec!["bar".into()],
+            vec![],
+            None,
+        );
+        let context = create_context(&file_system, vec![]);
+
+        file_system.write_file("bar", "1");
+
+        let hash = calculate_content_hash(&context, &build, &["bar"], &[]).await;
+
+        file_system.write_file("bar", "2");
+
+        assert_eq!(
+            hash,
+            calculate_content_hash(&context, &build, &["bar"], &[]).await
         );
     }
 

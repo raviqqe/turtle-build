@@ -1,5 +1,4 @@
 mod context;
-#[cfg_attr(not(test), expect(dead_code))]
 mod file_cache;
 mod hash;
 mod header_dependency;

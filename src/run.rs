@@ -162,6 +162,10 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         )
         .await?;
 
+        if build.rule().is_none() {
+            invalidate_outputs(&context, &build).await;
+        }
+
         let header_dependencies = if build.rule().is_some() {
             let dependencies = context
                 .application()
@@ -231,8 +235,12 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             )
             .await?;
 
-            let output = run_rule(&context, rule).await?;
-            let new_header_dependencies = read_header_dependencies(&context, rule, &output).await?;
+            let output = run_rule(&context, rule).await;
+
+            invalidate_outputs(&context, &build).await;
+
+            let new_header_dependencies =
+                read_header_dependencies(&context, rule, &output?).await?;
 
             context
                 .application()
@@ -325,6 +333,15 @@ async fn prepare_directory(context: &RunContext, path: impl AsRef<Path>) -> Resu
     }
 
     Ok(())
+}
+
+async fn invalidate_outputs(context: &RunContext, build: &Build) {
+    for output in build.outputs().iter().chain(build.implicit_outputs()) {
+        context
+            .file_cache()
+            .invalidate(output.as_ref().as_ref())
+            .await;
+    }
 }
 
 fn classify_inputs<'a>(
@@ -478,7 +495,7 @@ mod tests {
     };
     use core::{num::NonZeroUsize, pin::pin};
     use futures::poll;
-    use pretty_assertions::assert_eq;
+    use pretty_assertions::{assert_eq, assert_ne};
     use regex::Regex;
     #[cfg(unix)]
     use std::os::unix::process::ExitStatusExt;
@@ -585,6 +602,20 @@ mod tests {
             BuildGraph::new(&Default::default()),
             DEFAULT_OPTIONS,
         )
+    }
+
+    fn create_build_run_context(
+        command_runner: &FakeCommandRunner,
+        file_system: &FakeFileSystem,
+        builds: Vec<Build>,
+    ) -> Arc<RunContext> {
+        RunContext::new(
+            create_context(command_runner, &Default::default(), file_system),
+            create_simple_config(builds, &[]),
+            BuildGraph::new(&Default::default()),
+            DEFAULT_OPTIONS,
+        )
+        .into()
     }
 
     #[tokio::test]
@@ -1243,6 +1274,147 @@ mod tests {
             Err(BuildError::Build)
         );
         assert_eq!(command_runner.commands(), ["exit 1", "exit 1"]);
+    }
+
+    #[tokio::test]
+    async fn invalidate_file_cache_of_outputs_after_command() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+        let context = create_build_run_context(&command_runner, &file_system, vec![]);
+        let build = Build::new(
+            vec!["foo".into()],
+            vec!["bar".into()],
+            Rule::new("touch foo bar", None).into(),
+            vec![],
+            vec![],
+            None,
+        )
+        .into();
+        let mut future = pin!(run_build(context.clone(), &build));
+
+        file_system.write_file("foo", "1");
+        file_system.write_file("bar", "1");
+
+        assert!(poll!(&mut future).is_pending());
+
+        // Let the runtime run the build until its command suspends.
+        yield_now().await;
+
+        assert_eq!(command_runner.commands(), ["touch foo bar"]);
+
+        let foo_hash = context.file_cache().content_hash("foo".as_ref()).await;
+        let bar_hash = context.file_cache().content_hash("bar".as_ref()).await;
+
+        file_system.write_file("foo", "2");
+        file_system.write_file("bar", "2");
+        future.await.unwrap();
+
+        assert_ne!(
+            context.file_cache().content_hash("foo".as_ref()).await,
+            foo_hash
+        );
+        assert_ne!(
+            context.file_cache().content_hash("bar".as_ref()).await,
+            bar_hash
+        );
+    }
+
+    #[tokio::test]
+    async fn invalidate_file_cache_of_output_after_failed_command() {
+        let command_runner =
+            FakeCommandRunner::new([("exit 1".into(), failed_output())].into_iter().collect());
+        let file_system = FakeFileSystem::default();
+        let context = create_build_run_context(&command_runner, &file_system, vec![]);
+        let build = explicit_build(vec!["foo".into()], Rule::new("exit 1", None), vec![]).into();
+        let mut future = pin!(run_build(context.clone(), &build));
+
+        file_system.write_file("foo", "1");
+
+        assert!(poll!(&mut future).is_pending());
+
+        // Let the runtime run the build until its command suspends.
+        yield_now().await;
+
+        assert_eq!(command_runner.commands(), ["exit 1"]);
+
+        let hash = context.file_cache().content_hash("foo".as_ref()).await;
+
+        file_system.write_file("foo", "2");
+
+        assert_eq!(future.await, Err(BuildError::Build));
+        assert_ne!(
+            context.file_cache().content_hash("foo".as_ref()).await,
+            hash
+        );
+    }
+
+    #[tokio::test]
+    async fn invalidate_file_cache_of_phony_output_after_inputs() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+        let build = Build::new(
+            vec!["foo".into()],
+            vec![],
+            None,
+            vec!["bar".into()],
+            vec![],
+            None,
+        );
+        let context = create_build_run_context(
+            &command_runner,
+            &file_system,
+            vec![
+                build.clone(),
+                explicit_build(vec!["bar".into()], Rule::new("touch bar", None), vec![]),
+            ],
+        );
+        let build = build.into();
+        let mut future = pin!(run_build(context.clone(), &build));
+
+        file_system.write_file("foo", "1");
+        file_system.write_file("bar", "");
+
+        assert!(poll!(&mut future).is_pending());
+
+        // Let the runtime run the builds until the command of the input suspends.
+        yield_now().await;
+
+        assert_eq!(command_runner.commands(), ["touch bar"]);
+
+        let hash = context.file_cache().content_hash("foo".as_ref()).await;
+
+        file_system.write_file("foo", "2");
+        future.await.unwrap();
+
+        assert_ne!(
+            context.file_cache().content_hash("foo".as_ref()).await,
+            hash
+        );
+    }
+
+    #[tokio::test]
+    async fn keep_file_cache_of_other_file_after_command() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+        let context = create_build_run_context(&command_runner, &file_system, vec![]);
+
+        file_system.write_file("bar", "1");
+
+        let hash = context.file_cache().content_hash("bar".as_ref()).await;
+
+        file_system.write_file("bar", "2");
+        run_build(
+            context.clone(),
+            &explicit_build(vec!["foo".into()], Rule::new("touch foo", None), vec![]).into(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(command_runner.commands(), ["touch foo"]);
+        assert_eq!(
+            context.file_cache().content_hash("bar".as_ref()).await,
+            hash
+        );
     }
 
     #[tokio::test]

@@ -504,6 +504,38 @@ Feature: C and C++ header dependencies
     Then the file named "foo.o" should contain "#define G 2"
     And the file named "bar.o" should contain "#define G 2"
 
+  Scenario: Rebuild with a regenerated input discovered as a header dependency by another build
+    Given a file named "build.ninja" with:
+      """
+      rule cp
+        command = cp $in $out
+
+      rule gen
+        command = sleep 1 && cp $in $out
+
+      rule cc
+        command = printf '$out: %s\n' "$$(cat $in)" > $out.d && cp $in $out
+        depfile = $out.d
+        deps = gcc
+
+      rule cat
+        command = cat $in > $out
+
+      build gen.h.tmp: cp gen.h.in
+      build gen.h: gen gen.h.tmp
+      build foo.o: cc foo.c
+      build bar.o: cat bar.c gen.h
+
+      """
+    And a file named "foo.c" with "foo.c"
+    And a file named "bar.c" with "int main(void) { return 0; }"
+    And a file named "gen.h.in" with "#define G 1"
+    When I successfully run `turtle`
+    And a file named "foo.c" with "gen.h"
+    And a file named "gen.h.in" with "#define G 2"
+    And I successfully run `turtle`
+    Then the file named "bar.o" should contain "#define G 2"
+
   Scenario: Report an error for a cycle through a header dependency on the next run
     Given a file named "build.ninja" with:
       """

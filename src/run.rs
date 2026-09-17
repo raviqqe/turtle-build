@@ -17,13 +17,12 @@ use crate::{
     context::Context,
     error::BuildError,
     hash_type::HashType,
-    infrastructure::Console,
+    infrastructure::{Console, Metadata},
     ir::{Build, Config, Pool, Rule},
     parse::parse_dynamic,
 };
 use alloc::sync::Arc;
 use async_recursion::async_recursion;
-use core::convert::identity;
 use futures::future::{FutureExt, try_join_all};
 use itertools::Itertools;
 pub use options::RunOptions;
@@ -112,14 +111,18 @@ async fn run_build(context: Arc<RunContext>, build: &Arc<Build>) -> Result<(), B
 
 async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), BuildError> {
     spawn(async move {
-        try_join_all(
-            build
-                .inputs()
-                .iter()
-                .chain(build.order_only_inputs())
-                .map(|input| build_input(context.clone(), input)),
-        )
-        .await?;
+        let (inputs, output_metadata) = join!(
+            try_join_all(
+                build
+                    .inputs()
+                    .iter()
+                    .chain(build.order_only_inputs())
+                    .map(|input| build_input(context.clone(), input)),
+            ),
+            get_output_metadata(&context, &build),
+        );
+
+        inputs?;
 
         // TODO Consider caching dynamic modules.
         let dynamic_config = if let Some(dynamic_module) = build.dynamic_module() {
@@ -187,40 +190,35 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             vec![]
         };
 
-        let outputs_exist = try_join_all(
-            build
-                .outputs()
-                .iter()
-                .chain(build.implicit_outputs())
-                .map(|path| context.build().file_system().exists(path.as_ref().as_ref())),
-        )
-        .await
-        .is_ok_and(|existences| existences.into_iter().all(identity));
         let (phony_inputs, file_inputs) =
             classify_inputs(&context, &build, dynamic_inputs, &header_dependencies);
         let mut timestamp_hash =
             calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
-        if outputs_exist
+        if let Some(metadata) = &output_metadata
             && Some(timestamp_hash)
                 == context
                     .build()
                     .database()
                     .get_hash(HashType::Timestamp, build.id())?
         {
+            cache_output_metadata(&context, &build, metadata).await;
+
             return Ok(());
         }
 
         let mut content_hash =
             calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
-        if outputs_exist
+        if let Some(metadata) = &output_metadata
             && Some(content_hash)
                 == context
                     .build()
                     .database()
                     .get_hash(HashType::Content, build.id())?
         {
+            cache_output_metadata(&context, &build, metadata).await;
+
             return Ok(());
         } else if let Some(rule) = build.rule() {
             try_join_all(
@@ -284,6 +282,44 @@ async fn build_input(context: Arc<RunContext>, input: &str) -> Result<(), BuildE
         run_build(context.clone(), build).await
     } else {
         check_file_existence(&context, input).await
+    }
+}
+
+async fn get_output_metadata(context: &RunContext, build: &Build) -> Option<Vec<Metadata>> {
+    try_join_all(
+        build
+            .outputs()
+            .iter()
+            .chain(build.implicit_outputs())
+            .map(|path| {
+                context
+                    .build()
+                    .file_system()
+                    .metadata(path.as_ref().as_ref())
+            }),
+    )
+    .await
+    .ok()?
+    .into_iter()
+    .collect()
+}
+
+async fn cache_output_metadata(context: &RunContext, build: &Build, metadata: &[Metadata]) {
+    // Inputs of phony builds might write their outputs.
+    if build.rule().is_none() {
+        return;
+    }
+
+    for (path, &metadata) in build
+        .outputs()
+        .iter()
+        .chain(build.implicit_outputs())
+        .zip(metadata)
+    {
+        context
+            .file_cache()
+            .set_metadata(path.as_ref().as_ref(), metadata)
+            .await;
     }
 }
 
@@ -578,6 +614,14 @@ mod tests {
             Rule::new(format!("touch {output}"), None).with_pool(pool),
             vec![],
         )
+    }
+
+    fn count_metadata_requests(file_system: &FakeFileSystem, path: &str) -> usize {
+        file_system
+            .metadata_requests()
+            .iter()
+            .filter(|request| request.as_path() == Path::new(path))
+            .count()
     }
 
     fn create_run_context(
@@ -1404,6 +1448,229 @@ mod tests {
             context.file_cache().content_hash("bar".as_ref()).await,
             hash
         );
+    }
+
+    #[tokio::test]
+    async fn query_output_while_building_input() {
+        let file_system = FakeFileSystem::default();
+
+        file_system.write_file("foo", "");
+        file_system.write_file("bar", "");
+        file_system.write_file("baz", "");
+
+        run(
+            &create_context(&Default::default(), &Default::default(), &file_system),
+            create_simple_config(
+                vec![
+                    explicit_build(
+                        vec!["foo".into()],
+                        Rule::new("cp bar foo", None),
+                        vec!["bar".into()],
+                    ),
+                    explicit_build(
+                        vec!["bar".into()],
+                        Rule::new("cp baz bar", None),
+                        vec!["baz".into()],
+                    ),
+                ],
+                &["foo"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(file_system.metadata_requests().first(), Some(&"foo".into()));
+    }
+
+    #[tokio::test]
+    async fn query_output_once_for_up_to_date_build() {
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&Default::default(), &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![
+                explicit_build(
+                    vec!["foo".into()],
+                    Rule::new("cp bar foo", None),
+                    vec!["bar".into()],
+                ),
+                explicit_build(
+                    vec!["bar".into()],
+                    Rule::new("cp baz bar", None),
+                    vec!["baz".into()],
+                ),
+            ],
+            &["foo"],
+        );
+
+        file_system.write_file("foo", "");
+        file_system.write_file("bar", "");
+        file_system.write_file("baz", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        let count = count_metadata_requests(&file_system, "bar");
+
+        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+        assert_eq!(count_metadata_requests(&file_system, "bar"), count + 1);
+    }
+
+    #[tokio::test]
+    async fn query_implicit_output_once_for_up_to_date_build() {
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&Default::default(), &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![
+                explicit_build(
+                    vec!["foo".into()],
+                    Rule::new("cp qux foo", None),
+                    vec!["qux".into()],
+                ),
+                Build::new(
+                    vec!["bar".into()],
+                    vec!["qux".into()],
+                    Rule::new("cp baz bar", None).into(),
+                    vec!["baz".into()],
+                    vec![],
+                    None,
+                ),
+            ],
+            &["foo"],
+        );
+
+        file_system.write_file("foo", "");
+        file_system.write_file("bar", "");
+        file_system.write_file("baz", "");
+        file_system.write_file("qux", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        let count = count_metadata_requests(&file_system, "qux");
+
+        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+        assert_eq!(count_metadata_requests(&file_system, "qux"), count + 1);
+    }
+
+    #[tokio::test]
+    async fn query_output_once_on_timestamp_update_of_input() {
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&Default::default(), &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![
+                explicit_build(
+                    vec!["foo".into()],
+                    Rule::new("cp bar foo", None),
+                    vec!["bar".into()],
+                ),
+                explicit_build(
+                    vec!["bar".into()],
+                    Rule::new("cp baz bar", None),
+                    vec!["baz".into()],
+                ),
+            ],
+            &["foo"],
+        );
+
+        file_system.write_file("foo", "");
+        file_system.write_file("bar", "");
+        file_system.write_file("baz", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        file_system.write_file("baz", "");
+
+        let count = count_metadata_requests(&file_system, "bar");
+
+        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+        assert_eq!(count_metadata_requests(&file_system, "bar"), count + 1);
+    }
+
+    #[tokio::test]
+    async fn query_output_again_after_command() {
+        let file_system = FakeFileSystem::default();
+
+        file_system.write_file("foo", "");
+        file_system.write_file("bar", "");
+        file_system.write_file("baz", "");
+
+        run(
+            &create_context(&Default::default(), &Default::default(), &file_system),
+            create_simple_config(
+                vec![
+                    explicit_build(
+                        vec!["foo".into()],
+                        Rule::new("cp bar foo", None),
+                        vec!["bar".into()],
+                    ),
+                    explicit_build(
+                        vec!["bar".into()],
+                        Rule::new("cp baz bar", None),
+                        vec!["baz".into()],
+                    ),
+                ],
+                &["foo"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(count_metadata_requests(&file_system, "bar"), 2);
+    }
+
+    #[tokio::test]
+    async fn query_output_again_for_up_to_date_phony_build() {
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&Default::default(), &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![
+                explicit_build(
+                    vec!["foo.o".into()],
+                    Rule::new("cc foo.c", None).with_header_dependency(Some(
+                        HeaderDependency::Make {
+                            path: "foo.d".into(),
+                        },
+                    )),
+                    vec!["foo.c".into()],
+                ),
+                Build::new(
+                    vec!["foo.h".into()],
+                    vec![],
+                    None,
+                    vec!["foo.h.in".into()],
+                    vec![],
+                    None,
+                ),
+            ],
+            &["foo.o", "foo.h"],
+        );
+
+        file_system.write_file("foo.o", "");
+        file_system.write_file("foo.c", "");
+        file_system.write_file("foo.h", "");
+        file_system.write_file("foo.h.in", "");
+        file_system.write_file("foo.d", "foo.o: foo.h\n");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        let count = count_metadata_requests(&file_system, "foo.h");
+
+        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+        assert_eq!(count_metadata_requests(&file_system, "foo.h"), count + 2);
     }
 
     #[tokio::test]

@@ -17,6 +17,7 @@ use std::{
 pub struct FakeFileSystem {
     files: Arc<Mutex<HashMap<PathBuf, FakeFile>>>,
     directories: Arc<Mutex<HashSet<PathBuf>>>,
+    metadata_requests: Arc<Mutex<Vec<PathBuf>>>,
     clock: Arc<AtomicU64>,
 }
 
@@ -36,6 +37,10 @@ impl FakeFileSystem {
                     + Duration::from_secs(self.clock.fetch_add(1, Ordering::SeqCst)),
             },
         );
+    }
+
+    pub fn metadata_requests(&self) -> Vec<PathBuf> {
+        self.metadata_requests.lock().unwrap().clone()
     }
 
     fn file(&self, path: &Path) -> Result<FakeFile, FileError> {
@@ -59,11 +64,15 @@ impl FileSystem for FakeFileSystem {
     }
 
     async fn exists(&self, path: &Path) -> Result<bool, FileError> {
+        self.metadata_requests.lock().unwrap().push(path.into());
+
         Ok(self.files.lock().unwrap().contains_key(path)
             || self.directories.lock().unwrap().contains(path))
     }
 
     async fn metadata(&self, path: &Path) -> Result<Option<Metadata>, FileError> {
+        self.metadata_requests.lock().unwrap().push(path.into());
+
         Ok(self
             .files
             .lock()

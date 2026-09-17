@@ -66,15 +66,13 @@ async fn read_depfile(context: &RunContext, path: &str) -> Result<Vec<String>, B
         return Ok(vec![]);
     }
 
-    let mut source = String::new();
-
-    context
-        .application()
-        .file_system()
-        .read_file_to_string(path.as_ref(), &mut source)
-        .await?;
-
-    Ok(parse_depfile(&source)?)
+    Ok(parse_depfile(
+        &context
+            .application()
+            .file_system()
+            .read_file_to_string(path.as_ref())
+            .await?,
+    )?)
 }
 
 fn extract_show_includes(output: &[u8], prefix: &[u8]) -> Vec<String> {

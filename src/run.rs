@@ -121,13 +121,13 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
 
         // TODO Consider caching dynamic modules.
         let dynamic_config = if let Some(dynamic_module) = build.dynamic_module() {
-            let mut source = String::new();
-            context
-                .application()
-                .file_system()
-                .read_file_to_string(dynamic_module.as_ref().as_ref(), &mut source)
-                .await?;
-            let config = compile_dynamic(&parse_dynamic(&source)?)?;
+            let config = compile_dynamic(&parse_dynamic(
+                &context
+                    .application()
+                    .file_system()
+                    .read_file_to_string(dynamic_module.as_ref().as_ref())
+                    .await?,
+            )?)?;
 
             context
                 .build_graph()

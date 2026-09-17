@@ -7,8 +7,6 @@ use crate::{
 use core::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
 
-const BUFFER_CAPACITY: usize = 1 << 10;
-
 pub async fn calculate_timestamp_hash(
     context: &RunContext,
     build: &Build,
@@ -54,16 +52,13 @@ pub async fn calculate_content_hash(
 
     hash_command(build, &mut hasher);
 
-    let mut buffer = Vec::with_capacity(BUFFER_CAPACITY);
-
     for input in file_inputs {
         context
             .application()
             .file_system()
-            .read_file(input.as_ref(), &mut buffer)
-            .await?;
-        buffer.hash(&mut hasher);
-        buffer.clear();
+            .read_file(input.as_ref())
+            .await?
+            .hash(&mut hasher);
     }
 
     for &input in phony_inputs {

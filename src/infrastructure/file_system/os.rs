@@ -101,19 +101,44 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn read_file_to_string() {
+    async fn read_file() {
         let directory = tempdir().unwrap();
         let path = directory.path().join("foo");
-        let mut buffer = "foo".to_owned();
 
         fs::write(&path, "bar").unwrap();
 
-        OsFileSystem::new(1)
-            .read_file_to_string(&path, &mut buffer)
-            .await
-            .unwrap();
+        assert_eq!(OsFileSystem::new(1).read_file(&path).await.unwrap(), b"bar");
+    }
 
-        assert_eq!(buffer, "foobar");
+    #[tokio::test]
+    async fn fail_to_read_missing_file() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("foo");
+
+        assert!(
+            OsFileSystem::new(1)
+                .read_file(&path)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains(&path.display().to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn read_file_to_string() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("foo");
+
+        fs::write(&path, "bar").unwrap();
+
+        assert_eq!(
+            OsFileSystem::new(1)
+                .read_file_to_string(&path)
+                .await
+                .unwrap(),
+            "bar"
+        );
     }
 
     #[tokio::test]
@@ -123,7 +148,7 @@ mod tests {
 
         assert!(
             OsFileSystem::new(1)
-                .read_file_to_string(&path, &mut String::new())
+                .read_file_to_string(&path)
                 .await
                 .unwrap_err()
                 .to_string()

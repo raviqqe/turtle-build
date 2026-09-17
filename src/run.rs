@@ -1,4 +1,5 @@
 mod context;
+mod file_cache;
 mod hash;
 mod header_dependency;
 mod log;
@@ -286,12 +287,7 @@ async fn filter_existing_header_dependencies(
     let mut existing_dependencies = vec![];
 
     for dependency in dependencies {
-        if context
-            .application()
-            .file_system()
-            .exists(dependency.as_ref())
-            .await?
-        {
+        if context.file_cache().exists(dependency.as_ref()).await? {
             existing_dependencies.push(dependency.clone());
         }
     }
@@ -300,12 +296,7 @@ async fn filter_existing_header_dependencies(
 }
 
 async fn check_file_existence(context: &RunContext, path: &str) -> Result<(), BuildError> {
-    if !context
-        .application()
-        .file_system()
-        .exists(path.as_ref())
-        .await?
-    {
+    if !context.file_cache().exists(path.as_ref()).await? {
         return Err(BuildError::FileNotFound(
             context
                 .application()

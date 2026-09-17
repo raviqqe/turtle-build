@@ -1,4 +1,5 @@
 use crate::infrastructure::{CommandRunner, Console, Database, FileSystem};
+use alloc::sync::Arc;
 use tokio::sync::Mutex;
 
 /// A context.
@@ -6,7 +7,7 @@ pub struct Context {
     command_runner: Box<dyn CommandRunner + Send + Sync>,
     console: Mutex<Box<dyn Console + Send + Sync>>,
     database: Box<dyn Database + Send + Sync>,
-    file_system: Box<dyn FileSystem + Send + Sync>,
+    file_system: Arc<dyn FileSystem + Send + Sync>,
 }
 
 impl Context {
@@ -20,7 +21,7 @@ impl Context {
         Self {
             command_runner: Box::new(command_runner),
             console: Mutex::new(Box::new(console)),
-            file_system: Box::new(file_system),
+            file_system: Arc::new(file_system),
             database: Box::new(database),
         }
     }
@@ -41,7 +42,7 @@ impl Context {
     }
 
     /// Returns a file system.
-    pub fn file_system(&self) -> &(dyn FileSystem + Send + Sync) {
-        &*self.file_system
+    pub fn file_system(&self) -> &Arc<dyn FileSystem + Send + Sync> {
+        &self.file_system
     }
 }

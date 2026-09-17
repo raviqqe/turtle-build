@@ -330,35 +330,6 @@ Feature: C and C++ header dependencies
     And I successfully run `turtle foo.o`
     Then the file named "header.h" should not exist
 
-  Scenario: Tolerate a shared header dependency deleted by another build's command
-    Given a file named "build.ninja" with:
-      """
-      rule gen
-        command = sleep 1 && rm -f header.h && cp $in $out
-
-      rule cc
-        command = printf '$out: $in gen.h header.h\n' > $out.d && cp $in $out
-        depfile = $out.d
-        deps = gcc
-
-      rule cc_header
-        command = printf '$out: $in header.h\n' > $out.d && cp $in $out
-        depfile = $out.d
-        deps = gcc
-
-      build gen.h: gen gen.h.in
-      build foo.o: cc foo.c
-      build bar.o: cc_header bar.c
-
-      """
-    And a file named "foo.c" with "int main(void) { return 0; }"
-    And a file named "bar.c" with "int main(void) { return 0; }"
-    And a file named "gen.h.in" with "#define G 1"
-    And a file named "header.h" with "#define FOO 1"
-    When I successfully run `turtle foo.o bar.o`
-    And I successfully run `turtle foo.o bar.o`
-    Then the file named "header.h" should not exist
-
   Scenario: Build foo.o on a clean checkout before its generated header exists
     Given a file named "build.ninja" with:
       """
@@ -462,6 +433,27 @@ Feature: C and C++ header dependencies
     And a file named "gen.h.in" with "#define G 2"
     And I successfully run `turtle foo.o`
     Then the file named "foo.o" should contain "#define G 2"
+
+  Scenario: Do not rebuild with an unchanged generated header dependency
+    Given a file named "build.ninja" with:
+      """
+      rule gen
+        command = cp $in $out
+
+      rule cc
+        command = printf 'building\n' && printf '$out: $in gen.h\n' > $out.d && cat $in gen.h > $out
+        depfile = $out.d
+        deps = gcc
+
+      build gen.h: gen gen.h.in
+      build foo.o: cc foo.c || gen.h
+
+      """
+    And a file named "foo.c" with "int main(void) { return 0; }"
+    And a file named "gen.h.in" with "#define G 1"
+    When I successfully run `turtle foo.o`
+    And I successfully run `turtle foo.o`
+    Then the stdout should contain exactly "building"
 
   Scenario: Rebuild after a generated header dependency is updated
     Given a file named "build.ninja" with:

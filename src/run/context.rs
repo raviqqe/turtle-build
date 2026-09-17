@@ -1,4 +1,4 @@
-use super::options::RunOptions;
+use super::{file_cache::FileCache, options::RunOptions};
 use crate::{
     BuildError,
     build_graph::BuildGraph,
@@ -18,6 +18,7 @@ pub struct RunContext {
     config: Arc<Config>,
     build_futures: HashMap<BuildId, BuildFuture>,
     build_graph: Mutex<BuildGraph>,
+    file_cache: FileCache,
     pools: std::collections::HashMap<Arc<str>, Semaphore>,
     options: RunOptions,
 }
@@ -30,6 +31,7 @@ impl RunContext {
         options: RunOptions,
     ) -> Self {
         Self {
+            file_cache: FileCache::new(application.file_system().clone()),
             application,
             build_graph: build_graph.into(),
             pools: config
@@ -62,6 +64,10 @@ impl RunContext {
 
     pub const fn build_graph(&self) -> &Mutex<BuildGraph> {
         &self.build_graph
+    }
+
+    pub const fn file_cache(&self) -> &FileCache {
+        &self.file_cache
     }
 
     pub async fn pool(

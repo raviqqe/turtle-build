@@ -1,4 +1,4 @@
-use crate::infrastructure::{FileError, FileSystem};
+use crate::infrastructure::{FileError, FileSystem, Metadata};
 use alloc::sync::Arc;
 use core::hash::{BuildHasher, BuildHasherDefault};
 use scc::HashMap;
@@ -13,6 +13,7 @@ type Cache<T> = HashMap<PathBuf, Arc<OnceCell<T>>>;
 pub struct FileCache {
     file_system: Arc<dyn FileSystem + Send + Sync>,
     existences: Cache<()>,
+    metadata: Cache<Metadata>,
     content_hashes: Cache<u64>,
 }
 
@@ -21,6 +22,7 @@ impl FileCache {
         Self {
             file_system,
             existences: HashMap::new(),
+            metadata: HashMap::new(),
             content_hashes: HashMap::new(),
         }
     }
@@ -39,6 +41,10 @@ impl FileCache {
             Err(None) => Ok(false),
             Err(Some(error)) => Err(error),
         }
+    }
+
+    pub async fn metadata(&self, path: &Path) -> Result<Metadata, FileError> {
+        Self::get(&self.metadata, path, || self.file_system.metadata(path)).await
     }
 
     pub async fn content_hash(&self, path: &Path) -> Result<u64, FileError> {
@@ -136,6 +142,82 @@ mod tests {
             file_system.write_file("foo", "");
 
             assert_eq!(cache.exists("foo".as_ref()).await, Ok(true));
+        }
+    }
+
+    mod metadata {
+        use super::*;
+        use core::time::Duration;
+        use pretty_assertions::assert_eq;
+        use std::time::SystemTime;
+
+        #[tokio::test]
+        async fn get_file() {
+            let file_system = FakeFileSystem::default();
+
+            file_system.write_file("foo", "");
+
+            assert_eq!(
+                create_cache(&file_system).metadata("foo".as_ref()).await,
+                Ok(Metadata::new(SystemTime::UNIX_EPOCH, false))
+            );
+        }
+
+        #[tokio::test]
+        async fn cache_metadata() {
+            let file_system = FakeFileSystem::default();
+            let cache = create_cache(&file_system);
+
+            file_system.write_file("foo", "");
+
+            let metadata = cache.metadata("foo".as_ref()).await.unwrap();
+
+            file_system.write_file("foo", "");
+
+            assert_eq!(cache.metadata("foo".as_ref()).await, Ok(metadata));
+        }
+
+        #[tokio::test]
+        async fn cache_metadata_per_path() {
+            let file_system = FakeFileSystem::default();
+            let cache = create_cache(&file_system);
+
+            file_system.write_file("foo", "");
+            file_system.write_file("bar", "");
+
+            assert_eq!(
+                cache.metadata("foo".as_ref()).await,
+                Ok(Metadata::new(SystemTime::UNIX_EPOCH, false))
+            );
+            assert_eq!(
+                cache.metadata("bar".as_ref()).await,
+                Ok(Metadata::new(
+                    SystemTime::UNIX_EPOCH + Duration::from_secs(1),
+                    false
+                ))
+            );
+        }
+
+        #[tokio::test]
+        async fn fail_to_get_missing_file() {
+            assert_eq!(
+                create_cache(&Default::default())
+                    .metadata("foo".as_ref())
+                    .await,
+                Err(FileError::new("file not found"))
+            );
+        }
+
+        #[tokio::test]
+        async fn get_file_created_after_error() {
+            let file_system = FakeFileSystem::default();
+            let cache = create_cache(&file_system);
+
+            cache.metadata("foo".as_ref()).await.unwrap_err();
+
+            file_system.write_file("foo", "");
+
+            assert!(cache.metadata("foo".as_ref()).await.is_ok());
         }
     }
 

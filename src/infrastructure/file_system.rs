@@ -6,9 +6,8 @@ mod os;
 
 #[cfg(test)]
 pub use self::fake::FakeFileSystem;
-pub use self::{error::FileError, os::OsFileSystem};
+pub use self::{error::FileError, metadata::Metadata, os::OsFileSystem};
 use async_trait::async_trait;
-use metadata::Metadata;
 use std::path::{Path, PathBuf};
 
 #[async_trait]

@@ -5,7 +5,10 @@ use std::{
     io,
     path::{Path, PathBuf},
 };
-use tokio::{fs, sync::Semaphore};
+use tokio::{
+    fs::{canonicalize, create_dir_all, metadata, read, read_to_string, remove_file, try_exists},
+    sync::Semaphore,
+};
 
 /// A file system backed by an operating system.
 #[derive(Debug)]
@@ -31,34 +34,32 @@ impl FileSystem for OsFileSystem {
     async fn read_file(&self, path: &Path) -> Result<Vec<u8>, FileError> {
         let _permit = self.semaphore.acquire().await?;
 
-        fs::read(path)
-            .await
-            .map_err(|error| Self::error(error, path))
+        read(path).await.map_err(|error| Self::error(error, path))
     }
 
     async fn read_file_to_string(&self, path: &Path) -> Result<String, FileError> {
         let _permit = self.semaphore.acquire().await?;
 
-        fs::read_to_string(path)
+        read_to_string(path)
             .await
             .map_err(|error| Self::error(error, path))
     }
 
     async fn exists(&self, path: &Path) -> Result<bool, FileError> {
-        fs::try_exists(path)
+        try_exists(path)
             .await
             .map_err(|error| Self::error(error, path))
     }
 
     async fn metadata(&self, path: &Path) -> Result<Metadata, FileError> {
-        Ok(fs::metadata(path)
+        Ok(metadata(path)
             .await
             .map_err(|error| Self::error(error, path))?
             .try_into()?)
     }
 
     async fn create_directory(&self, path: &Path) -> Result<(), FileError> {
-        fs::create_dir_all(path)
+        create_dir_all(path)
             .await
             .map_err(|error| Self::error(error, path))?;
 
@@ -66,13 +67,13 @@ impl FileSystem for OsFileSystem {
     }
 
     async fn canonicalize_path(&self, path: &Path) -> Result<PathBuf, FileError> {
-        fs::canonicalize(path)
+        canonicalize(path)
             .await
             .map_err(|error| Self::error(error, path))
     }
 
     async fn remove_file(&self, path: &Path) -> Result<(), FileError> {
-        fs::remove_file(path)
+        remove_file(path)
             .await
             .map_err(|error| Self::error(error, path))?;
 
@@ -84,7 +85,7 @@ impl FileSystem for OsFileSystem {
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
-    use std::fs;
+    use std::fs::{metadata, write};
     use tempfile::tempdir;
 
     #[test]
@@ -105,7 +106,7 @@ mod tests {
         let directory = tempdir().unwrap();
         let path = directory.path().join("foo");
 
-        fs::write(&path, "bar").unwrap();
+        write(&path, "bar").unwrap();
 
         assert_eq!(OsFileSystem::new(1).read_file(&path).await.unwrap(), b"bar");
     }
@@ -130,7 +131,7 @@ mod tests {
         let directory = tempdir().unwrap();
         let path = directory.path().join("foo");
 
-        fs::write(&path, "bar").unwrap();
+        write(&path, "bar").unwrap();
 
         assert_eq!(
             OsFileSystem::new(1)
@@ -164,7 +165,7 @@ mod tests {
 
         assert!(!file_system.exists(&path).await.unwrap());
 
-        fs::write(&path, "").unwrap();
+        write(&path, "").unwrap();
 
         assert!(file_system.exists(&path).await.unwrap());
     }
@@ -176,7 +177,7 @@ mod tests {
 
         OsFileSystem::new(1).create_directory(&path).await.unwrap();
 
-        assert!(fs::metadata(&path).unwrap().is_dir());
+        assert!(metadata(&path).unwrap().is_dir());
     }
 
     #[tokio::test]
@@ -184,7 +185,7 @@ mod tests {
         let directory = tempdir().unwrap();
         let path = directory.path().join("foo");
 
-        fs::write(&path, "").unwrap();
+        write(&path, "").unwrap();
 
         OsFileSystem::new(1).remove_file(&path).await.unwrap();
 

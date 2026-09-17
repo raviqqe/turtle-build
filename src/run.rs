@@ -163,6 +163,8 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         .await?;
 
         if build.rule().is_none() {
+            // TODO Consider dropping this case by assuming that outputs of phony
+            // rules are always virtual.
             invalidate_outputs(&context, &build).await;
         }
 

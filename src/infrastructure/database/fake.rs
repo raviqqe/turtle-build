@@ -3,20 +3,25 @@ use crate::{
     infrastructure::{Database, DatabaseError},
     ir::BuildId,
 };
-use alloc::collections::BTreeSet;
+use alloc::{collections::BTreeSet, sync::Arc};
 use async_trait::async_trait;
 use std::{collections::HashMap, sync::Mutex};
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct FakeDatabase {
-    timestamp_hashes: Mutex<HashMap<BuildId, u64>>,
-    content_hashes: Mutex<HashMap<BuildId, u64>>,
-    header_dependencies: Mutex<HashMap<BuildId, Vec<String>>>,
-    outputs: Mutex<BTreeSet<String>>,
-    sources: Mutex<HashMap<String, String>>,
+    timestamp_hashes: Arc<Mutex<HashMap<BuildId, u64>>>,
+    content_hashes: Arc<Mutex<HashMap<BuildId, u64>>>,
+    header_dependencies: Arc<Mutex<HashMap<BuildId, Vec<String>>>>,
+    header_dependency_requests: Arc<Mutex<Vec<BuildId>>>,
+    outputs: Arc<Mutex<BTreeSet<String>>>,
+    sources: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl FakeDatabase {
+    pub fn header_dependency_requests(&self) -> Vec<BuildId> {
+        self.header_dependency_requests.lock().unwrap().clone()
+    }
+
     fn hashes(&self, r#type: HashType) -> &Mutex<HashMap<BuildId, u64>> {
         match r#type {
             HashType::Content => &self.content_hashes,
@@ -38,6 +43,8 @@ impl Database for FakeDatabase {
     }
 
     fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<String>, DatabaseError> {
+        self.header_dependency_requests.lock().unwrap().push(id);
+
         Ok(self
             .header_dependencies
             .lock()

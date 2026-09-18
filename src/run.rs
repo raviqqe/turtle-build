@@ -26,7 +26,7 @@ use async_recursion::async_recursion;
 use futures::future::{FutureExt, try_join_all};
 use itertools::Itertools;
 pub use options::RunOptions;
-use std::{path::Path, process::Output};
+use std::{collections::HashMap, path::Path, process::Output};
 use tokio::{join, spawn, sync::MutexGuard, time::Instant, try_join};
 
 /// Runs builds.
@@ -37,6 +37,7 @@ pub async fn run(
     options: RunOptions,
 ) -> Result<(), BuildError> {
     let mut graph = BuildGraph::new(config.outputs());
+    let mut header_dependencies = HashMap::new();
 
     for build in config
         .outputs()
@@ -44,13 +45,19 @@ pub async fn run(
         .filter(|build| build.rule().is_some())
         .unique_by(|build| build.id())
     {
-        graph.add_header_dependencies(
-            &build.outputs()[0],
-            &context.database().get_header_dependencies(build.id())?,
-        );
+        let dependencies = context.database().get_header_dependencies(build.id())?;
+
+        graph.add_header_dependencies(&build.outputs()[0], &dependencies);
+        header_dependencies.insert(build.id(), dependencies);
     }
 
-    let context = Arc::new(RunContext::new(context.clone(), config, graph, options));
+    let context = Arc::new(RunContext::new(
+        context.clone(),
+        config,
+        graph,
+        header_dependencies,
+        options,
+    ));
 
     context
         .build_graph()
@@ -169,24 +176,18 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             invalidate_outputs(&context, &build).await;
         }
 
-        let header_dependencies = if build.rule().is_some() {
-            let dependencies = context
-                .build()
-                .database()
-                .get_header_dependencies(build.id())?;
+        let dependencies = context.header_dependencies(build.id());
 
-            try_join_all(
-                dependencies
-                    .iter()
-                    .filter_map(|dependency| context.config().outputs().get(dependency.as_str()))
-                    .map(|build| run_build(context.clone(), build)),
-            )
-            .await?;
+        try_join_all(
+            dependencies
+                .iter()
+                .filter_map(|dependency| context.config().outputs().get(dependency.as_str()))
+                .map(|build| run_build(context.clone(), build)),
+        )
+        .await?;
 
-            filter_existing_header_dependencies(&context, &dependencies).await?
-        } else {
-            vec![]
-        };
+        let header_dependencies =
+            filter_existing_header_dependencies(&context, dependencies).await?;
 
         let (phony_inputs, file_inputs) =
             classify_inputs(&context, &build, dynamic_inputs, &header_dependencies);
@@ -321,15 +322,15 @@ async fn cache_output_metadata(context: &RunContext, build: &Build, metadata: &[
     }
 }
 
-async fn filter_existing_header_dependencies(
+async fn filter_existing_header_dependencies<'a>(
     context: &RunContext,
-    dependencies: &[String],
-) -> Result<Vec<String>, BuildError> {
+    dependencies: &'a [String],
+) -> Result<Vec<&'a str>, BuildError> {
     let mut existing_dependencies = vec![];
 
     for dependency in dependencies {
         if context.file_cache().exists(dependency.as_ref()).await? {
-            existing_dependencies.push(dependency.clone());
+            existing_dependencies.push(dependency.as_str());
         }
     }
 
@@ -375,7 +376,7 @@ fn classify_inputs<'a>(
     context: &'a RunContext,
     build: &'a Build,
     dynamic_inputs: &'a [Arc<str>],
-    header_dependencies: &'a [String],
+    header_dependencies: &'a [&'a str],
 ) -> (Vec<&'a str>, Vec<&'a str>) {
     let (phony_inputs, file_inputs) = build
         .inputs()
@@ -395,7 +396,7 @@ fn classify_inputs<'a>(
         phony_inputs,
         file_inputs
             .into_iter()
-            .chain(header_dependencies.iter().map(String::as_str))
+            .chain(header_dependencies.iter().copied())
             .unique()
             .collect(),
     )
@@ -631,6 +632,7 @@ mod tests {
             create_context(command_runner, console, &Default::default()),
             create_pool_config(vec![], &[], pools),
             BuildGraph::new(&Default::default()),
+            Default::default(),
             DEFAULT_OPTIONS,
         )
     }
@@ -644,6 +646,7 @@ mod tests {
             create_context(command_runner, &Default::default(), file_system),
             create_simple_config(builds, &[]),
             BuildGraph::new(&Default::default()),
+            Default::default(),
             DEFAULT_OPTIONS,
         )
         .into()
@@ -1993,6 +1996,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_header_dependencies_once() {
+        let database = FakeDatabase::default();
+        let file_system = FakeFileSystem::default();
+        let context = Arc::new(Context::new(
+            FakeCommandRunner::default(),
+            FakeConsole::default(),
+            database.clone(),
+            file_system.clone(),
+        ));
+        let build = explicit_build(
+            vec!["foo.o".into()],
+            Rule::new("cc foo.c", None),
+            vec!["foo.c".into()],
+        );
+
+        context
+            .database()
+            .set_header_dependencies(build.id(), &["foo.h".into()])
+            .unwrap();
+        file_system.write_file("foo.c", "");
+        file_system.write_file("foo.h", "");
+
+        run(
+            &context,
+            create_simple_config(vec![build.clone()], &["foo.o"]),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(database.header_dependency_requests(), [build.id()]);
+    }
+
+    #[tokio::test]
     async fn detect_circular_header_dependency() {
         let context = create_context(
             &Default::default(),
@@ -2567,6 +2605,7 @@ mod tests {
                 &[],
             ),
             BuildGraph::new(&Default::default()),
+            Default::default(),
             DEFAULT_OPTIONS,
         );
 
@@ -2575,7 +2614,7 @@ mod tests {
                 &context,
                 &build,
                 &["quux".into(), "baz".into()],
-                &["qux".into(), "corge".into()],
+                &["qux", "corge"],
             ),
             (vec!["bar"], vec!["baz", "qux", "quux", "corge"])
         );

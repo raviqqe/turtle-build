@@ -137,6 +137,7 @@ mod tests {
             )
             .into(),
             BuildGraph::new(&Default::default()),
+            Default::default(),
             RunOptions {
                 debug: false,
                 profile: false,

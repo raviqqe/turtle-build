@@ -19,6 +19,7 @@ pub struct RunContext {
     build_futures: HashMap<BuildId, BuildFuture>,
     build_graph: Mutex<BuildGraph>,
     file_cache: FileCache,
+    header_dependencies: std::collections::HashMap<BuildId, Vec<String>>,
     pools: std::collections::HashMap<Arc<str>, Semaphore>,
     options: RunOptions,
 }
@@ -28,12 +29,14 @@ impl RunContext {
         build: Arc<Context>,
         config: Arc<Config>,
         build_graph: BuildGraph,
+        header_dependencies: std::collections::HashMap<BuildId, Vec<String>>,
         options: RunOptions,
     ) -> Self {
         Self {
             file_cache: FileCache::new(build.file_system().clone()),
             build,
             build_graph: build_graph.into(),
+            header_dependencies,
             pools: config
                 .pools()
                 .iter()
@@ -68,6 +71,12 @@ impl RunContext {
 
     pub const fn file_cache(&self) -> &FileCache {
         &self.file_cache
+    }
+
+    pub fn header_dependencies(&self, id: BuildId) -> &[String] {
+        self.header_dependencies
+            .get(&id)
+            .map_or_default(Vec::as_slice)
     }
 
     pub async fn pool(

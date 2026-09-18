@@ -10,7 +10,6 @@ use core::{
 };
 use fjall::{Keyspace, KeyspaceCreateOptions, PersistMode};
 use std::{path::Path, sync::LazyLock};
-use tokio::task::spawn_blocking;
 
 const KEYSPACE_NAME: &str = "build";
 
@@ -134,9 +133,7 @@ impl Database for FjallDatabase {
             return Ok(());
         }
 
-        let database = self.database.clone();
-
-        spawn_blocking(move || database.persist(PersistMode::SyncAll)).await??;
+        self.database.persist(PersistMode::SyncAll)?;
 
         Ok(())
     }

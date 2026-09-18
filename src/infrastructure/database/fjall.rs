@@ -4,17 +4,22 @@ use crate::{
     ir::BuildId,
 };
 use async_trait::async_trait;
-use core::str;
+use core::{
+    str,
+    sync::atomic::{AtomicBool, Ordering},
+};
 use fjall::{Keyspace, KeyspaceCreateOptions, PersistMode};
 use once_cell::sync::OnceCell;
 use std::{path::Path, sync::LazyLock};
 use tokio::task::spawn_blocking;
 
-const TIMESTAMP_HASH_KEYSPACE_NAME: &str = "timestamp_hash";
-const CONTENT_HASH_KEYSPACE_NAME: &str = "content_hash";
-const HEADER_DEPENDENCY_KEYSPACE_NAME: &str = "header_dependency";
-const OUTPUT_KEYSPACE_NAME: &str = "output";
-const SOURCE_KEYSPACE_NAME: &str = "source";
+const KEYSPACE_NAME: &str = concat!("build_", env!("CARGO_PKG_VERSION"));
+
+const TIMESTAMP_HASH_TAG: u8 = 0;
+const CONTENT_HASH_TAG: u8 = 1;
+const HEADER_DEPENDENCY_TAG: u8 = 2;
+const OUTPUT_TAG: u8 = 3;
+const SOURCE_TAG: u8 = 4;
 
 static BINCODE_CONFIG: LazyLock<bincode::config::Configuration> = LazyLock::new(|| {
     bincode::config::Configuration::<
@@ -28,23 +33,18 @@ static BINCODE_CONFIG: LazyLock<bincode::config::Configuration> = LazyLock::new(
 #[derive(Default)]
 pub struct FjallDatabase {
     database: OnceCell<FjallDatabaseInner>,
+    written: AtomicBool,
 }
 
 struct FjallDatabaseInner {
     database: fjall::Database,
-    timestamp_hash: Keyspace,
-    content_hash: Keyspace,
-    header_dependency: Keyspace,
-    output: Keyspace,
-    source: Keyspace,
+    keyspace: Keyspace,
 }
 
 impl FjallDatabase {
     /// Creates a database.
     pub fn new() -> Self {
-        Self {
-            database: Default::default(),
-        }
+        Self::default()
     }
 
     fn database(&self) -> Result<&FjallDatabaseInner, DatabaseError> {
@@ -53,29 +53,37 @@ impl FjallDatabase {
             .ok_or_else(|| DatabaseError::new("database not initialized"))
     }
 
-    fn hash_keyspace(&self, r#type: HashType) -> Result<&Keyspace, DatabaseError> {
-        let database = self.database()?;
-
-        Ok(match r#type {
-            HashType::Content => &database.content_hash,
-            HashType::Timestamp => &database.timestamp_hash,
-        })
+    fn keyspace(&self) -> Result<&Keyspace, DatabaseError> {
+        Ok(&self.database()?.keyspace)
     }
+
+    fn insert(&self, key: &[u8], value: &[u8]) -> Result<(), DatabaseError> {
+        self.keyspace()?.insert(key, value)?;
+        self.written.store(true, Ordering::Relaxed);
+
+        Ok(())
+    }
+}
+
+const fn hash_tag(r#type: HashType) -> u8 {
+    match r#type {
+        HashType::Content => CONTENT_HASH_TAG,
+        HashType::Timestamp => TIMESTAMP_HASH_TAG,
+    }
+}
+
+fn key(tag: u8, payload: &[u8]) -> Vec<u8> {
+    [[tag].as_slice(), payload].concat()
 }
 
 #[async_trait]
 impl Database for FjallDatabase {
     fn initialize(&self, path: &Path) -> Result<(), DatabaseError> {
         let database = fjall::Database::builder(path).open()?;
-        let open = |name: &str| database.keyspace(name, KeyspaceCreateOptions::default);
 
         self.database
             .set(FjallDatabaseInner {
-                timestamp_hash: open(TIMESTAMP_HASH_KEYSPACE_NAME)?,
-                content_hash: open(CONTENT_HASH_KEYSPACE_NAME)?,
-                header_dependency: open(HEADER_DEPENDENCY_KEYSPACE_NAME)?,
-                output: open(OUTPUT_KEYSPACE_NAME)?,
-                source: open(SOURCE_KEYSPACE_NAME)?,
+                keyspace: database.keyspace(KEYSPACE_NAME, KeyspaceCreateOptions::default)?,
                 database,
             })
             .map_err(|_| DatabaseError::new("database already initialized"))?;
@@ -85,8 +93,8 @@ impl Database for FjallDatabase {
 
     fn get_hash(&self, r#type: HashType, id: BuildId) -> Result<Option<u64>, DatabaseError> {
         Ok(self
-            .hash_keyspace(r#type)?
-            .get(id.to_bytes())?
+            .keyspace()?
+            .get(key(hash_tag(r#type), &id.to_bytes()))?
             .map(|value| {
                 bincode::decode_from_slice(&value, *BINCODE_CONFIG).map(|(value, _)| value)
             })
@@ -94,19 +102,16 @@ impl Database for FjallDatabase {
     }
 
     fn set_hash(&self, r#type: HashType, id: BuildId, hash: u64) -> Result<(), DatabaseError> {
-        self.hash_keyspace(r#type)?.insert(
-            id.to_bytes(),
-            bincode::encode_to_vec(hash, *BINCODE_CONFIG)?,
-        )?;
-
-        Ok(())
+        self.insert(
+            &key(hash_tag(r#type), &id.to_bytes()),
+            &bincode::encode_to_vec(hash, *BINCODE_CONFIG)?,
+        )
     }
 
     fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<String>, DatabaseError> {
         Ok(self
-            .database()?
-            .header_dependency
-            .get(id.to_bytes())?
+            .keyspace()?
+            .get(key(HEADER_DEPENDENCY_TAG, &id.to_bytes()))?
             .map(|value| {
                 bincode::decode_from_slice(&value, *BINCODE_CONFIG).map(|(value, _)| value)
             })
@@ -119,43 +124,39 @@ impl Database for FjallDatabase {
         id: BuildId,
         dependencies: &[String],
     ) -> Result<(), DatabaseError> {
-        self.database()?.header_dependency.insert(
-            id.to_bytes(),
-            bincode::encode_to_vec(dependencies, *BINCODE_CONFIG)?,
-        )?;
-
-        Ok(())
+        self.insert(
+            &key(HEADER_DEPENDENCY_TAG, &id.to_bytes()),
+            &bincode::encode_to_vec(dependencies, *BINCODE_CONFIG)?,
+        )
     }
 
     fn get_outputs(&self) -> Result<Vec<String>, DatabaseError> {
-        self.database()?
-            .output
-            .iter()
-            .map(|guard| Ok(str::from_utf8(&guard.key()?)?.into()))
+        self.keyspace()?
+            .prefix([OUTPUT_TAG])
+            .map(|guard| Ok(str::from_utf8(&guard.key()?[1..])?.into()))
             .collect::<Result<_, _>>()
     }
 
     fn set_output(&self, path: &str) -> Result<(), DatabaseError> {
-        self.database()?.output.insert(path, [])?;
-
-        Ok(())
+        self.insert(&key(OUTPUT_TAG, path.as_bytes()), &[])
     }
 
     fn get_source(&self, output: &str) -> Result<Option<String>, DatabaseError> {
-        self.database()?
-            .source
-            .get(output)?
+        self.keyspace()?
+            .get(key(SOURCE_TAG, output.as_bytes()))?
             .map(|source| Ok::<_, DatabaseError>(str::from_utf8(&source)?.into()))
             .transpose()
     }
 
     fn set_source(&self, output: &str, source: &str) -> Result<(), DatabaseError> {
-        self.database()?.source.insert(output, source)?;
-
-        Ok(())
+        self.insert(&key(SOURCE_TAG, output.as_bytes()), source.as_bytes())
     }
 
     async fn flush(&self) -> Result<(), DatabaseError> {
+        if !self.written.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+
         let database = self.database()?.database.clone();
 
         spawn_blocking(move || database.persist(PersistMode::SyncAll)).await??;
@@ -179,6 +180,14 @@ mod tests {
     async fn flush() {
         let database = FjallDatabase::new();
         database.initialize(tempdir().unwrap().path()).unwrap();
+        database.flush().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn flush_after_write() {
+        let database = FjallDatabase::new();
+        database.initialize(tempdir().unwrap().path()).unwrap();
+        database.set_output("foo").unwrap();
         database.flush().await.unwrap();
     }
 
@@ -242,6 +251,17 @@ mod tests {
         database.initialize(tempdir().unwrap().path()).unwrap();
 
         database.set_output("foo").unwrap();
+
+        assert_eq!(database.get_outputs().unwrap(), vec!["foo"]);
+    }
+
+    #[test]
+    fn get_output_with_source() {
+        let database = FjallDatabase::new();
+        database.initialize(tempdir().unwrap().path()).unwrap();
+
+        database.set_output("foo").unwrap();
+        database.set_source("foo", "bar").unwrap();
 
         assert_eq!(database.get_outputs().unwrap(), vec!["foo"]);
     }

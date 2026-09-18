@@ -8,12 +8,9 @@ pub use self::fake::FakeDatabase;
 pub use self::{error::DatabaseError, fjall::FjallDatabase};
 use crate::{hash_type::HashType, ir::BuildId};
 use async_trait::async_trait;
-use std::path::Path;
 
 #[async_trait]
 pub trait Database {
-    fn initialize(&self, path: &Path) -> Result<(), DatabaseError>;
-
     fn get_hash(&self, r#type: HashType, id: BuildId) -> Result<Option<u64>, DatabaseError>;
     fn set_hash(&self, r#type: HashType, id: BuildId, hash: u64) -> Result<(), DatabaseError>;
 

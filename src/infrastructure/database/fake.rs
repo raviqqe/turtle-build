@@ -5,7 +5,7 @@ use crate::{
 };
 use alloc::collections::BTreeSet;
 use async_trait::async_trait;
-use std::{collections::HashMap, path::Path, sync::Mutex};
+use std::{collections::HashMap, sync::Mutex};
 
 #[derive(Debug, Default)]
 pub struct FakeDatabase {
@@ -27,10 +27,6 @@ impl FakeDatabase {
 
 #[async_trait]
 impl Database for FakeDatabase {
-    fn initialize(&self, _: &Path) -> Result<(), DatabaseError> {
-        Ok(())
-    }
-
     fn get_hash(&self, r#type: HashType, id: BuildId) -> Result<Option<u64>, DatabaseError> {
         Ok(self.hashes(r#type).lock().unwrap().get(&id).copied())
     }

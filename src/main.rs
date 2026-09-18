@@ -17,8 +17,9 @@ use std::{
 };
 use tokio::time::sleep;
 use turtle_build::{
-    BuildError, Context, FjallDatabase, Module, ModuleDependencyMap, OsCommandRunner, OsConsole,
-    OsFileSystem, RunOptions, Statement, clean_dead, compile, parse, run, validate_modules,
+    BuildError, Console, Context, FileSystem, FjallDatabase, Module, ModuleDependencyMap,
+    OsCommandRunner, OsConsole, OsFileSystem, RunOptions, Statement, clean_dead, compile, parse,
+    run, validate_modules,
 };
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
@@ -61,10 +62,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     increase_nofile_limit(u64::MAX)?;
 
-    let context = Context::new(
+    if let Err(error) = execute(
+        &arguments,
         OsCommandRunner::new(job_limit),
         OsConsole::new(),
-        FjallDatabase::new(),
         OsFileSystem::new(
             cfg_select! {
                 unix => usize::try_from(Resource::NOFILE.get_soft()?)?,
@@ -74,14 +75,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .max(1),
         ),
     )
-    .into();
-
-    if let Err(error) = execute(&context, &arguments).await {
+    .await
+    {
         if !arguments.quiet || !matches!(error, BuildError::Build) {
-            context
-                .console()
-                .lock()
-                .await
+            OsConsole::new()
                 .write_stderr(
                     format!(
                         "{}{}\n",
@@ -103,13 +100,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), BuildError> {
+async fn execute(
+    arguments: &Arguments,
+    command_runner: OsCommandRunner,
+    console: OsConsole,
+    file_system: OsFileSystem,
+) -> Result<(), BuildError> {
     if let Some(directory) = &arguments.directory {
         set_current_dir(directory)?;
     }
 
-    let root_module_path = context
-        .file_system()
+    let root_module_path = file_system
         .canonicalize_path(
             arguments
                 .file
@@ -118,28 +119,33 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Bu
                 .as_ref(),
         )
         .await?;
-    let (modules, dependencies) = parse_modules(context, &root_module_path).await?;
+    let (modules, dependencies) = parse_modules(&file_system, &root_module_path).await?;
 
     validate_modules(&dependencies)?;
 
     let config = Arc::new(compile(&modules, &dependencies, &root_module_path)?);
-
-    context.database().initialize(
-        &config
-            .build_directory()
-            .map(|string| string.as_ref().as_ref())
-            .unwrap_or_else(|| root_module_path.parent().unwrap())
-            .join(DATABASE_DIRECTORY)
-            .join(env!("CARGO_PKG_VERSION").replace('.', "_")),
-    )?;
+    let context = Arc::new(Context::new(
+        command_runner,
+        console,
+        FjallDatabase::new(
+            &config
+                .build_directory()
+                .map(|string| string.as_ref().as_ref())
+                .unwrap_or_else(|| root_module_path.parent().unwrap())
+                .join(DATABASE_DIRECTORY)
+                .join(env!("CARGO_PKG_VERSION").replace('.', "_")),
+        )
+        .await?,
+        file_system,
+    ));
 
     if let Some(tool) = &arguments.tool {
         match tool {
-            Tool::CleanDead => clean_dead(context, &config).await?,
+            Tool::CleanDead => clean_dead(&context, &config).await?,
         }
     } else {
         run(
-            context,
+            &context,
             config.clone(),
             &arguments.outputs,
             RunOptions {
@@ -154,15 +160,15 @@ async fn execute(context: &Arc<Context>, arguments: &Arguments) -> Result<(), Bu
 }
 
 async fn parse_modules(
-    context: &Context,
+    file_system: &OsFileSystem,
     path: &Path,
 ) -> Result<(HashMap<PathBuf, Module>, ModuleDependencyMap), BuildError> {
-    let mut paths = vec![context.file_system().canonicalize_path(path).await?];
+    let mut paths = vec![file_system.canonicalize_path(path).await?];
     let mut modules = HashMap::new();
     let mut dependencies = HashMap::new();
 
     while let Some(path) = paths.pop() {
-        let module = parse(&context.file_system().read_file_to_string(&path).await?)?;
+        let module = parse(&file_system.read_file_to_string(&path).await?)?;
 
         let submodule_paths = try_join_all(
             module
@@ -173,7 +179,7 @@ async fn parse_modules(
                     Statement::Submodule(submodule) => Some(submodule.path()),
                     _ => None,
                 })
-                .map(|path| resolve_submodule_path(context, path))
+                .map(|path| resolve_submodule_path(file_system, path))
                 .collect::<Vec<_>>(),
         )
         .await?
@@ -190,14 +196,11 @@ async fn parse_modules(
 }
 
 async fn resolve_submodule_path(
-    context: &Context,
+    file_system: &OsFileSystem,
     path: &str,
 ) -> Result<(String, PathBuf), BuildError> {
     Ok((
         path.into(),
-        context
-            .file_system()
-            .canonicalize_path(path.as_ref())
-            .await?,
+        file_system.canonicalize_path(path.as_ref()).await?,
     ))
 }

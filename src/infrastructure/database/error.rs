@@ -4,7 +4,6 @@ use core::{
     fmt::{self, Display, Formatter},
     str::Utf8Error,
 };
-use tokio::task::JoinError;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DatabaseError(String);
@@ -37,12 +36,6 @@ impl From<EncodeError> for DatabaseError {
 
 impl From<fjall::Error> for DatabaseError {
     fn from(error: fjall::Error) -> Self {
-        Self::new(error)
-    }
-}
-
-impl From<JoinError> for DatabaseError {
-    fn from(error: JoinError) -> Self {
         Self::new(error)
     }
 }

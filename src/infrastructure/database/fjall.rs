@@ -10,7 +10,6 @@ use core::{
 };
 use fjall::{Keyspace, KeyspaceCreateOptions, PersistMode};
 use std::{path::Path, sync::LazyLock};
-use tokio::task::spawn_blocking;
 
 const KEYSPACE_NAME: &str = concat!("build_", env!("CARGO_PKG_VERSION"));
 
@@ -129,14 +128,13 @@ impl Database for FjallDatabase {
         self.insert(&key(SOURCE_TAG, output.as_bytes()), source.as_bytes())
     }
 
+    // Persistence runs inline because it happens only once at the end of a run.
     async fn flush(&self) -> Result<(), DatabaseError> {
         if !self.written.load(Ordering::Relaxed) {
             return Ok(());
         }
 
-        let database = self.database.clone();
-
-        spawn_blocking(move || database.persist(PersistMode::SyncAll)).await??;
+        self.database.persist(PersistMode::SyncAll)?;
 
         Ok(())
     }

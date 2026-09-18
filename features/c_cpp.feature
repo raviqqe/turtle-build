@@ -434,6 +434,33 @@ Feature: C and C++ header dependencies
     And I successfully run `turtle foo.o`
     Then the file named "foo.o" should contain "#define G 2"
 
+  Scenario: Rebuild after a header dependency generated behind a rule output is updated
+    Given a file named "build.ninja" with:
+      """
+      rule gen
+        command = cp gen.h.in gen.h && touch $out
+
+      rule alias
+        command = true
+
+      rule cc
+        command = printf '$out: $in gen.h\n' > $out.d && cat $in gen.h > $out
+        depfile = $out.d
+        deps = gcc
+
+      build gen.stamp: gen gen.h.in
+      build gen.h: alias gen.stamp
+      build foo.o: cc foo.c || gen.h
+
+      """
+    And a file named "foo.c" with "int main(void) { return 0; }"
+    And a file named "gen.h.in" with "#define G 1"
+    When I successfully run `turtle gen.h`
+    And I successfully run `turtle foo.o`
+    And a file named "gen.h.in" with "#define G 2"
+    And I successfully run `turtle foo.o`
+    Then the file named "foo.o" should contain "#define G 2"
+
   Scenario: Do not rebuild with an unchanged generated header dependency
     Given a file named "build.ninja" with:
       """

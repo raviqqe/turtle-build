@@ -134,8 +134,7 @@ async fn execute(
                 .unwrap_or_else(|| root_module_path.parent().unwrap())
                 .join(DATABASE_DIRECTORY)
                 .join(env!("CARGO_PKG_VERSION").replace('.', "_")),
-        )
-        .await?,
+        )?,
         file_system,
     ));
 

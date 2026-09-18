@@ -37,19 +37,14 @@ pub struct FjallDatabase {
 
 impl FjallDatabase {
     /// Opens a database.
-    pub async fn new(path: &Path) -> Result<Self, DatabaseError> {
-        let path = path.to_path_buf();
+    pub fn new(path: &Path) -> Result<Self, DatabaseError> {
+        let database = fjall::Database::builder(path).open()?;
 
-        spawn_blocking(move || {
-            let database = fjall::Database::builder(path).open()?;
-
-            Ok(Self {
-                keyspace: database.keyspace(KEYSPACE_NAME, KeyspaceCreateOptions::default)?,
-                database,
-                written: AtomicBool::new(false),
-            })
+        Ok(Self {
+            keyspace: database.keyspace(KEYSPACE_NAME, KeyspaceCreateOptions::default)?,
+            database,
+            written: AtomicBool::new(false),
         })
-        .await?
     }
 
     fn insert(&self, key: &[u8], value: &[u8]) -> Result<(), DatabaseError> {
@@ -152,27 +147,27 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
-    #[tokio::test]
-    async fn new() {
-        FjallDatabase::new(tempdir().unwrap().path()).await.unwrap();
+    #[test]
+    fn new() {
+        FjallDatabase::new(tempdir().unwrap().path()).unwrap();
     }
 
     #[tokio::test]
     async fn flush() {
-        let database = FjallDatabase::new(tempdir().unwrap().path()).await.unwrap();
+        let database = FjallDatabase::new(tempdir().unwrap().path()).unwrap();
         database.flush().await.unwrap();
     }
 
     #[tokio::test]
     async fn flush_after_write() {
-        let database = FjallDatabase::new(tempdir().unwrap().path()).await.unwrap();
+        let database = FjallDatabase::new(tempdir().unwrap().path()).unwrap();
         database.set_output("foo").unwrap();
         database.flush().await.unwrap();
     }
 
-    #[tokio::test]
-    async fn timestamp_hash() {
-        let database = FjallDatabase::new(tempdir().unwrap().path()).await.unwrap();
+    #[test]
+    fn timestamp_hash() {
+        let database = FjallDatabase::new(tempdir().unwrap().path()).unwrap();
 
         database
             .set_hash(HashType::Timestamp, BuildId::new(0), 42)
@@ -192,9 +187,9 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn content_hash() {
-        let database = FjallDatabase::new(tempdir().unwrap().path()).await.unwrap();
+    #[test]
+    fn content_hash() {
+        let database = FjallDatabase::new(tempdir().unwrap().path()).unwrap();
 
         database
             .set_hash(HashType::Content, BuildId::new(0), 42)
@@ -214,25 +209,25 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn set_output() {
-        let database = FjallDatabase::new(tempdir().unwrap().path()).await.unwrap();
+    #[test]
+    fn set_output() {
+        let database = FjallDatabase::new(tempdir().unwrap().path()).unwrap();
 
         database.set_output("foo").unwrap();
     }
 
-    #[tokio::test]
-    async fn get_output() {
-        let database = FjallDatabase::new(tempdir().unwrap().path()).await.unwrap();
+    #[test]
+    fn get_output() {
+        let database = FjallDatabase::new(tempdir().unwrap().path()).unwrap();
 
         database.set_output("foo").unwrap();
 
         assert_eq!(database.get_outputs().unwrap(), vec!["foo"]);
     }
 
-    #[tokio::test]
-    async fn get_output_with_source() {
-        let database = FjallDatabase::new(tempdir().unwrap().path()).await.unwrap();
+    #[test]
+    fn get_output_with_source() {
+        let database = FjallDatabase::new(tempdir().unwrap().path()).unwrap();
 
         database.set_output("foo").unwrap();
         database.set_source("foo", "bar").unwrap();
@@ -240,9 +235,9 @@ mod tests {
         assert_eq!(database.get_outputs().unwrap(), vec!["foo"]);
     }
 
-    #[tokio::test]
-    async fn header_dependencies() {
-        let database = FjallDatabase::new(tempdir().unwrap().path()).await.unwrap();
+    #[test]
+    fn header_dependencies() {
+        let database = FjallDatabase::new(tempdir().unwrap().path()).unwrap();
 
         database
             .set_header_dependencies(BuildId::new(0), &["foo".into(), "bar".into()])
@@ -254,16 +249,16 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn set_source() {
-        let database = FjallDatabase::new(tempdir().unwrap().path()).await.unwrap();
+    #[test]
+    fn set_source() {
+        let database = FjallDatabase::new(tempdir().unwrap().path()).unwrap();
 
         database.set_source("foo", "bar").unwrap();
     }
 
-    #[tokio::test]
-    async fn get_source() {
-        let database = FjallDatabase::new(tempdir().unwrap().path()).await.unwrap();
+    #[test]
+    fn get_source() {
+        let database = FjallDatabase::new(tempdir().unwrap().path()).unwrap();
 
         database.set_source("foo", "bar").unwrap();
 
@@ -274,7 +269,7 @@ mod tests {
     async fn reopen() {
         let directory = tempdir().unwrap();
 
-        let database = FjallDatabase::new(directory.path()).await.unwrap();
+        let database = FjallDatabase::new(directory.path()).unwrap();
 
         database
             .set_hash(HashType::Timestamp, BuildId::new(0), 42)
@@ -288,7 +283,7 @@ mod tests {
 
         drop(database);
 
-        let database = FjallDatabase::new(directory.path()).await.unwrap();
+        let database = FjallDatabase::new(directory.path()).unwrap();
 
         assert_eq!(
             database

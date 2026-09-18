@@ -1,23 +1,14 @@
-use core::{
-    error::Error,
-    fmt::{self, Display, Formatter},
-};
+use core::fmt::Display;
 use std::io;
+use thiserror::Error;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Error, PartialEq)]
+#[error("{0}")]
 pub struct ConsoleError(String);
 
 impl ConsoleError {
     pub fn new(error: impl Display) -> Self {
         Self(error.to_string())
-    }
-}
-
-impl Error for ConsoleError {}
-
-impl Display for ConsoleError {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "{}", self.0)
     }
 }
 

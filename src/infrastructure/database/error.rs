@@ -1,24 +1,14 @@
 use bincode::error::{DecodeError, EncodeError};
-use core::{
-    error::Error,
-    fmt::{self, Display, Formatter},
-    str::Utf8Error,
-};
+use core::{fmt::Display, str::Utf8Error};
+use thiserror::Error;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Error, PartialEq)]
+#[error("{0}")]
 pub struct DatabaseError(String);
 
 impl DatabaseError {
     pub fn new(error: impl Display) -> Self {
         Self(error.to_string())
-    }
-}
-
-impl Error for DatabaseError {}
-
-impl Display for DatabaseError {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "{}", self.0)
     }
 }
 

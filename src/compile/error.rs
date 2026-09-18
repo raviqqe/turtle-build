@@ -1,49 +1,33 @@
-use core::{
-    error::Error,
-    fmt::{self, Display, Formatter},
-};
 use std::path::PathBuf;
+use thiserror::Error;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Error, PartialEq)]
 pub enum CompileError {
+    #[error("pool \"{0}\" already defined")]
     DuplicatePool(String),
+    #[error("dependency style \"{0}\" not supported")]
     InvalidDependencyStyle(String),
+    #[error("pool \"{0}\" has invalid depth \"{1}\"")]
     InvalidPoolDepth(String, String),
+    #[error("rule \"{0}\" has \"deps\" set to \"gcc\" but no \"depfile\"")]
     MissingDepfile(String),
+    #[error("module \"{}\" not found", .0.display())]
     ModuleNotFound(PathBuf),
+    #[error("pool \"{0}\" not found")]
     PoolNotFound(String),
+    #[error("rule \"{0}\" not found")]
     RuleNotFound(String),
 }
 
-impl Error for CompileError {}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-impl Display for CompileError {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        match self {
-            Self::DuplicatePool(pool) => {
-                write!(formatter, "pool \"{pool}\" already defined")
-            }
-            Self::InvalidDependencyStyle(style) => {
-                write!(formatter, "dependency style \"{style}\" not supported")
-            }
-            Self::InvalidPoolDepth(pool, depth) => {
-                write!(formatter, "pool \"{pool}\" has invalid depth \"{depth}\"")
-            }
-            Self::MissingDepfile(rule) => {
-                write!(
-                    formatter,
-                    "rule \"{rule}\" has \"deps\" set to \"gcc\" but no \"depfile\""
-                )
-            }
-            Self::ModuleNotFound(path) => {
-                write!(formatter, "module \"{}\" not found", path.display())
-            }
-            Self::PoolNotFound(pool) => {
-                write!(formatter, "pool \"{pool}\" not found")
-            }
-            Self::RuleNotFound(rule) => {
-                write!(formatter, "rule \"{rule}\" not found")
-            }
-        }
+    #[test]
+    fn display_module_not_found() {
+        assert_eq!(
+            CompileError::ModuleNotFound("foo.ninja".into()).to_string(),
+            "module \"foo.ninja\" not found"
+        );
     }
 }

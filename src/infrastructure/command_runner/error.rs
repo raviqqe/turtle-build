@@ -1,24 +1,15 @@
-use core::{
-    error::Error,
-    fmt::{self, Display, Formatter},
-};
+use core::fmt::Display;
 use std::io;
+use thiserror::Error;
 use tokio::sync::AcquireError;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Error, PartialEq)]
+#[error("{0}")]
 pub struct CommandError(String);
 
 impl CommandError {
     pub fn new(error: impl Display) -> Self {
         Self(error.to_string())
-    }
-}
-
-impl Error for CommandError {}
-
-impl Display for CommandError {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "{}", self.0)
     }
 }
 

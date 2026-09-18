@@ -128,7 +128,6 @@ impl Database for FjallDatabase {
         self.insert(&key(SOURCE_TAG, output.as_bytes()), source.as_bytes())
     }
 
-    // Persistence runs inline because it happens only once at the end of a run.
     async fn flush(&self) -> Result<(), DatabaseError> {
         if !self.written.load(Ordering::Relaxed) {
             return Ok(());

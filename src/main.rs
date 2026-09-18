@@ -58,25 +58,10 @@ enum Tool {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let arguments = Arguments::parse();
-    let job_limit = arguments.job_limit.unwrap_or_else(num_cpus::get);
 
     increase_nofile_limit(u64::MAX)?;
 
-    if let Err(error) = execute(
-        &arguments,
-        OsCommandRunner::new(job_limit),
-        OsConsole::new(),
-        OsFileSystem::new(
-            cfg_select! {
-                unix => usize::try_from(Resource::NOFILE.get_soft()?)?,
-                _ => usize::MAX,
-            }
-            .saturating_sub(DEFAULT_FILE_COUNT_PER_PROCESS * (job_limit + 1))
-            .max(1),
-        ),
-    )
-    .await
-    {
+    if let Err(error) = execute(&arguments).await {
         if !arguments.quiet || !matches!(error, BuildError::Build) {
             OsConsole::new()
                 .write_stderr(
@@ -100,16 +85,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn execute(
-    arguments: &Arguments,
-    command_runner: OsCommandRunner,
-    console: OsConsole,
-    file_system: OsFileSystem,
-) -> Result<(), BuildError> {
+async fn execute(arguments: &Arguments) -> Result<(), BuildError> {
     if let Some(directory) = &arguments.directory {
         set_current_dir(directory)?;
     }
 
+    let job_limit = arguments.job_limit.unwrap_or_else(num_cpus::get);
+    let file_system = OsFileSystem::new(
+        cfg_select! {
+            unix => usize::try_from(Resource::NOFILE.get_soft()?).unwrap_or(usize::MAX),
+            _ => usize::MAX,
+        }
+        .saturating_sub(DEFAULT_FILE_COUNT_PER_PROCESS * (job_limit + 1))
+        .max(1),
+    );
     let root_module_path = file_system
         .canonicalize_path(
             arguments
@@ -125,8 +114,8 @@ async fn execute(
 
     let config = Arc::new(compile(&modules, &dependencies, &root_module_path)?);
     let context = Arc::new(Context::new(
-        command_runner,
-        console,
+        OsCommandRunner::new(job_limit),
+        OsConsole::new(),
         FjallDatabase::new(
             &config
                 .build_directory()

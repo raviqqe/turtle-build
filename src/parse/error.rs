@@ -1,9 +1,7 @@
-use core::{
-    error::Error,
-    fmt::{self, Display},
-};
+use thiserror::Error;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Error, PartialEq)]
+#[error("{message}")]
 pub struct ParseError {
     message: String,
 }
@@ -19,13 +17,5 @@ impl ParseError {
 impl From<nom::Err<nom::error::Error<&str>>> for ParseError {
     fn from(error: nom::Err<nom::error::Error<&str>>) -> Self {
         Self::new(error.to_string())
-    }
-}
-
-impl Error for ParseError {}
-
-impl Display for ParseError {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "{}", self.message)
     }
 }

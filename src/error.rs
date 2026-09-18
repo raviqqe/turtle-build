@@ -7,130 +7,75 @@ use crate::{
     parse::ParseError,
 };
 use alloc::sync::Arc;
-use core::{
-    error::Error,
-    fmt::{self, Display, Formatter},
-};
+use thiserror::Error;
 use tokio::{io, sync::AcquireError, task::JoinError};
 
 /// A build error.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Error, PartialEq)]
 pub enum BuildError {
     /// A semaphore acquisition error.
+    #[error("{0}")]
     Acquire(String),
     /// A build failure.
+    #[error("build failed")]
     Build,
     /// A build graph error.
-    BuildGraph(BuildGraphError),
+    #[error(transparent)]
+    BuildGraph(#[from] BuildGraphError),
     /// A command error.
-    Command(CommandError),
+    #[error(transparent)]
+    Command(#[from] CommandError),
     /// A compile error.
-    Compile(CompileError),
+    #[error(transparent)]
+    Compile(#[from] CompileError),
     /// A console error.
-    Console(ConsoleError),
+    #[error(transparent)]
+    Console(#[from] ConsoleError),
     /// A database error.
-    Database(DatabaseError),
+    #[error(transparent)]
+    Database(#[from] DatabaseError),
     /// A default output not found.
+    #[error("default output \"{0}\" not found")]
     DefaultOutputNotFound(Arc<str>),
     /// A dynamic dependency not found.
+    #[error(
+        "outputs {} not found in dynamic dependency file {}",
+        .0.outputs().join(", "),
+        .0.dynamic_module().unwrap()
+    )]
     DynamicDependencyNotFound(Arc<Build>),
     /// A file error.
-    File(FileError),
+    #[error(transparent)]
+    File(#[from] FileError),
     /// A file not found.
+    #[error("file \"{0}\" not found")]
     FileNotFound(String),
     /// An input not built.
+    #[error("input \"{0}\" not built yet")]
     InputNotBuilt(String),
     /// An input not found.
+    #[error("input \"{0}\" not found")]
     InputNotFound(String),
     /// An I/O error.
+    #[error("{0}")]
     Io(String),
     /// A task join error.
+    #[error("{0}")]
     Join(String),
     /// A module dependency error.
-    ModuleDependency(ModuleDependencyError),
+    #[error(transparent)]
+    ModuleDependency(#[from] ModuleDependencyError),
     /// An output not found.
+    #[error("output \"{0}\" not found")]
     OutputNotFound(String),
     /// A parse error.
-    Parse(ParseError),
-}
-
-impl Error for BuildError {}
-
-impl Display for BuildError {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        match self {
-            Self::Acquire(message) | Self::Io(message) | Self::Join(message) => {
-                write!(formatter, "{message}")
-            }
-            Self::Build => write!(formatter, "build failed"),
-            Self::Command(error) => write!(formatter, "{error}"),
-            Self::Compile(error) => write!(formatter, "{error}"),
-            Self::Console(error) => write!(formatter, "{error}"),
-            Self::Database(error) => write!(formatter, "{error}"),
-            Self::DefaultOutputNotFound(output) => {
-                write!(formatter, "default output \"{output}\" not found")
-            }
-            Self::DynamicDependencyNotFound(build) => {
-                write!(
-                    formatter,
-                    "outputs {} not found in dynamic dependency file {}",
-                    build.outputs().join(", "),
-                    build.dynamic_module().unwrap()
-                )
-            }
-            Self::File(error) => write!(formatter, "{error}"),
-            Self::FileNotFound(path) => write!(formatter, "file \"{path}\" not found"),
-            Self::InputNotBuilt(input) => {
-                write!(formatter, "input \"{input}\" not built yet")
-            }
-            Self::InputNotFound(input) => {
-                write!(formatter, "input \"{input}\" not found")
-            }
-            Self::ModuleDependency(error) => {
-                write!(formatter, "{error}")
-            }
-            Self::OutputNotFound(output) => {
-                write!(formatter, "output \"{output}\" not found")
-            }
-            Self::Parse(error) => write!(formatter, "{error}"),
-            Self::BuildGraph(error) => write!(formatter, "{error}"),
-        }
-    }
+    #[error(transparent)]
+    Parse(#[from] ParseError),
 }
 
 impl From<AcquireError> for BuildError {
     fn from(error: AcquireError) -> Self {
         Self::Acquire(error.to_string())
-    }
-}
-
-impl From<CommandError> for BuildError {
-    fn from(error: CommandError) -> Self {
-        Self::Command(error)
-    }
-}
-
-impl From<CompileError> for BuildError {
-    fn from(error: CompileError) -> Self {
-        Self::Compile(error)
-    }
-}
-
-impl From<ConsoleError> for BuildError {
-    fn from(error: ConsoleError) -> Self {
-        Self::Console(error)
-    }
-}
-
-impl From<DatabaseError> for BuildError {
-    fn from(error: DatabaseError) -> Self {
-        Self::Database(error)
-    }
-}
-
-impl From<FileError> for BuildError {
-    fn from(error: FileError) -> Self {
-        Self::File(error)
     }
 }
 
@@ -146,24 +91,6 @@ impl From<JoinError> for BuildError {
     }
 }
 
-impl From<ModuleDependencyError> for BuildError {
-    fn from(error: ModuleDependencyError) -> Self {
-        Self::ModuleDependency(error)
-    }
-}
-
-impl From<ParseError> for BuildError {
-    fn from(error: ParseError) -> Self {
-        Self::Parse(error)
-    }
-}
-
-impl From<BuildGraphError> for BuildError {
-    fn from(error: BuildGraphError) -> Self {
-        Self::BuildGraph(error)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,6 +100,25 @@ mod tests {
         assert_eq!(
             BuildError::Acquire("semaphore closed".into()).to_string(),
             "semaphore closed"
+        );
+    }
+
+    #[test]
+    fn display_dynamic_dependency_not_found() {
+        assert_eq!(
+            BuildError::DynamicDependencyNotFound(
+                Build::new(
+                    vec!["foo".into(), "bar".into()],
+                    vec![],
+                    None,
+                    vec![],
+                    vec![],
+                    Some("baz".into())
+                )
+                .into()
+            )
+            .to_string(),
+            "outputs foo, bar not found in dynamic dependency file baz"
         );
     }
 

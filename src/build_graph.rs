@@ -1,9 +1,5 @@
 use crate::ir::{Build, DynamicConfig};
 use alloc::sync::Arc;
-use core::{
-    error::Error,
-    fmt::{self, Display, Formatter},
-};
 use itertools::Itertools;
 use petgraph::{
     Graph,
@@ -11,6 +7,7 @@ use petgraph::{
     graph::{DefaultIx, NodeIndex},
 };
 use std::collections::HashMap;
+use thiserror::Error;
 
 #[derive(Debug)]
 pub struct BuildGraph {
@@ -119,33 +116,15 @@ impl BuildGraph {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Error, PartialEq)]
 pub enum BuildGraphError {
+    #[error(
+        "dependency cycle detected: {}",
+        .0.iter().chain(.0.first()).dedup().join(" -> ")
+    )]
     CircularDependency(Vec<Arc<str>>),
+    #[error("output \"{0}\" not found")]
     OutputNotFound(Arc<str>),
-}
-
-impl Error for BuildGraphError {}
-
-impl Display for BuildGraphError {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        match self {
-            Self::CircularDependency(cycle) => {
-                write!(
-                    formatter,
-                    "dependency cycle detected: {}",
-                    cycle
-                        .iter()
-                        .chain(cycle.first())
-                        .dedup()
-                        .map(|string| string.as_ref())
-                        .collect::<Vec<&str>>()
-                        .join(" -> ")
-                )
-            }
-            Self::OutputNotFound(output) => write!(formatter, "output \"{output}\" not found"),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -690,6 +669,22 @@ mod tests {
                 "bar".into(),
                 "foo".into()
             ]))
+        );
+    }
+
+    #[test]
+    fn display_circular_dependency() {
+        assert_eq!(
+            BuildGraphError::CircularDependency(vec!["foo".into(), "bar".into()]).to_string(),
+            "dependency cycle detected: foo -> bar -> foo"
+        );
+    }
+
+    #[test]
+    fn display_circular_dependency_on_itself() {
+        assert_eq!(
+            BuildGraphError::CircularDependency(vec!["foo".into()]).to_string(),
+            "dependency cycle detected: foo"
         );
     }
 }

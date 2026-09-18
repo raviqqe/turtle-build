@@ -1,12 +1,9 @@
-use core::{
-    error::Error,
-    fmt::{self, Display, Formatter},
-};
 use petgraph::{Graph, algo::is_cyclic_directed};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
 };
+use thiserror::Error;
 
 /// A module dependency map.
 pub type ModuleDependencyMap = HashMap<PathBuf, HashMap<String, PathBuf>>;
@@ -37,21 +34,10 @@ fn is_module_dependency_circular(modules: &ModuleDependencyMap) -> bool {
     is_cyclic_directed(&graph)
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Error, PartialEq)]
 pub enum ModuleDependencyError {
+    #[error("build file dependency cycle detected")]
     CircularDependency,
-}
-
-impl Error for ModuleDependencyError {}
-
-impl Display for ModuleDependencyError {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        match self {
-            Self::CircularDependency => {
-                write!(formatter, "build file dependency cycle detected")
-            }
-        }
-    }
 }
 
 #[cfg(test)]

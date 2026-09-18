@@ -93,9 +93,7 @@ impl BuildGraph {
         for dependency in dependencies {
             // Header dependencies that are not outputs cannot form cycles.
             if let Some((dependency, _)) = self.primary_outputs.get_key_value(dependency.as_str()) {
-                let dependency = dependency.clone();
-
-                self.add_edge(self.primary_outputs[output].clone(), dependency);
+                self.add_edge(self.primary_outputs[output].clone(), dependency.clone());
             }
         }
     }

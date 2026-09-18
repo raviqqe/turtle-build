@@ -4,6 +4,7 @@ extern crate alloc;
 
 use alloc::sync::Arc;
 use clap::{Parser, ValueEnum};
+use core::error::Error;
 use core::time::Duration;
 use futures::future::try_join_all;
 #[cfg(unix)]
@@ -56,7 +57,7 @@ enum Tool {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn Error>> {
     let arguments = Arguments::parse();
     let console = Arc::new(Mutex::new(OsConsole::new()));
 
@@ -73,8 +74,7 @@ async fn main() {
                     )
                     .as_bytes(),
                 )
-                .await
-                .unwrap();
+                .await?;
         }
 
         // Delay for the error message to be written completely hopefully.
@@ -82,6 +82,8 @@ async fn main() {
 
         exit(1)
     }
+
+    Ok(())
 }
 
 async fn execute(arguments: &Arguments, console: &Arc<Mutex<OsConsole>>) -> Result<(), BuildError> {

@@ -69,6 +69,10 @@ impl FileCache {
         path: &Path,
         fetch: impl FnOnce() -> F,
     ) -> Result<T, E> {
+        if let Some(Some(value)) = cache.read_async(path, |_, cell| cell.get().copied()).await {
+            return Ok(value);
+        }
+
         // Do not inline this to avoid holding a lock of a cache across an await point.
         let cell = cache
             .entry_async(path.into())

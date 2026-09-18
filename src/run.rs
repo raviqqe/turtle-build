@@ -91,7 +91,7 @@ pub async fn run(
     )
     .await;
 
-    context.application().database().flush().await?;
+    context.build().database().flush().await?;
 
     result.map(|_| ())
 }
@@ -125,7 +125,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         let dynamic_config = if let Some(dynamic_module) = build.dynamic_module() {
             let config = compile_dynamic(&parse_dynamic(
                 &context
-                    .application()
+                    .build()
                     .file_system()
                     .read_file_to_string(dynamic_module.as_ref().as_ref())
                     .await?,
@@ -170,7 +170,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
 
         let header_dependencies = if build.rule().is_some() {
             let dependencies = context
-                .application()
+                .build()
                 .database()
                 .get_header_dependencies(build.id())?;
 
@@ -192,12 +192,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                 .outputs()
                 .iter()
                 .chain(build.implicit_outputs())
-                .map(|path| {
-                    context
-                        .application()
-                        .file_system()
-                        .exists(path.as_ref().as_ref())
-                }),
+                .map(|path| context.build().file_system().exists(path.as_ref().as_ref())),
         )
         .await
         .is_ok_and(|existences| existences.into_iter().all(identity));
@@ -209,7 +204,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         if outputs_exist
             && Some(timestamp_hash)
                 == context
-                    .application()
+                    .build()
                     .database()
                     .get_hash(HashType::Timestamp, build.id())?
         {
@@ -222,7 +217,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         if outputs_exist
             && Some(content_hash)
                 == context
-                    .application()
+                    .build()
                     .database()
                     .get_hash(HashType::Content, build.id())?
         {
@@ -245,18 +240,15 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                 read_header_dependencies(&context, rule, &output?).await?;
 
             context
-                .application()
+                .build()
                 .database()
                 .set_header_dependencies(build.id(), &new_header_dependencies)?;
 
             for output in build.outputs() {
-                context.application().database().set_output(output)?;
+                context.build().database().set_output(output)?;
 
                 if let Some(source) = context.config().source_map().get(output) {
-                    context
-                        .application()
-                        .database()
-                        .set_source(output, source)?;
+                    context.build().database().set_source(output, source)?;
                 }
             }
 
@@ -273,13 +265,12 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             }
         }
 
-        context.application().database().set_hash(
-            HashType::Timestamp,
-            build.id(),
-            timestamp_hash,
-        )?;
         context
-            .application()
+            .build()
+            .database()
+            .set_hash(HashType::Timestamp, build.id(), timestamp_hash)?;
+        context
+            .build()
             .database()
             .set_hash(HashType::Content, build.id(), content_hash)?;
 
@@ -315,7 +306,7 @@ async fn check_file_existence(context: &RunContext, path: &str) -> Result<(), Bu
     if !context.file_cache().exists(path.as_ref()).await? {
         return Err(BuildError::FileNotFound(
             context
-                .application()
+                .build()
                 .database()
                 .get_source(path)?
                 .unwrap_or_else(|| path.into()),
@@ -328,7 +319,7 @@ async fn check_file_existence(context: &RunContext, path: &str) -> Result<(), Bu
 async fn prepare_directory(context: &RunContext, path: impl AsRef<Path>) -> Result<(), BuildError> {
     if let Some(directory) = path.as_ref().parent() {
         context
-            .application()
+            .build()
             .file_system()
             .create_directory(directory)
             .await?;
@@ -384,7 +375,7 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildErro
 
         let time = Instant::now();
         let status = context
-            .application()
+            .build()
             .command_runner()
             .run_with_console(rule.command())
             .await?;
@@ -405,11 +396,7 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildErro
         let (output, console) = join!(
             async {
                 let time = Instant::now();
-                let output = context
-                    .application()
-                    .command_runner()
-                    .run(rule.command())
-                    .await?;
+                let output = context.build().command_runner().run(rule.command()).await?;
 
                 drop(permit);
 
@@ -450,7 +437,7 @@ async fn write_description<'a>(
     context: &'a RunContext,
     rule: &Rule,
 ) -> Result<MutexGuard<'a, Box<dyn Console + Send + Sync>>, BuildError> {
-    let mut console = context.application().console().lock().await;
+    let mut console = context.build().console().lock().await;
 
     if let Some(description) = rule.description() {
         console.write_stderr(description.as_bytes()).await?;
@@ -469,7 +456,7 @@ fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> Build
                 .iter()
                 .map(|output| {
                     Ok(context
-                        .application()
+                        .build()
                         .database()
                         .get_source(output)?
                         .map(|string| string.into())
@@ -2141,11 +2128,11 @@ mod tests {
 
         assert!(poll!(&mut future).is_pending());
         assert_eq!(command_runner.console_commands(), ["foo"]);
-        assert!(context.application().console().try_lock().is_err());
+        assert!(context.build().console().try_lock().is_err());
 
         future.await.unwrap();
 
-        assert!(context.application().console().try_lock().is_ok());
+        assert!(context.build().console().try_lock().is_ok());
     }
 
     #[tokio::test]
@@ -2168,7 +2155,7 @@ mod tests {
         let command_runner = FakeCommandRunner::default();
         let context = create_run_context(&command_runner, &Default::default(), &[]);
         let rule = Rule::new("foo", None).with_pool(Some(Pool::Console));
-        let console = context.application().console().lock().await;
+        let console = context.build().console().lock().await;
         let mut future = pin!(run_rule(&context, &rule));
 
         for _ in 0..POLL_COUNT {
@@ -2207,7 +2194,7 @@ mod tests {
         let context = create_run_context(&command_runner, &Default::default(), &[("baz", 1)]);
         let foo = Rule::new("foo", None).with_pool(limited_pool("baz"));
         let bar = Rule::new("bar", None).with_pool(limited_pool("baz"));
-        let console = context.application().console().lock().await;
+        let console = context.build().console().lock().await;
         let mut foo_future = pin!(run_rule(&context, &foo));
         let mut bar_future = pin!(run_rule(&context, &bar));
 
@@ -2241,7 +2228,7 @@ mod tests {
 
         assert_eq!(command_runner.commands(), Vec::<String>::new());
         assert_eq!(console.stderr(), "");
-        assert!(context.application().console().try_lock().is_ok());
+        assert!(context.build().console().try_lock().is_ok());
 
         drop(permit);
         future.await.unwrap();

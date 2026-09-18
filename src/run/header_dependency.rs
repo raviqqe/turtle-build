@@ -27,7 +27,7 @@ pub async fn read_header_dependencies(
         && context.file_cache().exists(path.as_ref()).await?
     {
         context
-            .application()
+            .build()
             .file_system()
             .remove_file(path.as_ref())
             .await?;
@@ -59,7 +59,7 @@ async fn read_depfile(context: &RunContext, path: &str) -> Result<Vec<String>, B
 
     Ok(parse_depfile(
         &context
-            .application()
+            .build()
             .file_system()
             .read_file_to_string(path.as_ref())
             .await?,

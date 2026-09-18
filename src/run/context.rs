@@ -14,7 +14,7 @@ use tokio::sync::{Mutex, Semaphore, SemaphorePermit};
 type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<(), BuildError>> + Send>>>;
 
 pub struct RunContext {
-    application: Arc<Context>,
+    build: Arc<Context>,
     config: Arc<Config>,
     build_futures: HashMap<BuildId, BuildFuture>,
     build_graph: Mutex<BuildGraph>,
@@ -25,14 +25,14 @@ pub struct RunContext {
 
 impl RunContext {
     pub fn new(
-        application: Arc<Context>,
+        build: Arc<Context>,
         config: Arc<Config>,
         build_graph: BuildGraph,
         options: RunOptions,
     ) -> Self {
         Self {
-            file_cache: FileCache::new(application.file_system().clone()),
-            application,
+            file_cache: FileCache::new(build.file_system().clone()),
+            build,
             build_graph: build_graph.into(),
             pools: config
                 .pools()
@@ -50,8 +50,8 @@ impl RunContext {
         }
     }
 
-    pub fn application(&self) -> &Context {
-        &self.application
+    pub fn build(&self) -> &Context {
+        &self.build
     }
 
     pub fn config(&self) -> &Config {

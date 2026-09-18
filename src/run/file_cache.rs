@@ -41,6 +41,16 @@ impl FileCache {
         }
     }
 
+    pub async fn set_metadata(&self, path: &Path, metadata: Metadata) {
+        self.metadata
+            .entry_async(path.into())
+            .await
+            .or_default()
+            .get()
+            .set(metadata)
+            .ok();
+    }
+
     pub async fn content_hash(&self, path: &Path) -> Result<u64, FileError> {
         Self::get(&self.content_hashes, path, || async {
             Ok(BuildHasherDefault::<DefaultHasher>::default()
@@ -249,6 +259,80 @@ mod tests {
                 cache.metadata("foo".as_ref()).await,
                 Ok(Some(Metadata::new(SystemTime::UNIX_EPOCH, false)))
             );
+        }
+    }
+
+    mod set_metadata {
+        use super::*;
+        use core::{pin::pin, task::Poll, time::Duration};
+        use futures::poll;
+        use pretty_assertions::assert_eq;
+        use std::time::SystemTime;
+        use tokio::sync::Notify;
+
+        #[tokio::test]
+        async fn set_metadata() {
+            let cache = create_cache(&Default::default());
+            let metadata = Metadata::new(SystemTime::UNIX_EPOCH, false);
+
+            cache.set_metadata("foo".as_ref(), metadata).await;
+
+            assert_eq!(cache.metadata("foo".as_ref()).await, Ok(Some(metadata)));
+        }
+
+        #[tokio::test]
+        async fn set_metadata_per_path() {
+            let cache = create_cache(&Default::default());
+
+            cache
+                .set_metadata("foo".as_ref(), Metadata::new(SystemTime::UNIX_EPOCH, false))
+                .await;
+
+            assert_eq!(cache.metadata("bar".as_ref()).await, Ok(None));
+        }
+
+        #[tokio::test]
+        async fn keep_cached_metadata() {
+            let file_system = FakeFileSystem::default();
+            let cache = create_cache(&file_system);
+
+            file_system.write_file("foo", "");
+
+            let metadata = cache.metadata("foo".as_ref()).await.unwrap();
+
+            cache
+                .set_metadata(
+                    "foo".as_ref(),
+                    Metadata::new(SystemTime::UNIX_EPOCH + Duration::from_secs(1), false),
+                )
+                .await;
+
+            assert_eq!(cache.metadata("foo".as_ref()).await, Ok(metadata));
+        }
+
+        #[tokio::test]
+        async fn keep_metadata_of_in_flight_fetch() {
+            let cache = create_cache(&Default::default());
+            let metadata = Metadata::new(SystemTime::UNIX_EPOCH, false);
+            let notify = Notify::new();
+            let mut future = pin!(FileCache::get(&cache.metadata, "foo".as_ref(), || async {
+                notify.notified().await;
+
+                Ok::<_, FileError>(metadata)
+            }));
+
+            assert!(poll!(&mut future).is_pending());
+            assert_eq!(
+                poll!(pin!(cache.set_metadata(
+                    "foo".as_ref(),
+                    Metadata::new(SystemTime::UNIX_EPOCH + Duration::from_secs(1), false),
+                ))),
+                Poll::Ready(())
+            );
+
+            notify.notify_one();
+
+            assert_eq!(future.await, Ok(metadata));
         }
     }
 

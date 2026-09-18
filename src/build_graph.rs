@@ -7,7 +7,7 @@ use core::{
 use itertools::Itertools;
 use petgraph::{
     Graph,
-    algo::{kosaraju_scc, toposort},
+    algo::{has_path_connecting, kosaraju_scc, toposort},
     graph::{DefaultIx, NodeIndex},
 };
 use std::collections::HashMap;
@@ -83,10 +83,15 @@ impl BuildGraph {
 
             for input in build.inputs() {
                 self.add_edge(output.clone(), input.clone());
+
+                // A new edge forms a cycle only if its input reaches its output already.
+                if has_path_connecting(&self.graph, self.nodes[input], self.nodes[&output], None) {
+                    return self.validate();
+                }
             }
         }
 
-        self.validate()
+        Ok(())
     }
 
     pub fn add_header_dependencies(&mut self, output: &Arc<str>, dependencies: &[String]) {
@@ -313,6 +318,38 @@ mod tests {
     }
 
     #[test]
+    fn validate_with_dynamic_config_without_circular_dependency() {
+        let mut graph = BuildGraph::new(
+            &[
+                (
+                    "foo".into(),
+                    explicit_build(vec!["foo".into()], vec!["bar".into()]).into(),
+                ),
+                (
+                    "bar".into(),
+                    explicit_build(vec!["bar".into()], vec![]).into(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        );
+
+        graph.validate().unwrap();
+
+        assert_eq!(
+            graph.validate_dynamic(&DynamicConfig::new(
+                [(
+                    "foo".into(),
+                    DynamicBuild::new(vec!["bar".into(), "baz".into()])
+                )]
+                .into_iter()
+                .collect(),
+            )),
+            Ok(())
+        );
+    }
+
+    #[test]
     fn validate_with_dynamic_config() {
         let mut graph = BuildGraph::new(
             &[
@@ -341,6 +378,99 @@ mod tests {
                 "foo".into(),
                 "bar".into(),
             ]))
+        );
+    }
+
+    #[test]
+    fn validate_with_dynamic_config_with_transitive_circular_dependency() {
+        let mut graph = BuildGraph::new(
+            &[
+                (
+                    "foo".into(),
+                    explicit_build(vec!["foo".into()], vec!["bar".into()]).into(),
+                ),
+                (
+                    "bar".into(),
+                    explicit_build(vec!["bar".into()], vec!["baz".into()]).into(),
+                ),
+                (
+                    "baz".into(),
+                    explicit_build(vec!["baz".into()], vec![]).into(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        );
+
+        graph.validate().unwrap();
+
+        let BuildGraphError::CircularDependency(paths) = graph
+            .validate_dynamic(&DynamicConfig::new(
+                [("baz".into(), DynamicBuild::new(vec!["foo".into()]))]
+                    .into_iter()
+                    .collect(),
+            ))
+            .unwrap_err()
+        else {
+            panic!()
+        };
+
+        assert_eq!(
+            paths
+                .iter()
+                .map(|path| path.as_ref())
+                .sorted()
+                .collect::<Vec<&str>>(),
+            ["bar", "baz", "foo"]
+        );
+    }
+
+    #[test]
+    fn validate_with_dynamic_configs_with_circular_dependency() {
+        let mut graph = BuildGraph::new(
+            &[
+                (
+                    "foo".into(),
+                    explicit_build(vec!["foo".into()], vec![]).into(),
+                ),
+                (
+                    "bar".into(),
+                    explicit_build(vec!["bar".into()], vec![]).into(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        );
+
+        graph.validate().unwrap();
+
+        assert_eq!(
+            graph.validate_dynamic(&DynamicConfig::new(
+                [("foo".into(), DynamicBuild::new(vec!["bar".into()]))]
+                    .into_iter()
+                    .collect(),
+            )),
+            Ok(())
+        );
+
+        let BuildGraphError::CircularDependency(paths) = graph
+            .validate_dynamic(&DynamicConfig::new(
+                [("bar".into(), DynamicBuild::new(vec!["foo".into()]))]
+                    .into_iter()
+                    .collect(),
+            ))
+            .unwrap_err()
+        else {
+            panic!()
+        };
+
+        assert_eq!(
+            paths
+                .iter()
+                .map(|path| path.as_ref())
+                .sorted()
+                .collect::<Vec<&str>>(),
+            ["bar", "foo"]
         );
     }
 

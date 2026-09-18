@@ -21,7 +21,9 @@ pub use self::{
     compile::compile,
     context::Context,
     error::BuildError,
-    infrastructure::{FjallDatabase, OsCommandRunner, OsConsole, OsFileSystem},
+    infrastructure::{
+        Console, FileSystem, FjallDatabase, OsCommandRunner, OsConsole, OsFileSystem,
+    },
     module_dependency::{ModuleDependencyMap, validate_modules},
     parse::parse,
     run::{RunOptions, run},

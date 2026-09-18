@@ -2001,7 +2001,7 @@ mod tests {
         let file_system = FakeFileSystem::default();
         let context = Arc::new(Context::new(
             FakeCommandRunner::default(),
-            FakeConsole::default(),
+            Mutex::new(FakeConsole::default()).into(),
             database.clone(),
             file_system.clone(),
         ));

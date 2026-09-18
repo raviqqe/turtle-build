@@ -91,10 +91,12 @@ impl BuildGraph {
 
     pub fn add_header_dependencies(&mut self, output: &Arc<str>, dependencies: &[String]) {
         for dependency in dependencies {
-            self.add_edge(
-                self.primary_outputs[output].clone(),
-                dependency.as_str().into(),
-            );
+            // Header dependencies that are not outputs cannot form cycles.
+            if let Some((dependency, _)) = self.primary_outputs.get_key_value(dependency.as_str()) {
+                let dependency = dependency.clone();
+
+                self.add_edge(self.primary_outputs[output].clone(), dependency);
+            }
         }
     }
 
@@ -435,6 +437,23 @@ mod tests {
 
         graph.add_header_dependencies(&"foo".into(), &[]);
 
+        assert_eq!(graph.validate(), Ok(()));
+    }
+
+    #[test]
+    fn validate_with_header_dependency_on_source_file() {
+        let mut graph = BuildGraph::new(
+            &[(
+                "foo".into(),
+                explicit_build(vec!["foo".into()], vec![]).into(),
+            )]
+            .into_iter()
+            .collect(),
+        );
+
+        graph.add_header_dependencies(&"foo".into(), &["bar.h".into()]);
+
+        assert!(!graph.nodes.contains_key("bar.h"));
         assert_eq!(graph.validate(), Ok(()));
     }
 

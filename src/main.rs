@@ -4,7 +4,7 @@ extern crate alloc;
 
 use alloc::sync::Arc;
 use clap::{Parser, ValueEnum};
-use core::{error::Error, time::Duration};
+use core::time::Duration;
 use futures::future::try_join_all;
 #[cfg(unix)]
 use rlimit::Resource;
@@ -56,10 +56,8 @@ enum Tool {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() {
     let arguments = Arguments::parse();
-
-    increase_nofile_limit(u64::MAX)?;
 
     if let Err(error) = execute(&arguments).await {
         if !arguments.quiet || !matches!(error, BuildError::Build) {
@@ -81,14 +79,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         exit(1)
     }
-
-    Ok(())
 }
 
 async fn execute(arguments: &Arguments) -> Result<(), BuildError> {
     if let Some(directory) = &arguments.directory {
         set_current_dir(directory)?;
     }
+
+    increase_nofile_limit(u64::MAX)?;
 
     let job_limit = arguments.job_limit.unwrap_or_else(num_cpus::get);
     let file_system = OsFileSystem::new(

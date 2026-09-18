@@ -210,15 +210,13 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         let mut content_hash =
             calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
-        if let Some(metadata) = &output_metadata
+        if output_metadata.is_some()
             && Some(content_hash)
                 == context
                     .build()
                     .database()
                     .get_hash(HashType::Content, build.id())?
         {
-            cache_output_metadata(&context, &build, metadata).await;
-
             return Ok(());
         } else if let Some(rule) = build.rule() {
             try_join_all(
@@ -1559,7 +1557,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn query_output_once_on_timestamp_update_of_input() {
+    async fn query_output_again_on_timestamp_update_of_input() {
         let file_system = FakeFileSystem::default();
         let context = create_context(&Default::default(), &Default::default(), &file_system);
         let config = create_simple_config(
@@ -1592,7 +1590,7 @@ mod tests {
 
         run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
 
-        assert_eq!(count_metadata_requests(&file_system, "bar"), count + 1);
+        assert_eq!(count_metadata_requests(&file_system, "bar"), count + 2);
     }
 
     #[tokio::test]

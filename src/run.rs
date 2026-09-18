@@ -27,7 +27,7 @@ use futures::future::{FutureExt, try_join_all};
 use itertools::Itertools;
 pub use options::RunOptions;
 use std::{path::Path, process::Output};
-use tokio::{join, spawn, sync::MutexGuard, time::Instant};
+use tokio::{join, spawn, sync::MutexGuard, time::Instant, try_join};
 
 /// Runs builds.
 pub async fn run(
@@ -111,7 +111,7 @@ async fn run_build(context: Arc<RunContext>, build: &Arc<Build>) -> Result<(), B
 
 async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), BuildError> {
     spawn(async move {
-        let (inputs, output_metadata) = join!(
+        let (_, output_metadata) = try_join!(
             try_join_all(
                 build
                     .inputs()
@@ -120,9 +120,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                     .map(|input| build_input(context.clone(), input)),
             ),
             get_output_metadata(&context, &build),
-        );
-
-        inputs?;
+        )?;
 
         // TODO Consider caching dynamic modules.
         let dynamic_config = if let Some(dynamic_module) = build.dynamic_module() {
@@ -283,8 +281,11 @@ async fn build_input(context: Arc<RunContext>, input: &str) -> Result<(), BuildE
     }
 }
 
-async fn get_output_metadata(context: &RunContext, build: &Build) -> Option<Vec<Metadata>> {
-    try_join_all(
+async fn get_output_metadata(
+    context: &RunContext,
+    build: &Build,
+) -> Result<Option<Vec<Metadata>>, BuildError> {
+    Ok(try_join_all(
         build
             .outputs()
             .iter()
@@ -296,10 +297,9 @@ async fn get_output_metadata(context: &RunContext, build: &Build) -> Option<Vec<
                     .metadata(path.as_ref().as_ref())
             }),
     )
-    .await
-    .ok()?
+    .await?
     .into_iter()
-    .collect()
+    .collect())
 }
 
 async fn cache_output_metadata(context: &RunContext, build: &Build, metadata: &[Metadata]) {
@@ -513,7 +513,7 @@ fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> Build
 mod tests {
     use super::*;
     use crate::{
-        infrastructure::{FakeCommandRunner, FakeConsole, FakeDatabase, FakeFileSystem},
+        infrastructure::{FakeCommandRunner, FakeConsole, FakeDatabase, FakeFileSystem, FileError},
         ir::HeaderDependency,
     };
     use core::{num::NonZeroUsize, pin::pin};
@@ -1669,6 +1669,34 @@ mod tests {
         run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
 
         assert_eq!(count_metadata_requests(&file_system, "foo.h"), count + 2);
+    }
+
+    #[tokio::test]
+    async fn fail_with_output_metadata_error() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+
+        file_system.write_file("bar", "");
+        file_system.fail_metadata("foo");
+
+        assert_eq!(
+            run(
+                &create_context(&command_runner, &Default::default(), &file_system),
+                create_simple_config(
+                    vec![explicit_build(
+                        vec!["foo".into()],
+                        Rule::new("cp bar foo", None),
+                        vec!["bar".into()],
+                    )],
+                    &["foo"],
+                ),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await,
+            Err(BuildError::File(FileError::new("metadata failure")))
+        );
+        assert_eq!(command_runner.commands(), Vec::<String>::new());
     }
 
     #[tokio::test]

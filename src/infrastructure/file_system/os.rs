@@ -2,11 +2,12 @@ use super::Metadata;
 use crate::infrastructure::{FileError, FileSystem};
 use async_trait::async_trait;
 use std::{
+    fs::{exists, metadata},
     io,
     path::{Path, PathBuf},
 };
 use tokio::{
-    fs::{canonicalize, create_dir_all, metadata, read, read_to_string, remove_file, try_exists},
+    fs::{canonicalize, create_dir_all, read, read_to_string, remove_file},
     sync::Semaphore,
 };
 
@@ -45,14 +46,15 @@ impl FileSystem for OsFileSystem {
             .map_err(|error| Self::error(error, path))
     }
 
+    // Existence checks run inline because a `stat` call is cheaper than a round
+    // trip through the blocking thread pool.
     async fn exists(&self, path: &Path) -> Result<bool, FileError> {
-        try_exists(path)
-            .await
-            .map_err(|error| Self::error(error, path))
+        exists(path).map_err(|error| Self::error(error, path))
     }
 
+    // Metadata queries run inline for the same reason as existence checks.
     async fn metadata(&self, path: &Path) -> Result<Option<Metadata>, FileError> {
-        match metadata(path).await {
+        match metadata(path) {
             Ok(metadata) => Ok(Some(metadata.try_into()?)),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
             Err(error) => Err(Self::error(error, path)),

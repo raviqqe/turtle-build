@@ -5,7 +5,7 @@ use tokio::sync::Mutex;
 /// A context.
 pub struct Context {
     command_runner: Box<dyn CommandRunner + Send + Sync>,
-    console: Mutex<Box<dyn Console + Send + Sync>>,
+    console: Arc<Mutex<dyn Console + Send + Sync>>,
     database: Box<dyn Database + Send + Sync>,
     file_system: Arc<dyn FileSystem + Send + Sync>,
 }
@@ -14,13 +14,13 @@ impl Context {
     /// Creates a context.
     pub fn new(
         command_runner: impl CommandRunner + Send + Sync + 'static,
-        console: impl Console + Send + Sync + 'static,
+        console: Arc<Mutex<impl Console + Send + Sync + 'static>>,
         database: impl Database + Send + Sync + 'static,
         file_system: impl FileSystem + Send + Sync + 'static,
     ) -> Self {
         Self {
             command_runner: Box::new(command_runner),
-            console: Mutex::new(Box::new(console)),
+            console,
             file_system: Arc::new(file_system),
             database: Box::new(database),
         }
@@ -32,7 +32,7 @@ impl Context {
     }
 
     /// Returns a console.
-    pub fn console(&self) -> &Mutex<Box<dyn Console + Send + Sync>> {
+    pub fn console(&self) -> &Mutex<dyn Console + Send + Sync> {
         &self.console
     }
 

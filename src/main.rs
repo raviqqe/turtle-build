@@ -15,7 +15,7 @@ use std::{
     path::{Path, PathBuf},
     process::exit,
 };
-use tokio::time::sleep;
+use tokio::{sync::Mutex, time::sleep};
 use turtle_build::{
     BuildError, Console, Context, FileSystem, FjallDatabase, Module, ModuleDependencyMap,
     OsCommandRunner, OsConsole, OsFileSystem, RunOptions, Statement, clean_dead, compile, parse,
@@ -58,10 +58,13 @@ enum Tool {
 #[tokio::main]
 async fn main() {
     let arguments = Arguments::parse();
+    let console = Arc::new(Mutex::new(OsConsole::new()));
 
-    if let Err(error) = execute(&arguments).await {
+    if let Err(error) = execute(&arguments, &console).await {
         if !arguments.quiet || !matches!(error, BuildError::Build) {
-            OsConsole::new()
+            console
+                .lock()
+                .await
                 .write_stderr(
                     format!(
                         "{}{}\n",
@@ -81,7 +84,7 @@ async fn main() {
     }
 }
 
-async fn execute(arguments: &Arguments) -> Result<(), BuildError> {
+async fn execute(arguments: &Arguments, console: &Arc<Mutex<OsConsole>>) -> Result<(), BuildError> {
     if let Some(directory) = &arguments.directory {
         set_current_dir(directory)?;
     }
@@ -113,7 +116,7 @@ async fn execute(arguments: &Arguments) -> Result<(), BuildError> {
     let config = Arc::new(compile(&modules, &dependencies, &root_module_path)?);
     let context = Arc::new(Context::new(
         OsCommandRunner::new(job_limit),
-        OsConsole::new(),
+        console.clone(),
         FjallDatabase::new(
             &config
                 .build_directory()

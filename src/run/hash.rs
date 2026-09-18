@@ -114,12 +114,13 @@ mod tests {
     };
     use pretty_assertions::{assert_eq, assert_ne};
     use std::time::SystemTime;
+    use tokio::sync::Mutex;
 
     fn create_context(file_system: &FakeFileSystem, builds: Vec<Build>) -> RunContext {
         RunContext::new(
             Context::new(
                 FakeCommandRunner::default(),
-                FakeConsole::default(),
+                Mutex::new(FakeConsole::default()).into(),
                 FakeDatabase::default(),
                 file_system.clone(),
             )

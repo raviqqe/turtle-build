@@ -470,7 +470,7 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildErro
 async fn write_description<'a>(
     context: &'a RunContext,
     rule: &Rule,
-) -> Result<MutexGuard<'a, Box<dyn Console + Send + Sync>>, BuildError> {
+) -> Result<MutexGuard<'a, dyn Console + Send + Sync>, BuildError> {
     let mut console = context.build().console().lock().await;
 
     if let Some(description) = rule.description() {
@@ -525,7 +525,7 @@ mod tests {
     #[cfg(windows)]
     use std::os::windows::process::ExitStatusExt;
     use std::{collections::HashMap, process::ExitStatus};
-    use tokio::task::yield_now;
+    use tokio::{sync::Mutex, task::yield_now};
 
     const DEFAULT_OPTIONS: RunOptions = RunOptions {
         debug: false,
@@ -540,7 +540,7 @@ mod tests {
     ) -> Arc<Context> {
         Context::new(
             command_runner.clone(),
-            console.clone(),
+            Mutex::new(console.clone()).into(),
             FakeDatabase::default(),
             file_system.clone(),
         )

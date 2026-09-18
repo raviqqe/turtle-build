@@ -4,7 +4,7 @@ extern crate alloc;
 
 use alloc::sync::Arc;
 use clap::{Parser, ValueEnum};
-use core::{error::Error, mem::ManuallyDrop, time::Duration};
+use core::{error::Error, time::Duration};
 use futures::future::try_join_all;
 #[cfg(unix)]
 use rlimit::Resource;
@@ -124,8 +124,7 @@ async fn execute(
     validate_modules(&dependencies)?;
 
     let config = Arc::new(compile(&modules, &dependencies, &root_module_path)?);
-    // Do not drop this to avoid closing the database, which synchronizes its journal again.
-    let context = ManuallyDrop::new(Arc::new(Context::new(
+    let context = Arc::new(Context::new(
         command_runner,
         console,
         FjallDatabase::new(
@@ -137,7 +136,7 @@ async fn execute(
                 .join(env!("CARGO_PKG_VERSION").replace('.', "_")),
         )?,
         file_system,
-    )));
+    ));
 
     if let Some(tool) = &arguments.tool {
         match tool {

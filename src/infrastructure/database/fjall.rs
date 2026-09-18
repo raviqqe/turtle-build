@@ -13,7 +13,7 @@ use once_cell::sync::OnceCell;
 use std::{path::Path, sync::LazyLock};
 use tokio::task::spawn_blocking;
 
-const KEYSPACE_NAME: &str = "build";
+const KEYSPACE_NAME: &str = concat!("build_", env!("CARGO_PKG_VERSION"));
 
 const TIMESTAMP_HASH_TAG: u8 = 0;
 const CONTENT_HASH_TAG: u8 = 1;

@@ -69,7 +69,7 @@ pub async fn calculate_content_hash(
 
 fn get_build_hash(context: &RunContext, r#type: HashType, input: &str) -> Result<u64, BuildError> {
     context
-        .application()
+        .build()
         .database()
         .get_hash(
             r#type,

@@ -134,6 +134,14 @@ fn compile_module<'a>(
                     ("out", outputs.join(" ").into()),
                 ]);
 
+                let dynamic_module = compile_dynamic_module_path(
+                    inputs
+                        .iter()
+                        .chain(&implicit_inputs)
+                        .chain(&order_only_inputs),
+                    &variables,
+                )?;
+
                 let ir = Arc::new(Build::new(
                     outputs,
                     implicit_outputs,
@@ -153,7 +161,7 @@ fn compile_module<'a>(
                     },
                     inputs.into_iter().chain(implicit_inputs).collect(),
                     order_only_inputs,
-                    resolve_variable(DYNAMIC_MODULE_VARIABLE, &variables).map(Into::into),
+                    dynamic_module,
                 ));
 
                 let outputs = || ir.outputs().iter().chain(ir.implicit_outputs());
@@ -261,6 +269,22 @@ fn compile_pool(
     } else {
         None
     })
+}
+
+fn compile_dynamic_module_path<'a>(
+    mut inputs: impl Iterator<Item = &'a Arc<str>>,
+    variables: &TrainMap<&str, Arc<str>>,
+) -> Result<Option<Arc<str>>, CompileError> {
+    let Some(path) = resolve_variable(DYNAMIC_MODULE_VARIABLE, variables) else {
+        return Ok(None);
+    };
+
+    Ok(Some(
+        inputs
+            .find(|input| input.as_ref() == path)
+            .ok_or(CompileError::DynamicModuleNotInput(path))?
+            .clone(),
+    ))
 }
 
 pub fn compile_dynamic(module: &ast::DynamicModule) -> Result<DynamicConfig, CompileError> {
@@ -1639,7 +1663,7 @@ mod tests {
                         ast_explicit_build(
                             vec!["foo".into()],
                             "phony".into(),
-                            vec![],
+                            vec!["bar".into()],
                             vec![ast::VariableDefinition::new("dyndep".into(), "bar".into())]
                         )
                         .into()
@@ -1658,7 +1682,7 @@ mod tests {
                         vec!["foo".into()],
                         vec![],
                         None,
-                        vec![],
+                        vec!["bar".into()],
                         vec![],
                         Some("bar".into())
                     )
@@ -1679,7 +1703,13 @@ mod tests {
                     ROOT_MODULE_PATH.clone(),
                     ast::Module::new(vec![
                         ast_rule("foo", &[("command", ""), ("dyndep", "$out.dd")]).into(),
-                        ast_explicit_build(vec!["bar".into()], "foo".into(), vec![], vec![]).into(),
+                        ast_explicit_build(
+                            vec!["bar".into()],
+                            "foo".into(),
+                            vec!["bar.dd".into()],
+                            vec![]
+                        )
+                        .into(),
                     ])
                 )]
                 .into_iter()
@@ -1695,7 +1725,7 @@ mod tests {
                         vec!["bar".into()],
                         vec![],
                         Some(Rule::new("".into(), None)),
-                        vec![],
+                        vec!["bar.dd".into()],
                         vec![],
                         Some("bar.dd".into())
                     )
@@ -1719,7 +1749,7 @@ mod tests {
                         ast_explicit_build(
                             vec!["bar".into()],
                             "foo".into(),
-                            vec![],
+                            vec!["build.dd".into()],
                             vec![ast::VariableDefinition::new(
                                 "dyndep".into(),
                                 "build.dd".into()
@@ -1741,7 +1771,7 @@ mod tests {
                         vec!["bar".into()],
                         vec![],
                         Some(Rule::new("".into(), None)),
-                        vec![],
+                        vec!["build.dd".into()],
                         vec![],
                         Some("build.dd".into())
                     )
@@ -1751,6 +1781,142 @@ mod tests {
                 .collect(),
                 ["bar".into()].into_iter().collect()
             )
+        );
+    }
+
+    #[test]
+    fn compile_dynamic_module_variable_with_implicit_input() {
+        assert_eq!(
+            compile_root_module(vec![
+                ast::Build::new(
+                    vec!["foo".into()],
+                    vec![],
+                    "phony".into(),
+                    vec![],
+                    vec!["bar".into()],
+                    vec![],
+                    vec![ast::VariableDefinition::new("dyndep".into(), "bar".into())]
+                )
+                .into()
+            ])
+            .unwrap(),
+            create_simple_config(
+                [(
+                    "foo".into(),
+                    Build::new(
+                        vec!["foo".into()],
+                        vec![],
+                        None,
+                        vec!["bar".into()],
+                        vec![],
+                        Some("bar".into())
+                    )
+                    .into()
+                )]
+                .into_iter()
+                .collect(),
+                ["foo".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn compile_dynamic_module_variable_with_order_only_input() {
+        assert_eq!(
+            compile_root_module(vec![
+                ast::Build::new(
+                    vec!["foo".into()],
+                    vec![],
+                    "phony".into(),
+                    vec![],
+                    vec![],
+                    vec!["bar".into()],
+                    vec![ast::VariableDefinition::new("dyndep".into(), "bar".into())]
+                )
+                .into()
+            ])
+            .unwrap(),
+            create_simple_config(
+                [(
+                    "foo".into(),
+                    Build::new(
+                        vec!["foo".into()],
+                        vec![],
+                        None,
+                        vec![],
+                        vec!["bar".into()],
+                        Some("bar".into())
+                    )
+                    .into()
+                )]
+                .into_iter()
+                .collect(),
+                ["foo".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn compile_dynamic_module_variable_with_variable_in_input() {
+        assert_eq!(
+            compile_root_module(vec![
+                ast::VariableDefinition::new("directory".into(), "bar".into()).into(),
+                ast_explicit_build(
+                    vec!["foo".into()],
+                    "phony".into(),
+                    vec!["$directory/foo.dd".into()],
+                    vec![ast::VariableDefinition::new(
+                        "dyndep".into(),
+                        "bar/foo.dd".into()
+                    )]
+                )
+                .into()
+            ])
+            .unwrap(),
+            create_simple_config(
+                [(
+                    "foo".into(),
+                    Build::new(
+                        vec!["foo".into()],
+                        vec![],
+                        None,
+                        vec!["bar/foo.dd".into()],
+                        vec![],
+                        Some("bar/foo.dd".into())
+                    )
+                    .into()
+                )]
+                .into_iter()
+                .collect(),
+                ["foo".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn fail_to_compile_dynamic_module_variable_without_input() {
+        assert_eq!(
+            compile_root_module(vec![
+                ast_explicit_build(
+                    vec!["foo".into()],
+                    "phony".into(),
+                    vec!["baz".into()],
+                    vec![ast::VariableDefinition::new("dyndep".into(), "bar".into())]
+                )
+                .into()
+            ]),
+            Err(CompileError::DynamicModuleNotInput("bar".into()))
+        );
+    }
+
+    #[test]
+    fn fail_to_compile_rule_level_dynamic_module_variable_without_input() {
+        assert_eq!(
+            compile_root_module(vec![
+                ast_rule("foo", &[("command", ""), ("dyndep", "$out.dd")]).into(),
+                ast_explicit_build(vec!["bar".into()], "foo".into(), vec![], vec![]).into(),
+            ]),
+            Err(CompileError::DynamicModuleNotInput("bar.dd".into()))
         );
     }
 

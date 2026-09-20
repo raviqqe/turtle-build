@@ -12,10 +12,10 @@ pub struct Build {
 }
 
 impl Build {
-    pub fn new(
+    pub const fn new(
         outputs: Vec<String>,
         implicit_outputs: Vec<String>,
-        rule: impl Into<String>,
+        rule: String,
         inputs: Vec<String>,
         implicit_inputs: Vec<String>,
         order_only_inputs: Vec<String>,
@@ -24,7 +24,7 @@ impl Build {
         Self {
             outputs,
             implicit_outputs,
-            rule: rule.into(),
+            rule,
             inputs,
             implicit_inputs,
             order_only_inputs,

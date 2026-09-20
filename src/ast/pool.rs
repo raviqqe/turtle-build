@@ -5,11 +5,8 @@ pub struct Pool {
 }
 
 impl Pool {
-    pub fn new(name: impl Into<String>, depth: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            depth: depth.into(),
-        }
+    pub const fn new(name: String, depth: String) -> Self {
+        Self { name, depth }
     }
 
     pub fn name(&self) -> &str {

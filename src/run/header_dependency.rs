@@ -80,7 +80,7 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     fn msvc_rule(prefix: &str) -> Rule {
-        Rule::new("", None).with_header_dependency(Some(HeaderDependency::Msvc {
+        Rule::new("".into(), None).with_header_dependency(Some(HeaderDependency::Msvc {
             prefix: prefix.into(),
         }))
     }
@@ -153,7 +153,10 @@ mod tests {
     #[test]
     fn exclude_show_includes_without_msvc_header_dependency() {
         assert_eq!(
-            exclude_show_includes(&Rule::new("", None), b"Note: including file: foo.h\nAAA\n"),
+            exclude_show_includes(
+                &Rule::new("".into(), None),
+                b"Note: including file: foo.h\nAAA\n"
+            ),
             b"Note: including file: foo.h\nAAA\n".to_vec()
         );
     }

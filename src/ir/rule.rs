@@ -9,9 +9,9 @@ pub struct Rule {
 }
 
 impl Rule {
-    pub fn new(command: impl Into<String>, description: Option<String>) -> Self {
+    pub const fn new(command: String, description: Option<String>) -> Self {
         Self {
-            command: command.into(),
+            command,
             description,
             header_dependency: None,
             pool: None,

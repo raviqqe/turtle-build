@@ -7,9 +7,9 @@ pub struct Rule {
 }
 
 impl Rule {
-    pub fn new(name: impl Into<String>, variable_definitions: Vec<VariableDefinition>) -> Self {
+    pub const fn new(name: String, variable_definitions: Vec<VariableDefinition>) -> Self {
         Self {
-            name: name.into(),
+            name,
             variable_definitions,
         }
     }

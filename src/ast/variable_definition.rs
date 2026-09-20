@@ -5,11 +5,8 @@ pub struct VariableDefinition {
 }
 
 impl VariableDefinition {
-    pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            value: value.into(),
-        }
+    pub const fn new(name: String, value: String) -> Self {
+        Self { name, value }
     }
 
     pub fn name(&self) -> &str {

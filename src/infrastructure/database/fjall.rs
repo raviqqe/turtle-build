@@ -3,6 +3,7 @@ use crate::{
     infrastructure::{Database, DatabaseError},
     ir::BuildId,
 };
+use alloc::sync::Arc;
 use core::str;
 use fjall::Keyspace;
 
@@ -59,11 +60,14 @@ impl Database for FjallDatabase {
         )
     }
 
-    fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<String>, DatabaseError> {
+    fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError> {
         Ok(self
             .keyspace
             .get(key(HEADER_DEPENDENCY_TAG, &id.to_bytes()))?
-            .map(|value| bincode::decode_from_slice(&value, BINCODE_CONFIG).map(|(value, _)| value))
+            .map(|value| {
+                bincode::borrow_decode_from_slice::<Vec<&str>, _>(&value, BINCODE_CONFIG)
+                    .map(|(dependencies, _)| dependencies.into_iter().map(From::from).collect())
+            })
             .transpose()?
             .unwrap_or_default())
     }
@@ -71,7 +75,7 @@ impl Database for FjallDatabase {
     fn set_header_dependencies(
         &self,
         id: BuildId,
-        dependencies: &[String],
+        dependencies: &[Arc<str>],
     ) -> Result<(), DatabaseError> {
         self.insert(
             &key(HEADER_DEPENDENCY_TAG, &id.to_bytes()),
@@ -207,7 +211,7 @@ mod tests {
 
         assert_eq!(
             database.get_header_dependencies(BuildId::new(0)).unwrap(),
-            vec!["foo", "bar"]
+            vec!["foo".into(), "bar".into()]
         );
     }
 
@@ -255,7 +259,7 @@ mod tests {
         );
         assert_eq!(
             database.get_header_dependencies(BuildId::new(0)).unwrap(),
-            vec!["foo"]
+            vec!["foo".into()]
         );
         assert_eq!(database.get_outputs().unwrap(), vec!["foo"]);
         assert_eq!(database.get_source("foo").unwrap(), Some("bar".into()));

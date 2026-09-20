@@ -3,7 +3,9 @@ use crate::{
     infrastructure::{Database, DatabaseError},
     ir::BuildId,
 };
-use redb::{Durability, Key, ReadOnlyTable, ReadableDatabase, ReadableTable, TableDefinition, Value};
+use redb::{
+    Durability, Key, ReadOnlyTable, ReadableDatabase, ReadableTable, TableDefinition, Value,
+};
 use std::{fs::create_dir_all, path::Path};
 
 const TIMESTAMP_HASHES: TableDefinition<[u8; 8], u64> = TableDefinition::new("timestamp_hashes");

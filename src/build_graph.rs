@@ -142,7 +142,7 @@ mod tests {
         Build::new(
             outputs,
             vec![],
-            Rule::new("", None).into(),
+            Rule::new("".into(), None).into(),
             inputs,
             vec![],
             None,
@@ -193,7 +193,7 @@ mod tests {
                     Build::new(
                         vec!["foo".into()],
                         vec![],
-                        Rule::new("", None).into(),
+                        Rule::new("".into(), None).into(),
                         vec![],
                         vec!["bar".into()],
                         None
@@ -231,7 +231,7 @@ mod tests {
                     Build::new(
                         vec!["foo".into()],
                         vec![],
-                        Rule::new("", None).into(),
+                        Rule::new("".into(), None).into(),
                         vec![],
                         vec!["foo".into()],
                         None
@@ -616,7 +616,7 @@ mod tests {
         let build = Arc::new(Build::new(
             vec!["foo".into()],
             vec!["bar".into()],
-            Rule::new("", None).into(),
+            Rule::new("".into(), None).into(),
             vec![],
             vec![],
             None,
@@ -645,7 +645,7 @@ mod tests {
         let build = Arc::new(Build::new(
             vec!["foo".into()],
             vec!["bar".into()],
-            Rule::new("", None).into(),
+            Rule::new("".into(), None).into(),
             vec![],
             vec![],
             None,

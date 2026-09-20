@@ -5,10 +5,10 @@ pub struct VariableDefinition {
 }
 
 impl VariableDefinition {
-    pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
+    pub fn new(name: String, value: String) -> Self {
         Self {
-            name: name.into(),
-            value: value.into(),
+            name,
+            value,
         }
     }
 

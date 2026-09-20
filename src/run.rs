@@ -674,8 +674,8 @@ mod tests {
             &create_context(&command_runner, &Default::default(), &Default::default()),
             create_simple_config(
                 vec![
-                    explicit_build(vec!["foo".into()], Rule::new("touch foo", None), vec![]),
-                    explicit_build(vec!["bar".into()], Rule::new("touch bar", None), vec![]),
+                    explicit_build(vec!["foo".into()], Rule::new("touch foo".into(), None), vec![]),
+                    explicit_build(vec!["bar".into()], Rule::new("touch bar".into(), None), vec![]),
                 ],
                 &["foo"],
             ),
@@ -696,8 +696,8 @@ mod tests {
             &create_context(&command_runner, &Default::default(), &Default::default()),
             create_simple_config(
                 vec![
-                    explicit_build(vec!["foo".into()], Rule::new("touch foo", None), vec![]),
-                    explicit_build(vec!["bar".into()], Rule::new("touch bar", None), vec![]),
+                    explicit_build(vec!["foo".into()], Rule::new("touch foo".into(), None), vec![]),
+                    explicit_build(vec!["bar".into()], Rule::new("touch bar".into(), None), vec![]),
                 ],
                 &["foo"],
             ),
@@ -719,7 +719,7 @@ mod tests {
             create_simple_config(
                 vec![explicit_build(
                     vec!["foo".into()],
-                    Rule::new("touch foo", None),
+                    Rule::new("touch foo".into(), None),
                     vec![],
                 )],
                 &[],
@@ -779,7 +779,7 @@ mod tests {
                 create_simple_config(
                     vec![explicit_build(
                         vec!["foo".into()],
-                        Rule::new("touch foo", None),
+                        Rule::new("touch foo".into(), None),
                         vec![],
                     )],
                     &[],
@@ -811,15 +811,15 @@ mod tests {
                 vec![
                     explicit_build(
                         vec!["foo".into()],
-                        Rule::new("touch foo", None),
+                        Rule::new("touch foo".into(), None),
                         vec!["bar".into(), "baz".into()],
                     ),
                     explicit_build(
                         vec!["bar".into()],
-                        Rule::new("touch bar", None),
+                        Rule::new("touch bar".into(), None),
                         vec!["baz".into()],
                     ),
-                    explicit_build(vec!["baz".into()], Rule::new("touch baz", None), vec![]),
+                    explicit_build(vec!["baz".into()], Rule::new("touch baz".into(), None), vec![]),
                 ],
                 &["foo"],
             ),
@@ -846,12 +846,12 @@ mod tests {
                     Build::new(
                         vec!["foo".into()],
                         vec![],
-                        Rule::new("touch foo", None).into(),
+                        Rule::new("touch foo".into(), None).into(),
                         vec![],
                         vec!["bar".into()],
                         None,
                     ),
-                    explicit_build(vec!["bar".into()], Rule::new("touch bar", None), vec![]),
+                    explicit_build(vec!["bar".into()], Rule::new("touch bar".into(), None), vec![]),
                 ],
                 &["foo"],
             ),
@@ -878,12 +878,12 @@ mod tests {
                 vec![
                     explicit_build(
                         vec!["foo".into(), "bar".into()],
-                        Rule::new("touch foo bar", None),
+                        Rule::new("touch foo bar".into(), None),
                         vec![],
                     ),
                     explicit_build(
                         vec!["baz".into()],
-                        Rule::new("cat foo bar > baz", None),
+                        Rule::new("cat foo bar > baz".into(), None),
                         vec!["foo".into(), "bar".into()],
                     ),
                 ],
@@ -911,7 +911,7 @@ mod tests {
                 create_simple_config(
                     vec![explicit_build(
                         vec!["foo".into()],
-                        Rule::new("cp bar foo", None),
+                        Rule::new("cp bar foo".into(), None),
                         vec!["bar".into()],
                     )],
                     &["foo"],
@@ -938,7 +938,7 @@ mod tests {
                     vec![Build::new(
                         vec!["foo".into()],
                         vec![],
-                        Rule::new("touch foo", None).into(),
+                        Rule::new("touch foo".into(), None).into(),
                         vec![],
                         vec!["bar".into()],
                         None,
@@ -969,7 +969,7 @@ mod tests {
                 create_simple_config(
                     vec![explicit_build(
                         vec!["foo".into()],
-                        Rule::new("cc foo.o", None),
+                        Rule::new("cc foo.o".into(), None),
                         vec!["foo.o".into()],
                     )],
                     &["foo"],
@@ -994,7 +994,7 @@ mod tests {
                 create_simple_config(
                     vec![explicit_build(
                         vec!["foo".into()],
-                        Rule::new("cp foo foo", None),
+                        Rule::new("cp foo foo".into(), None),
                         vec!["foo".into()],
                     )],
                     &["foo"],
@@ -1027,12 +1027,12 @@ mod tests {
                     vec![
                         explicit_build(
                             vec!["foo".into()],
-                            Rule::new("cp bar foo", None),
+                            Rule::new("cp bar foo".into(), None),
                             vec!["bar".into()],
                         ),
                         explicit_build(
                             vec!["bar".into()],
-                            Rule::new("cp foo bar", None),
+                            Rule::new("cp foo bar".into(), None),
                             vec!["foo".into()],
                         ),
                     ],
@@ -1061,7 +1061,7 @@ mod tests {
             create_simple_config(
                 vec![explicit_build(
                     vec!["foo/bar".into()],
-                    Rule::new("touch foo/bar", None),
+                    Rule::new("touch foo/bar".into(), None),
                     vec![],
                 )],
                 &["foo/bar"],
@@ -1087,7 +1087,7 @@ mod tests {
             Config::new(
                 create_outputs(vec![explicit_build(
                     vec!["foo.o".into()],
-                    Rule::new("cc foo.c", None),
+                    Rule::new("cc foo.c".into(), None),
                     vec!["foo.c".into()],
                 )]),
                 ["foo.o".into()].into_iter().collect(),
@@ -1117,7 +1117,7 @@ mod tests {
         let config = create_simple_config(
             vec![explicit_build(
                 vec!["foo".into()],
-                Rule::new("cp bar foo", None),
+                Rule::new("cp bar foo".into(), None),
                 vec!["bar".into()],
             )],
             &["foo"],
@@ -1142,7 +1142,7 @@ mod tests {
         let config = create_simple_config(
             vec![explicit_build(
                 vec!["foo".into()],
-                Rule::new("cp bar foo", None),
+                Rule::new("cp bar foo".into(), None),
                 vec!["bar".into()],
             )],
             &["foo"],
@@ -1170,7 +1170,7 @@ mod tests {
         let config = create_simple_config(
             vec![explicit_build(
                 vec!["foo".into()],
-                Rule::new("cp bar foo", None),
+                Rule::new("cp bar foo".into(), None),
                 vec!["bar".into()],
             )],
             &["foo"],
@@ -1199,7 +1199,7 @@ mod tests {
             vec![
                 explicit_build(
                     vec!["foo".into()],
-                    Rule::new("cp bar foo", None),
+                    Rule::new("cp bar foo".into(), None),
                     vec!["bar".into()],
                 ),
                 Build::new(
@@ -1236,7 +1236,7 @@ mod tests {
         let config = create_simple_config(
             vec![explicit_build(
                 vec!["foo".into()],
-                Rule::new("cp bar foo", None),
+                Rule::new("cp bar foo".into(), None),
                 vec!["bar".into()],
             )],
             &["foo"],
@@ -1261,7 +1261,7 @@ mod tests {
             vec![Build::new(
                 vec!["foo".into()],
                 vec!["baz".into()],
-                Rule::new("cp bar foo", None).into(),
+                Rule::new("cp bar foo".into(), None).into(),
                 vec!["bar".into()],
                 vec![],
                 None,
@@ -1289,7 +1289,7 @@ mod tests {
         let config = create_simple_config(
             vec![explicit_build(
                 vec!["foo".into()],
-                Rule::new("exit 1", None),
+                Rule::new("exit 1".into(), None),
                 vec![],
             )],
             &["foo"],
@@ -1316,7 +1316,7 @@ mod tests {
         let build = Build::new(
             vec!["foo".into()],
             vec!["bar".into()],
-            Rule::new("touch foo bar", None).into(),
+            Rule::new("touch foo bar".into(), None).into(),
             vec![],
             vec![],
             None,
@@ -1357,7 +1357,7 @@ mod tests {
             FakeCommandRunner::new([("exit 1".into(), failed_output())].into_iter().collect());
         let file_system = FakeFileSystem::default();
         let context = create_build_run_context(&command_runner, &file_system, vec![]);
-        let build = explicit_build(vec!["foo".into()], Rule::new("exit 1", None), vec![]).into();
+        let build = explicit_build(vec!["foo".into()], Rule::new("exit 1".into(), None), vec![]).into();
         let mut future = pin!(run_build(context.clone(), &build));
 
         file_system.write_file("foo", "1");
@@ -1397,7 +1397,7 @@ mod tests {
             &file_system,
             vec![
                 build.clone(),
-                explicit_build(vec!["bar".into()], Rule::new("touch bar", None), vec![]),
+                explicit_build(vec!["bar".into()], Rule::new("touch bar".into(), None), vec![]),
             ],
         );
         let build = build.into();
@@ -1437,7 +1437,7 @@ mod tests {
         file_system.write_file("bar", "2");
         run_build(
             context.clone(),
-            &explicit_build(vec!["foo".into()], Rule::new("touch foo", None), vec![]).into(),
+            &explicit_build(vec!["foo".into()], Rule::new("touch foo".into(), None), vec![]).into(),
         )
         .await
         .unwrap();
@@ -1463,12 +1463,12 @@ mod tests {
                 vec![
                     explicit_build(
                         vec!["foo".into()],
-                        Rule::new("cp bar foo", None),
+                        Rule::new("cp bar foo".into(), None),
                         vec!["bar".into()],
                     ),
                     explicit_build(
                         vec!["bar".into()],
-                        Rule::new("cp baz bar", None),
+                        Rule::new("cp baz bar".into(), None),
                         vec!["baz".into()],
                     ),
                 ],
@@ -1491,12 +1491,12 @@ mod tests {
             vec![
                 explicit_build(
                     vec!["foo".into()],
-                    Rule::new("cp bar foo", None),
+                    Rule::new("cp bar foo".into(), None),
                     vec!["bar".into()],
                 ),
                 explicit_build(
                     vec!["bar".into()],
-                    Rule::new("cp baz bar", None),
+                    Rule::new("cp baz bar".into(), None),
                     vec!["baz".into()],
                 ),
             ],
@@ -1526,13 +1526,13 @@ mod tests {
             vec![
                 explicit_build(
                     vec!["foo".into()],
-                    Rule::new("cp qux foo", None),
+                    Rule::new("cp qux foo".into(), None),
                     vec!["qux".into()],
                 ),
                 Build::new(
                     vec!["bar".into()],
                     vec!["qux".into()],
-                    Rule::new("cp baz bar", None).into(),
+                    Rule::new("cp baz bar".into(), None).into(),
                     vec!["baz".into()],
                     vec![],
                     None,
@@ -1565,12 +1565,12 @@ mod tests {
             vec![
                 explicit_build(
                     vec!["foo".into()],
-                    Rule::new("cp bar foo", None),
+                    Rule::new("cp bar foo".into(), None),
                     vec!["bar".into()],
                 ),
                 explicit_build(
                     vec!["bar".into()],
-                    Rule::new("cp baz bar", None),
+                    Rule::new("cp baz bar".into(), None),
                     vec!["baz".into()],
                 ),
             ],
@@ -1608,12 +1608,12 @@ mod tests {
                 vec![
                     explicit_build(
                         vec!["foo".into()],
-                        Rule::new("cp bar foo", None),
+                        Rule::new("cp bar foo".into(), None),
                         vec!["bar".into()],
                     ),
                     explicit_build(
                         vec!["bar".into()],
-                        Rule::new("cp baz bar", None),
+                        Rule::new("cp baz bar".into(), None),
                         vec!["baz".into()],
                     ),
                 ],
@@ -1636,7 +1636,7 @@ mod tests {
             vec![
                 explicit_build(
                     vec!["foo.o".into()],
-                    Rule::new("cc foo.c", None).with_header_dependency(Some(
+                    Rule::new("cc foo.c".into(), None).with_header_dependency(Some(
                         HeaderDependency::Make {
                             path: "foo.d".into(),
                         },
@@ -1686,7 +1686,7 @@ mod tests {
                 create_simple_config(
                     vec![explicit_build(
                         vec!["foo".into()],
-                        Rule::new("cp bar foo", None),
+                        Rule::new("cp bar foo".into(), None),
                         vec!["bar".into()],
                     )],
                     &["foo"],
@@ -1724,7 +1724,7 @@ mod tests {
             create_simple_config(
                 vec![explicit_build(
                     vec!["foo".into()],
-                    Rule::new("touch foo", Some("build foo".into())),
+                    Rule::new("touch foo".into(), Some("build foo".into())),
                     vec![],
                 )],
                 &["foo"],
@@ -1755,7 +1755,7 @@ mod tests {
                 create_simple_config(
                     vec![explicit_build(
                         vec!["foo".into()],
-                        Rule::new("exit 1", None),
+                        Rule::new("exit 1".into(), None),
                         vec![],
                     )],
                     &["foo"],
@@ -1784,7 +1784,7 @@ mod tests {
             create_simple_config(
                 vec![explicit_build(
                     vec!["foo".into()],
-                    Rule::new("touch foo", None),
+                    Rule::new("touch foo".into(), None),
                     vec![],
                 )],
                 &["foo"],
@@ -1813,7 +1813,7 @@ mod tests {
         let config = create_simple_config(
             vec![explicit_build(
                 vec!["foo.o".into()],
-                Rule::new("cc foo.c", None).with_header_dependency(Some(HeaderDependency::Make {
+                Rule::new("cc foo.c".into(), None).with_header_dependency(Some(HeaderDependency::Make {
                     path: "foo.d".into(),
                 })),
                 vec!["foo.c".into()],
@@ -1846,7 +1846,7 @@ mod tests {
         let context = create_context(&Default::default(), &Default::default(), &file_system);
         let build = explicit_build(
             vec!["foo.o".into()],
-            Rule::new("cc foo.c", None).with_header_dependency(Some(HeaderDependency::Gcc {
+            Rule::new("cc foo.c".into(), None).with_header_dependency(Some(HeaderDependency::Gcc {
                 path: "foo.d".into(),
             })),
             vec!["foo.c".into()],
@@ -1903,7 +1903,7 @@ mod tests {
         );
         let build = explicit_build(
             vec!["foo.obj".into()],
-            Rule::new("cl foo.c", None).with_header_dependency(Some(HeaderDependency::Msvc {
+            Rule::new("cl foo.c".into(), None).with_header_dependency(Some(HeaderDependency::Msvc {
                 prefix: "Note: including file: ".into(),
             })),
             vec!["foo.c".into()],
@@ -1938,7 +1938,7 @@ mod tests {
         let context = create_context(&command_runner, &Default::default(), &file_system);
         let build = explicit_build(
             vec!["foo.o".into()],
-            Rule::new("cc foo.c", None),
+            Rule::new("cc foo.c".into(), None),
             vec!["foo.c".into()],
         );
 
@@ -1954,7 +1954,7 @@ mod tests {
             create_simple_config(
                 vec![
                     build,
-                    explicit_build(vec!["foo.h".into()], Rule::new("touch foo.h", None), vec![]),
+                    explicit_build(vec!["foo.h".into()], Rule::new("touch foo.h".into(), None), vec![]),
                 ],
                 &["foo.o"],
             ),
@@ -1973,7 +1973,7 @@ mod tests {
         let context = create_context(&Default::default(), &Default::default(), &file_system);
         let build = explicit_build(
             vec!["foo.o".into()],
-            Rule::new("cc foo.c", None),
+            Rule::new("cc foo.c".into(), None),
             vec!["foo.c".into()],
         );
 
@@ -2005,7 +2005,7 @@ mod tests {
         ));
         let build = explicit_build(
             vec!["foo.o".into()],
-            Rule::new("cc foo.c", None),
+            Rule::new("cc foo.c".into(), None),
             vec!["foo.c".into()],
         );
 
@@ -2035,7 +2035,7 @@ mod tests {
             &Default::default(),
             &Default::default(),
         );
-        let build = explicit_build(vec!["foo".into()], Rule::new("touch foo", None), vec![]);
+        let build = explicit_build(vec!["foo".into()], Rule::new("touch foo".into(), None), vec![]);
 
         context
             .database()
@@ -2074,17 +2074,17 @@ mod tests {
                     Build::new(
                         vec!["foo".into()],
                         vec![],
-                        Rule::new("touch foo", None).into(),
+                        Rule::new("touch foo".into(), None).into(),
                         vec![],
                         vec!["foo.dd".into()],
                         Some("foo.dd".into()),
                     ),
                     explicit_build(
                         vec!["foo.dd".into()],
-                        Rule::new("touch foo.dd", None),
+                        Rule::new("touch foo.dd".into(), None),
                         vec![],
                     ),
-                    explicit_build(vec!["bar".into()], Rule::new("touch bar", None), vec![]),
+                    explicit_build(vec!["bar".into()], Rule::new("touch bar".into(), None), vec![]),
                 ],
                 &["foo"],
             ),
@@ -2118,17 +2118,17 @@ mod tests {
                     Build::new(
                         vec!["foo".into()],
                         vec!["baz".into()],
-                        Rule::new("touch foo", None).into(),
+                        Rule::new("touch foo".into(), None).into(),
                         vec![],
                         vec!["foo.dd".into()],
                         Some("foo.dd".into()),
                     ),
                     explicit_build(
                         vec!["foo.dd".into()],
-                        Rule::new("touch foo.dd", None),
+                        Rule::new("touch foo.dd".into(), None),
                         vec![],
                     ),
-                    explicit_build(vec!["bar".into()], Rule::new("touch bar", None), vec![]),
+                    explicit_build(vec!["bar".into()], Rule::new("touch bar".into(), None), vec![]),
                 ],
                 &["foo"],
             ),
@@ -2150,7 +2150,7 @@ mod tests {
         let build = Build::new(
             vec!["foo".into()],
             vec![],
-            Rule::new("touch foo", None).into(),
+            Rule::new("touch foo".into(), None).into(),
             vec![],
             vec![],
             Some("foo.dd".into()),
@@ -2186,7 +2186,7 @@ mod tests {
                     vec![Build::new(
                         vec!["foo".into()],
                         vec![],
-                        Rule::new("touch foo", None).into(),
+                        Rule::new("touch foo".into(), None).into(),
                         vec![],
                         vec![],
                         Some("foo.dd".into()),
@@ -2219,7 +2219,7 @@ mod tests {
                     vec![Build::new(
                         vec!["foo".into()],
                         vec![],
-                        Rule::new("touch foo", None).into(),
+                        Rule::new("touch foo".into(), None).into(),
                         vec![],
                         vec![],
                         Some("foo.dd".into()),
@@ -2374,7 +2374,7 @@ mod tests {
             create_simple_config(
                 vec![explicit_build(
                     vec!["foo".into()],
-                    Rule::new("touch foo", Some("build foo".into())).with_pool(Some(Pool::Console)),
+                    Rule::new("touch foo".into(), Some("build foo".into())).with_pool(Some(Pool::Console)),
                     vec![],
                 )],
                 &["foo"],
@@ -2427,7 +2427,7 @@ mod tests {
                 create_simple_config(
                     vec![explicit_build(
                         vec!["foo".into()],
-                        Rule::new("exit 1", None).with_pool(Some(Pool::Console)),
+                        Rule::new("exit 1".into(), None).with_pool(Some(Pool::Console)),
                         vec![],
                     )],
                     &["foo"],
@@ -2452,7 +2452,7 @@ mod tests {
     async fn lock_console_during_command_in_console_pool() {
         let command_runner = FakeCommandRunner::default();
         let context = create_run_context(&command_runner, &Default::default(), &[]);
-        let rule = Rule::new("foo", None).with_pool(Some(Pool::Console));
+        let rule = Rule::new("foo".into(), None).with_pool(Some(Pool::Console));
         let mut future = pin!(run_rule(&context, &rule));
 
         assert!(poll!(&mut future).is_pending());
@@ -2469,7 +2469,7 @@ mod tests {
         let command_runner = FakeCommandRunner::default();
         let console = FakeConsole::default();
         let context = create_run_context(&command_runner, &console, &[]);
-        let rule = Rule::new("foo", Some("bar".into())).with_pool(Some(Pool::Console));
+        let rule = Rule::new("foo".into(), Some("bar".into())).with_pool(Some(Pool::Console));
         let mut future = pin!(run_rule(&context, &rule));
 
         assert!(poll!(&mut future).is_pending());
@@ -2483,7 +2483,7 @@ mod tests {
     async fn wait_for_console_before_command_in_console_pool() {
         let command_runner = FakeCommandRunner::default();
         let context = create_run_context(&command_runner, &Default::default(), &[]);
-        let rule = Rule::new("foo", None).with_pool(Some(Pool::Console));
+        let rule = Rule::new("foo".into(), None).with_pool(Some(Pool::Console));
         let console = context.build().console().lock().await;
         let mut future = pin!(run_rule(&context, &rule));
 
@@ -2503,8 +2503,8 @@ mod tests {
     async fn run_command_concurrently_with_command_in_console_pool() {
         let command_runner = FakeCommandRunner::default();
         let context = create_run_context(&command_runner, &Default::default(), &[]);
-        let foo = Rule::new("foo", None).with_pool(Some(Pool::Console));
-        let bar = Rule::new("bar", None);
+        let foo = Rule::new("foo".into(), None).with_pool(Some(Pool::Console));
+        let bar = Rule::new("bar".into(), None);
         let mut foo_future = pin!(run_rule(&context, &foo));
         let mut bar_future = pin!(run_rule(&context, &bar));
 
@@ -2521,8 +2521,8 @@ mod tests {
     async fn release_pool_before_waiting_for_console() {
         let command_runner = FakeCommandRunner::default();
         let context = create_run_context(&command_runner, &Default::default(), &[("baz", 1)]);
-        let foo = Rule::new("foo", None).with_pool(limited_pool("baz"));
-        let bar = Rule::new("bar", None).with_pool(limited_pool("baz"));
+        let foo = Rule::new("foo".into(), None).with_pool(limited_pool("baz"));
+        let bar = Rule::new("bar".into(), None).with_pool(limited_pool("baz"));
         let console = context.build().console().lock().await;
         let mut foo_future = pin!(run_rule(&context, &foo));
         let mut bar_future = pin!(run_rule(&context, &bar));
@@ -2547,7 +2547,7 @@ mod tests {
         let command_runner = FakeCommandRunner::default();
         let console = FakeConsole::default();
         let context = create_run_context(&command_runner, &console, &[("bar", 1)]);
-        let rule = Rule::new("foo", Some("foo".into())).with_pool(limited_pool("bar"));
+        let rule = Rule::new("foo".into(), Some("foo".into())).with_pool(limited_pool("bar"));
         let permit = context.pool(rule.pool()).await.unwrap();
         let mut future = pin!(run_rule(&context, &rule));
 
@@ -2570,8 +2570,8 @@ mod tests {
     async fn keep_pool_until_command_finishes_on_console_error() {
         let command_runner = FakeCommandRunner::default();
         let context = create_run_context(&command_runner, &FakeConsole::failing(), &[("baz", 1)]);
-        let foo = Rule::new("foo", Some("foo".into())).with_pool(limited_pool("baz"));
-        let bar = Rule::new("bar", None).with_pool(limited_pool("baz"));
+        let foo = Rule::new("foo".into(), Some("foo".into())).with_pool(limited_pool("baz"));
+        let bar = Rule::new("bar".into(), None).with_pool(limited_pool("baz"));
         let mut foo_future = pin!(run_rule(&context, &foo));
         let mut bar_future = pin!(run_rule(&context, &bar));
 
@@ -2585,7 +2585,7 @@ mod tests {
     fn classify_phony_and_file_inputs() {
         let build = explicit_build(
             vec!["foo".into()],
-            Rule::new("", None),
+            Rule::new("".into(), None),
             vec!["bar".into(), "baz".into(), "qux".into(), "bar".into()],
         );
         let context = RunContext::new(
@@ -2598,7 +2598,7 @@ mod tests {
                 vec![
                     build.clone(),
                     Build::new(vec!["bar".into()], vec![], None, vec![], vec![], None),
-                    explicit_build(vec!["baz".into()], Rule::new("", None), vec![]),
+                    explicit_build(vec!["baz".into()], Rule::new("".into(), None), vec![]),
                 ],
                 &[],
             ),

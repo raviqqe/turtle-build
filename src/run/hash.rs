@@ -151,7 +151,7 @@ mod tests {
         let build = Build::new(
             vec!["foo.o".into()],
             vec![],
-            Rule::new("cc foo.c", None).into(),
+            Rule::new("cc foo.c".into(), None).into(),
             vec!["foo.c".into(), "foo.h".into()],
             vec![],
             None,
@@ -190,7 +190,7 @@ mod tests {
         let build = Build::new(
             vec!["foo".into()],
             vec![],
-            Rule::new("cat bar", None).into(),
+            Rule::new("cat bar".into(), None).into(),
             vec!["bar".into()],
             vec![],
             None,
@@ -215,7 +215,7 @@ mod tests {
         let build = Build::new(
             vec!["foo.o".into()],
             vec![],
-            Rule::new("cc foo.c", None).into(),
+            Rule::new("cc foo.c".into(), None).into(),
             vec!["foo.c".into(), "foo.h".into()],
             vec![],
             None,
@@ -252,7 +252,7 @@ mod tests {
         let build = Build::new(
             vec!["foo".into()],
             vec![],
-            Rule::new("cat bar baz", None).into(),
+            Rule::new("cat bar baz".into(), None).into(),
             vec!["bar".into(), "baz".into()],
             vec![],
             None,
@@ -290,7 +290,7 @@ mod tests {
         let build = Build::new(
             vec!["foo".into()],
             vec![],
-            Rule::new("cat bar", None).into(),
+            Rule::new("cat bar".into(), None).into(),
             vec!["bar".into()],
             vec![],
             None,
@@ -328,7 +328,7 @@ mod tests {
                 &Build::new(
                     vec!["foo".into()],
                     vec![],
-                    Rule::new("cat bar", None).into(),
+                    Rule::new("cat bar".into(), None).into(),
                     vec!["bar".into()],
                     vec![],
                     None,

@@ -51,7 +51,7 @@ fn statement(input: &str) -> IResult<&str, Statement> {
 fn variable_definition(input: &str) -> IResult<&str, VariableDefinition> {
     map(
         (identifier, sign("="), opt(string_line), line_break),
-        |(name, _, value, _)| VariableDefinition::new(name, value.unwrap_or_default()),
+        |(name, _, value, _)| VariableDefinition::new(name.into(), value.unwrap_or_default()),
     )
     .parse(input)
 }
@@ -82,7 +82,7 @@ fn rule(input: &str) -> IResult<&str, Rule> {
             variable_definitions
                 .iter()
                 .any(|definition| definition.name() == "command")
-                .then(|| Rule::new(name, variable_definitions))
+                .then(|| Rule::new(name.into(), variable_definitions))
         },
     )
     .parse(input)
@@ -102,7 +102,7 @@ fn pool(input: &str) -> IResult<&str, Pool> {
             variable_definitions
                 .iter()
                 .all(|definition| definition.name() == "depth")
-                .then(|| Pool::new(name, depth.value()))
+                .then(|| Pool::new(name.into(), depth.value().into()))
         },
     )
     .parse(input)
@@ -137,7 +137,7 @@ fn build(input: &str) -> IResult<&str, Build> {
             Build::new(
                 outputs,
                 implicit_outputs.unwrap_or_default(),
-                rule,
+                rule.into(),
                 inputs,
                 implicit_inputs.unwrap_or_default(),
                 order_only_inputs.unwrap_or_default(),
@@ -281,7 +281,7 @@ mod tests {
 
     fn explicit_build(
         outputs: Vec<String>,
-        rule: impl Into<String>,
+        rule: String,
         inputs: Vec<String>,
         variable_definitions: Vec<VariableDefinition>,
     ) -> Build {
@@ -302,19 +302,19 @@ mod tests {
         assert_eq!(module("#foo\n").unwrap().1, Module::new(vec![]));
         assert_eq!(
             module("x = 42\n").unwrap().1,
-            Module::new(vec![VariableDefinition::new("x", "42").into()])
+            Module::new(vec![VariableDefinition::new("x".into(), "42".into()).into()])
         );
         assert_eq!(
             module("x = 1\ny = 2\n").unwrap().1,
             Module::new(vec![
-                VariableDefinition::new("x", "1").into(),
-                VariableDefinition::new("y", "2").into(),
+                VariableDefinition::new("x".into(), "1".into()).into(),
+                VariableDefinition::new("y".into(), "2".into()).into(),
             ],)
         );
         assert_eq!(
             module("rule foo\n command = bar\n").unwrap().1,
             Module::new(vec![
-                Rule::new("foo", vec![VariableDefinition::new("command", "bar")]).into()
+                Rule::new("foo".into(), vec![VariableDefinition::new("command".into(), "bar".into())]).into()
             ])
         );
         assert_eq!(
@@ -322,29 +322,29 @@ mod tests {
                 .unwrap()
                 .1,
             Module::new(vec![
-                Rule::new("foo", vec![VariableDefinition::new("command", "bar")]).into(),
-                Rule::new("baz", vec![VariableDefinition::new("command", "blah")]).into(),
+                Rule::new("foo".into(), vec![VariableDefinition::new("command".into(), "bar".into())]).into(),
+                Rule::new("baz".into(), vec![VariableDefinition::new("command".into(), "blah".into())]).into(),
             ],)
         );
         assert_eq!(
             module("builddir = foo\n").unwrap().1,
-            Module::new(vec![VariableDefinition::new("builddir", "foo").into()])
+            Module::new(vec![VariableDefinition::new("builddir".into(), "foo".into()).into()])
         );
         assert_eq!(
             module("default_x = foo\n").unwrap().1,
-            Module::new(vec![VariableDefinition::new("default_x", "foo").into()])
+            Module::new(vec![VariableDefinition::new("default_x".into(), "foo".into()).into()])
         );
         assert_eq!(
             module("rule-x = foo\n").unwrap().1,
-            Module::new(vec![VariableDefinition::new("rule-x", "foo").into()])
+            Module::new(vec![VariableDefinition::new("rule-x".into(), "foo".into()).into()])
         );
         assert_eq!(
             module("pool foo\n depth = 42\n").unwrap().1,
-            Module::new(vec![Pool::new("foo", "42").into()])
+            Module::new(vec![Pool::new("foo".into(), "42".into()).into()])
         );
         assert_eq!(
             module("pool-x = foo\n").unwrap().1,
-            Module::new(vec![VariableDefinition::new("pool-x", "foo").into()])
+            Module::new(vec![VariableDefinition::new("pool-x".into(), "foo".into()).into()])
         );
     }
 
@@ -358,15 +358,15 @@ mod tests {
             dynamic_module("ninja_dyndep_version = 1\nbuild foo: dyndep\n")
                 .unwrap()
                 .1,
-            DynamicModule::new(vec![DynamicBuild::new("foo", vec![])])
+            DynamicModule::new(vec![DynamicBuild::new("foo".into(), vec![])])
         );
         assert_eq!(
             dynamic_module("ninja_dyndep_version = 1\nbuild foo: dyndep\nbuild bar: dyndep\n")
                 .unwrap()
                 .1,
             DynamicModule::new(vec![
-                DynamicBuild::new("foo", vec![]),
-                DynamicBuild::new("bar", vec![])
+                DynamicBuild::new("foo".into(), vec![]),
+                DynamicBuild::new("bar".into(), vec![])
             ])
         );
     }
@@ -375,19 +375,19 @@ mod tests {
     fn parse_variable_definition() {
         assert_eq!(
             variable_definition("x = 42\n").unwrap().1,
-            VariableDefinition::new("x", "42")
+            VariableDefinition::new("x".into(), "42".into())
         );
         assert_eq!(
             variable_definition("foo = 1 + 1\n").unwrap().1,
-            VariableDefinition::new("foo", "1 + 1")
+            VariableDefinition::new("foo".into(), "1 + 1".into())
         );
         assert_eq!(
             variable_definition("x =\n").unwrap().1,
-            VariableDefinition::new("x", "")
+            VariableDefinition::new("x".into(), "".into())
         );
         assert_eq!(
             variable_definition("x = \n").unwrap().1,
-            VariableDefinition::new("x", "")
+            VariableDefinition::new("x".into(), "".into())
         );
     }
 
@@ -395,15 +395,15 @@ mod tests {
     fn parse_variable_definition_with_line_continuation() {
         assert_eq!(
             variable_definition("x = foo $\n    bar\n").unwrap().1,
-            VariableDefinition::new("x", "foo bar")
+            VariableDefinition::new("x".into(), "foo bar".into())
         );
         assert_eq!(
             variable_definition("x = $\n    foo\n").unwrap().1,
-            VariableDefinition::new("x", "foo")
+            VariableDefinition::new("x".into(), "foo".into())
         );
         assert_eq!(
             variable_definition("x = foo $\n\n").unwrap().1,
-            VariableDefinition::new("x", "foo")
+            VariableDefinition::new("x".into(), "foo".into())
         );
     }
 
@@ -421,17 +421,17 @@ mod tests {
     fn parse_rule() {
         assert_eq!(
             rule("rule foo\n command = bar\n").unwrap().1,
-            Rule::new("foo", vec![VariableDefinition::new("command", "bar")])
+            Rule::new("foo".into(), vec![VariableDefinition::new("command".into(), "bar".into())])
         );
         assert_eq!(
             rule("rule foo\n command = bar\n description = baz\n")
                 .unwrap()
                 .1,
             Rule::new(
-                "foo",
+                "foo".into(),
                 vec![
-                    VariableDefinition::new("command", "bar"),
-                    VariableDefinition::new("description", "baz")
+                    VariableDefinition::new("command".into(), "bar".into()),
+                    VariableDefinition::new("description".into(), "baz".into())
                 ]
             )
         );
@@ -440,19 +440,19 @@ mod tests {
                 .unwrap()
                 .1,
             Rule::new(
-                "foo",
+                "foo".into(),
                 vec![
-                    VariableDefinition::new("depfile", "foo.d"),
-                    VariableDefinition::new("command", "bar"),
-                    VariableDefinition::new("deps", "gcc")
+                    VariableDefinition::new("depfile".into(), "foo.d".into()),
+                    VariableDefinition::new("command".into(), "bar".into()),
+                    VariableDefinition::new("deps".into(), "gcc".into())
                 ]
             )
         );
         assert_eq!(
             rule("rule foo-bar.baz\n command = blah\n").unwrap().1,
             Rule::new(
-                "foo-bar.baz",
-                vec![VariableDefinition::new("command", "blah")]
+                "foo-bar.baz".into(),
+                vec![VariableDefinition::new("command".into(), "blah".into())]
             )
         );
     }
@@ -469,10 +469,10 @@ mod tests {
                 .unwrap()
                 .1,
             Rule::new(
-                "foo",
+                "foo".into(),
                 vec![
-                    VariableDefinition::new("command", "bar"),
-                    VariableDefinition::new("command", "baz")
+                    VariableDefinition::new("command".into(), "bar".into()),
+                    VariableDefinition::new("command".into(), "baz".into())
                 ]
             )
         );
@@ -482,19 +482,19 @@ mod tests {
     fn parse_pool() {
         assert_eq!(
             pool("pool foo\n depth = 42\n").unwrap().1,
-            Pool::new("foo", "42")
+            Pool::new("foo".into(), "42".into())
         );
         assert_eq!(
             pool("pool foo-bar.baz\n depth = 42\n").unwrap().1,
-            Pool::new("foo-bar.baz", "42")
+            Pool::new("foo-bar.baz".into(), "42".into())
         );
         assert_eq!(
             pool("pool foo\n depth = $x\n").unwrap().1,
-            Pool::new("foo", "$x")
+            Pool::new("foo".into(), "$x".into())
         );
         assert_eq!(
             pool("pool foo\n # bar\n depth = 42\n").unwrap().1,
-            Pool::new("foo", "42")
+            Pool::new("foo".into(), "42".into())
         );
     }
 
@@ -502,7 +502,7 @@ mod tests {
     fn parse_pool_with_duplicate_depth() {
         assert_eq!(
             pool("pool foo\n depth = 1\n depth = 2\n").unwrap().1,
-            Pool::new("foo", "2")
+            Pool::new("foo".into(), "2".into())
         );
     }
 
@@ -529,47 +529,47 @@ mod tests {
     fn parse_build() {
         assert_eq!(
             build("build foo: bar\n").unwrap().1,
-            explicit_build(vec!["foo".into()], "bar", vec![], vec![])
+            explicit_build(vec!["foo".into()], "bar".into(), vec![], vec![])
         );
         assert_eq!(
             build("build foo: bar-baz.blah\n").unwrap().1,
-            explicit_build(vec!["foo".into()], "bar-baz.blah", vec![], vec![])
+            explicit_build(vec!["foo".into()], "bar-baz.blah".into(), vec![], vec![])
         );
         assert_eq!(
             build("build foo: bar baz\n").unwrap().1,
-            explicit_build(vec!["foo".into()], "bar", vec!["baz".into()], vec![])
+            explicit_build(vec!["foo".into()], "bar".into(), vec!["baz".into()], vec![])
         );
         assert_eq!(
             build("build foo: bar baz blah\n").unwrap().1,
             explicit_build(
                 vec!["foo".into()],
-                "bar",
+                "bar".into(),
                 vec!["baz".into(), "blah".into()],
                 vec![]
             )
         );
         assert_eq!(
             build("build foo bar: baz\n").unwrap().1,
-            explicit_build(vec!["foo".into(), "bar".into()], "baz", vec![], vec![])
+            explicit_build(vec!["foo".into(), "bar".into()], "baz".into(), vec![], vec![])
         );
         assert_eq!(
             build("build foo: bar\n x = 1\n").unwrap().1,
             explicit_build(
                 vec!["foo".into()],
-                "bar",
+                "bar".into(),
                 vec![],
-                vec![VariableDefinition::new("x", "1")]
+                vec![VariableDefinition::new("x".into(), "1".into())]
             )
         );
         assert_eq!(
             build("build foo: bar\n x = 1\n y = 2\n").unwrap().1,
             explicit_build(
                 vec!["foo".into()],
-                "bar",
+                "bar".into(),
                 vec![],
                 vec![
-                    VariableDefinition::new("x", "1"),
-                    VariableDefinition::new("y", "2")
+                    VariableDefinition::new("x".into(), "1".into()),
+                    VariableDefinition::new("y".into(), "2".into())
                 ]
             )
         );
@@ -578,7 +578,7 @@ mod tests {
             Build::new(
                 vec!["x1".into()],
                 vec!["x2".into()],
-                "rule",
+                "rule".into(),
                 vec![],
                 vec![],
                 vec![],
@@ -590,7 +590,7 @@ mod tests {
             Build::new(
                 vec!["x1".into()],
                 vec!["x2".into(), "x3".into()],
-                "rule",
+                "rule".into(),
                 vec![],
                 vec![],
                 vec![],
@@ -602,7 +602,7 @@ mod tests {
             Build::new(
                 vec!["x1".into()],
                 vec![],
-                "rule",
+                "rule".into(),
                 vec![],
                 vec!["x2".into()],
                 vec![],
@@ -614,7 +614,7 @@ mod tests {
             Build::new(
                 vec!["x1".into()],
                 vec![],
-                "rule",
+                "rule".into(),
                 vec![],
                 vec!["x2".into(), "x3".into()],
                 vec![],
@@ -626,7 +626,7 @@ mod tests {
             Build::new(
                 vec!["x1".into()],
                 vec![],
-                "rule",
+                "rule".into(),
                 vec![],
                 vec![],
                 vec!["x2".into()],
@@ -638,7 +638,7 @@ mod tests {
             Build::new(
                 vec!["x1".into()],
                 vec![],
-                "rule",
+                "rule".into(),
                 vec![],
                 vec![],
                 vec!["x2".into(), "x3".into()],
@@ -651,17 +651,17 @@ mod tests {
     fn parse_build_with_line_continuation() {
         assert_eq!(
             build("build foo $\n    bar: baz\n").unwrap().1,
-            explicit_build(vec!["foo".into(), "bar".into()], "baz", vec![], vec![])
+            explicit_build(vec!["foo".into(), "bar".into()], "baz".into(), vec![], vec![])
         );
         assert_eq!(
             build("build foo: $\n    bar\n").unwrap().1,
-            explicit_build(vec!["foo".into()], "bar", vec![], vec![])
+            explicit_build(vec!["foo".into()], "bar".into(), vec![], vec![])
         );
         assert_eq!(
             build("build foo: bar baz $\n    blah\n").unwrap().1,
             explicit_build(
                 vec!["foo".into()],
-                "bar",
+                "bar".into(),
                 vec!["baz".into(), "blah".into()],
                 vec![]
             )
@@ -669,7 +669,7 @@ mod tests {
         assert_eq!(
             build("build foo: bar $\n    baz$\n    blah\n").unwrap().1,
             // cspell: disable-next-line
-            explicit_build(vec!["foo".into()], "bar", vec!["bazblah".into()], vec![])
+            explicit_build(vec!["foo".into()], "bar".into(), vec!["bazblah".into()], vec![])
         );
         assert_eq!(
             build("build x1: rule | $\n    x2 || $\n    x3\n")
@@ -678,7 +678,7 @@ mod tests {
             Build::new(
                 vec!["x1".into()],
                 vec![],
-                "rule",
+                "rule".into(),
                 vec![],
                 vec!["x2".into()],
                 vec!["x3".into()],
@@ -691,15 +691,15 @@ mod tests {
     fn parse_dynamic_build() {
         assert_eq!(
             dynamic_build("build foo: dyndep\n").unwrap().1,
-            DynamicBuild::new("foo", vec![])
+            DynamicBuild::new("foo".into(), vec![])
         );
         assert_eq!(
             dynamic_build("build foo: dyndep | bar\n").unwrap().1,
-            DynamicBuild::new("foo", vec!["bar".into()])
+            DynamicBuild::new("foo".into(), vec!["bar".into()])
         );
         assert_eq!(
             dynamic_build("build foo: dyndep | bar baz\n").unwrap().1,
-            DynamicBuild::new("foo", vec!["bar".into(), "baz".into()])
+            DynamicBuild::new("foo".into(), vec!["bar".into(), "baz".into()])
         );
     }
 
@@ -719,14 +719,14 @@ mod tests {
 
     #[test]
     fn parse_include() {
-        assert_eq!(include("include foo\n").unwrap().1, Include::new("foo"));
+        assert_eq!(include("include foo\n").unwrap().1, Include::new("foo".into()));
     }
 
     #[test]
     fn parse_submodule() {
         assert_eq!(
             submodule("subninja foo\n").unwrap().1,
-            Submodule::new("foo")
+            Submodule::new("foo".into())
         );
     }
 

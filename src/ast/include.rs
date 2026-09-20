@@ -4,8 +4,8 @@ pub struct Include {
 }
 
 impl Include {
-    pub fn new(path: impl Into<String>) -> Self {
-        Self { path: path.into() }
+    pub fn new(path: String) -> Self {
+        Self { path }
     }
 
     pub fn path(&self) -> &str {

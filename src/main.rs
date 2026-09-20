@@ -6,6 +6,7 @@ use alloc::sync::Arc;
 use clap::{Parser, ValueEnum};
 use core::error::Error;
 use core::time::Duration;
+use fjall::KeyspaceCreateOptions;
 use futures::future::try_join_all;
 #[cfg(unix)]
 use rlimit::Resource;
@@ -18,13 +19,14 @@ use std::{
 };
 use tokio::{sync::Mutex, time::sleep};
 use turtle_build::{
-    BuildError, Console, Context, FileSystem, FjallDatabase, Module, ModuleDependencyMap,
-    OsCommandRunner, OsConsole, OsFileSystem, RunOptions, Statement, clean_dead, compile, parse,
-    run, validate_modules,
+    BuildError, Console, Context, DatabaseError, FileSystem, FjallDatabase, Module,
+    ModuleDependencyMap, OsCommandRunner, OsConsole, OsFileSystem, RunOptions, Statement,
+    clean_dead, compile, parse, run, validate_modules,
 };
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
 const DATABASE_DIRECTORY: &str = ".turtle";
+const DATABASE_KEYSPACE: &str = "build";
 const DEFAULT_FILE_COUNT_PER_PROCESS: usize = 3; // stdin, stdout, and stderr
 
 #[derive(Parser)]
@@ -116,17 +118,25 @@ async fn execute(arguments: &Arguments, console: &Arc<Mutex<OsConsole>>) -> Resu
     validate_modules(&dependencies)?;
 
     let config = Arc::new(compile(&modules, &dependencies, &root_module_path)?);
+    // Keep background workers of the database alive until the end.
+    let database = fjall::Database::builder(
+        config
+            .build_directory()
+            .map(|string| string.as_ref().as_ref())
+            .unwrap_or_else(|| root_module_path.parent().unwrap())
+            .join(DATABASE_DIRECTORY)
+            .join(env!("CARGO_PKG_VERSION").replace('.', "_")),
+    )
+    .open()
+    .map_err(DatabaseError::from)?;
     let context = Arc::new(Context::new(
         OsCommandRunner::new(job_limit),
         console.clone(),
         FjallDatabase::new(
-            &config
-                .build_directory()
-                .map(|string| string.as_ref().as_ref())
-                .unwrap_or_else(|| root_module_path.parent().unwrap())
-                .join(DATABASE_DIRECTORY)
-                .join(env!("CARGO_PKG_VERSION").replace('.', "_")),
-        )?,
+            database
+                .keyspace(DATABASE_KEYSPACE, KeyspaceCreateOptions::default)
+                .map_err(DatabaseError::from)?,
+        ),
         file_system,
     ));
 

@@ -22,7 +22,7 @@ pub use self::{
     context::Context,
     error::BuildError,
     infrastructure::{
-        Console, FileSystem, FjallDatabase, OsCommandRunner, OsConsole, OsFileSystem,
+        Console, DatabaseError, FileSystem, FjallDatabase, OsCommandRunner, OsConsole, OsFileSystem,
     },
     module_dependency::{ModuleDependencyMap, validate_modules},
     parse::parse,

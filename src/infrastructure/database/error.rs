@@ -2,11 +2,13 @@ use bincode::error::{DecodeError, EncodeError};
 use core::{fmt::Display, str::Utf8Error};
 use thiserror::Error;
 
+/// A database error.
 #[derive(Clone, Debug, Eq, Error, PartialEq)]
 #[error("{0}")]
 pub struct DatabaseError(String);
 
 impl DatabaseError {
+    /// Creates an error.
     pub fn new(error: impl Display) -> Self {
         Self(error.to_string())
     }

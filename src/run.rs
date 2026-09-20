@@ -66,7 +66,7 @@ pub async fn run(
         .validate()
         .map_err(|error| map_build_graph_error(&context, &error))?;
 
-    let result = try_join_all(
+    try_join_all(
         if outputs.is_empty() {
             context
                 .config()
@@ -95,11 +95,9 @@ pub async fn run(
         .into_iter()
         .map(|build| run_build(context.clone(), build)),
     )
-    .await;
+    .await?;
 
-    context.build().database().flush().await?;
-
-    result.map(|_| ())
+    Ok(())
 }
 
 #[async_recursion]

@@ -25,6 +25,8 @@ static BINCODE_CONFIG: LazyLock<bincode::config::Configuration> = LazyLock::new(
 
 /// A Fjall database.
 pub struct FjallDatabase {
+    // Keep background workers alive.
+    #[expect(dead_code)]
     database: fjall::Database,
     keyspace: Keyspace,
 }

@@ -4,10 +4,7 @@ use crate::{
     ir::BuildId,
 };
 use core::str;
-use fjall::{Keyspace, KeyspaceCreateOptions};
-use std::{path::Path, sync::LazyLock};
-
-const KEYSPACE_NAME: &str = "build";
+use fjall::Keyspace;
 
 const TIMESTAMP_HASH_TAG: u8 = 0;
 const CONTENT_HASH_TAG: u8 = 1;
@@ -15,31 +12,17 @@ const HEADER_DEPENDENCY_TAG: u8 = 2;
 const OUTPUT_TAG: u8 = 3;
 const SOURCE_TAG: u8 = 4;
 
-static BINCODE_CONFIG: LazyLock<bincode::config::Configuration> = LazyLock::new(|| {
-    bincode::config::Configuration::<
-        bincode::config::LittleEndian,
-        bincode::config::Varint,
-        bincode::config::NoLimit,
-    >::default()
-});
+const BINCODE_CONFIG: bincode::config::Configuration = bincode::config::standard();
 
 /// A Fjall database.
 pub struct FjallDatabase {
-    // Keep background workers alive.
-    #[expect(dead_code)]
-    database: fjall::Database,
     keyspace: Keyspace,
 }
 
 impl FjallDatabase {
-    /// Opens a database.
-    pub fn new(path: &Path) -> Result<Self, DatabaseError> {
-        let database = fjall::Database::builder(path).open()?;
-
-        Ok(Self {
-            keyspace: database.keyspace(KEYSPACE_NAME, KeyspaceCreateOptions::default)?,
-            database,
-        })
+    /// Creates a database.
+    pub const fn new(keyspace: Keyspace) -> Self {
+        Self { keyspace }
     }
 
     fn insert(&self, key: &[u8], value: &[u8]) -> Result<(), DatabaseError> {
@@ -65,16 +48,14 @@ impl Database for FjallDatabase {
         Ok(self
             .keyspace
             .get(key(hash_tag(r#type), &id.to_bytes()))?
-            .map(|value| {
-                bincode::decode_from_slice(&value, *BINCODE_CONFIG).map(|(value, _)| value)
-            })
+            .map(|value| bincode::decode_from_slice(&value, BINCODE_CONFIG).map(|(value, _)| value))
             .transpose()?)
     }
 
     fn set_hash(&self, r#type: HashType, id: BuildId, hash: u64) -> Result<(), DatabaseError> {
         self.insert(
             &key(hash_tag(r#type), &id.to_bytes()),
-            &bincode::encode_to_vec(hash, *BINCODE_CONFIG)?,
+            &bincode::encode_to_vec(hash, BINCODE_CONFIG)?,
         )
     }
 
@@ -82,9 +63,7 @@ impl Database for FjallDatabase {
         Ok(self
             .keyspace
             .get(key(HEADER_DEPENDENCY_TAG, &id.to_bytes()))?
-            .map(|value| {
-                bincode::decode_from_slice(&value, *BINCODE_CONFIG).map(|(value, _)| value)
-            })
+            .map(|value| bincode::decode_from_slice(&value, BINCODE_CONFIG).map(|(value, _)| value))
             .transpose()?
             .unwrap_or_default())
     }
@@ -96,7 +75,7 @@ impl Database for FjallDatabase {
     ) -> Result<(), DatabaseError> {
         self.insert(
             &key(HEADER_DEPENDENCY_TAG, &id.to_bytes()),
-            &bincode::encode_to_vec(dependencies, *BINCODE_CONFIG)?,
+            &bincode::encode_to_vec(dependencies, BINCODE_CONFIG)?,
         )
     }
 
@@ -126,16 +105,31 @@ impl Database for FjallDatabase {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fjall::KeyspaceCreateOptions;
+    use std::path::Path;
     use tempfile::tempdir;
+
+    fn open(path: &Path) -> (FjallDatabase, fjall::Database) {
+        let database = fjall::Database::builder(path).open().unwrap();
+
+        (
+            FjallDatabase::new(
+                database
+                    .keyspace("build", KeyspaceCreateOptions::default)
+                    .unwrap(),
+            ),
+            database,
+        )
+    }
 
     #[test]
     fn new() {
-        FjallDatabase::new(tempdir().unwrap().path()).unwrap();
+        open(tempdir().unwrap().path());
     }
 
     #[test]
     fn timestamp_hash() {
-        let database = FjallDatabase::new(tempdir().unwrap().path()).unwrap();
+        let (database, _fjall) = open(tempdir().unwrap().path());
 
         database
             .set_hash(HashType::Timestamp, BuildId::new(0), 42)
@@ -157,7 +151,7 @@ mod tests {
 
     #[test]
     fn content_hash() {
-        let database = FjallDatabase::new(tempdir().unwrap().path()).unwrap();
+        let (database, _fjall) = open(tempdir().unwrap().path());
 
         database
             .set_hash(HashType::Content, BuildId::new(0), 42)
@@ -179,14 +173,14 @@ mod tests {
 
     #[test]
     fn set_output() {
-        let database = FjallDatabase::new(tempdir().unwrap().path()).unwrap();
+        let (database, _fjall) = open(tempdir().unwrap().path());
 
         database.set_output("foo").unwrap();
     }
 
     #[test]
     fn get_output() {
-        let database = FjallDatabase::new(tempdir().unwrap().path()).unwrap();
+        let (database, _fjall) = open(tempdir().unwrap().path());
 
         database.set_output("foo").unwrap();
 
@@ -195,7 +189,7 @@ mod tests {
 
     #[test]
     fn get_output_with_source() {
-        let database = FjallDatabase::new(tempdir().unwrap().path()).unwrap();
+        let (database, _fjall) = open(tempdir().unwrap().path());
 
         database.set_output("foo").unwrap();
         database.set_source("foo", "bar").unwrap();
@@ -205,7 +199,7 @@ mod tests {
 
     #[test]
     fn header_dependencies() {
-        let database = FjallDatabase::new(tempdir().unwrap().path()).unwrap();
+        let (database, _fjall) = open(tempdir().unwrap().path());
 
         database
             .set_header_dependencies(BuildId::new(0), &["foo".into(), "bar".into()])
@@ -219,14 +213,14 @@ mod tests {
 
     #[test]
     fn set_source() {
-        let database = FjallDatabase::new(tempdir().unwrap().path()).unwrap();
+        let (database, _fjall) = open(tempdir().unwrap().path());
 
         database.set_source("foo", "bar").unwrap();
     }
 
     #[test]
     fn get_source() {
-        let database = FjallDatabase::new(tempdir().unwrap().path()).unwrap();
+        let (database, _fjall) = open(tempdir().unwrap().path());
 
         database.set_source("foo", "bar").unwrap();
 
@@ -237,7 +231,7 @@ mod tests {
     fn reopen() {
         let directory = tempdir().unwrap();
 
-        let database = FjallDatabase::new(directory.path()).unwrap();
+        let (database, fjall) = open(directory.path());
 
         database
             .set_hash(HashType::Timestamp, BuildId::new(0), 42)
@@ -249,8 +243,9 @@ mod tests {
         database.set_source("foo", "bar").unwrap();
 
         drop(database);
+        drop(fjall);
 
-        let database = FjallDatabase::new(directory.path()).unwrap();
+        let (database, _fjall) = open(directory.path());
 
         assert_eq!(
             database

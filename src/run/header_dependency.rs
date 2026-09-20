@@ -153,7 +153,10 @@ mod tests {
     #[test]
     fn exclude_show_includes_without_msvc_header_dependency() {
         assert_eq!(
-            exclude_show_includes(&Rule::new("".into(), None), b"Note: including file: foo.h\nAAA\n"),
+            exclude_show_includes(
+                &Rule::new("".into(), None),
+                b"Note: including file: foo.h\nAAA\n"
+            ),
             b"Note: including file: foo.h\nAAA\n".to_vec()
         );
     }

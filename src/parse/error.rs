@@ -8,9 +8,7 @@ pub struct ParseError {
 
 impl ParseError {
     pub fn new(message: String) -> Self {
-        Self {
-            message,
-        }
+        Self { message }
     }
 }
 

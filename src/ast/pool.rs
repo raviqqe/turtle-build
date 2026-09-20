@@ -6,10 +6,7 @@ pub struct Pool {
 
 impl Pool {
     pub fn new(name: String, depth: String) -> Self {
-        Self {
-            name,
-            depth,
-        }
+        Self { name, depth }
     }
 
     pub fn name(&self) -> &str {

@@ -6,10 +6,7 @@ pub struct VariableDefinition {
 
 impl VariableDefinition {
     pub fn new(name: String, value: String) -> Self {
-        Self {
-            name,
-            value,
-        }
+        Self { name, value }
     }
 
     pub fn name(&self) -> &str {

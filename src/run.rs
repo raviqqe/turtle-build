@@ -159,7 +159,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         try_join_all(
             dependencies
                 .iter()
-                .filter_map(|dependency| context.config().outputs().get(dependency.as_str()))
+                .filter_map(|dependency| context.config().outputs().get(dependency))
                 .map(|build| run_build(context.clone(), build)),
         )
         .await?;
@@ -225,7 +225,11 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                 }
             }
 
-            if header_dependencies != new_header_dependencies {
+            if header_dependencies
+                .iter()
+                .copied()
+                .ne(&new_header_dependencies)
+            {
                 let header_dependencies =
                     filter_existing_header_dependencies(&context, &new_header_dependencies).await?;
                 let (phony_inputs, file_inputs) =
@@ -252,7 +256,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
     .await?
 }
 
-async fn build_input(context: Arc<RunContext>, input: &str) -> Result<(), BuildError> {
+async fn build_input(context: Arc<RunContext>, input: &Arc<str>) -> Result<(), BuildError> {
     if let Some(build) = context.config().outputs().get(input) {
         run_build(context.clone(), build).await
     } else {
@@ -320,36 +324,33 @@ async fn cache_output_metadata(context: &RunContext, build: &Build, metadata: &[
         .chain(build.implicit_outputs())
         .zip(metadata)
     {
-        context
-            .file_cache()
-            .set_metadata(path.as_ref().as_ref(), metadata)
-            .await;
+        context.file_cache().set_metadata(path, metadata).await;
     }
 }
 
 async fn filter_existing_header_dependencies<'a>(
     context: &RunContext,
-    dependencies: &'a [String],
-) -> Result<Vec<&'a str>, BuildError> {
+    dependencies: &'a [Arc<str>],
+) -> Result<Vec<&'a Arc<str>>, BuildError> {
     let mut existing_dependencies = vec![];
 
     for dependency in dependencies {
-        if context.file_cache().exists(dependency.as_ref()).await? {
-            existing_dependencies.push(dependency.as_str());
+        if context.file_cache().exists(dependency).await? {
+            existing_dependencies.push(dependency);
         }
     }
 
     Ok(existing_dependencies)
 }
 
-async fn check_file_existence(context: &RunContext, path: &str) -> Result<(), BuildError> {
-    if !context.file_cache().exists(path.as_ref()).await? {
+async fn check_file_existence(context: &RunContext, path: &Arc<str>) -> Result<(), BuildError> {
+    if !context.file_cache().exists(path).await? {
         return Err(BuildError::FileNotFound(
             context
                 .build()
                 .database()
                 .get_source(path)?
-                .unwrap_or_else(|| path.into()),
+                .unwrap_or_else(|| path.as_ref().into()),
         ));
     }
 
@@ -370,10 +371,7 @@ async fn prepare_directory(context: &RunContext, path: impl AsRef<Path>) -> Resu
 
 async fn invalidate_outputs(context: &RunContext, build: &Build) {
     for output in build.outputs().iter().chain(build.implicit_outputs()) {
-        context
-            .file_cache()
-            .invalidate(output.as_ref().as_ref())
-            .await;
+        context.file_cache().invalidate(output).await;
     }
 }
 
@@ -381,13 +379,12 @@ fn classify_inputs<'a>(
     context: &'a RunContext,
     build: &'a Build,
     dynamic_inputs: &'a [Arc<str>],
-    header_dependencies: &'a [&'a str],
-) -> (Vec<&'a str>, Vec<&'a str>) {
+    header_dependencies: &'a [&'a Arc<str>],
+) -> (Vec<&'a Arc<str>>, Vec<&'a Arc<str>>) {
     let (phony_inputs, file_inputs) = build
         .inputs()
         .iter()
         .chain(dynamic_inputs)
-        .map(AsRef::as_ref)
         .unique()
         .partition::<Vec<_>, _>(|&input| {
             context
@@ -1365,19 +1362,19 @@ mod tests {
 
         assert_eq!(command_runner.commands(), ["touch foo bar"]);
 
-        let foo_hash = context.file_cache().content_hash("foo".as_ref()).await;
-        let bar_hash = context.file_cache().content_hash("bar".as_ref()).await;
+        let foo_hash = context.file_cache().content_hash(&"foo".into()).await;
+        let bar_hash = context.file_cache().content_hash(&"bar".into()).await;
 
         file_system.write_file("foo", "2");
         file_system.write_file("bar", "2");
         future.await.unwrap();
 
         assert_ne!(
-            context.file_cache().content_hash("foo".as_ref()).await,
+            context.file_cache().content_hash(&"foo".into()).await,
             foo_hash
         );
         assert_ne!(
-            context.file_cache().content_hash("bar".as_ref()).await,
+            context.file_cache().content_hash(&"bar".into()).await,
             bar_hash
         );
     }
@@ -1401,15 +1398,12 @@ mod tests {
 
         assert_eq!(command_runner.commands(), ["exit 1"]);
 
-        let hash = context.file_cache().content_hash("foo".as_ref()).await;
+        let hash = context.file_cache().content_hash(&"foo".into()).await;
 
         file_system.write_file("foo", "2");
 
         assert_eq!(future.await, Err(BuildError::Build));
-        assert_ne!(
-            context.file_cache().content_hash("foo".as_ref()).await,
-            hash
-        );
+        assert_ne!(context.file_cache().content_hash(&"foo".into()).await, hash);
     }
 
     #[tokio::test]
@@ -1449,15 +1443,12 @@ mod tests {
 
         assert_eq!(command_runner.commands(), ["touch bar"]);
 
-        let hash = context.file_cache().content_hash("foo".as_ref()).await;
+        let hash = context.file_cache().content_hash(&"foo".into()).await;
 
         file_system.write_file("foo", "2");
         future.await.unwrap();
 
-        assert_ne!(
-            context.file_cache().content_hash("foo".as_ref()).await,
-            hash
-        );
+        assert_ne!(context.file_cache().content_hash(&"foo".into()).await, hash);
     }
 
     #[tokio::test]
@@ -1468,7 +1459,7 @@ mod tests {
 
         file_system.write_file("bar", "1");
 
-        let hash = context.file_cache().content_hash("bar".as_ref()).await;
+        let hash = context.file_cache().content_hash(&"bar".into()).await;
 
         file_system.write_file("bar", "2");
         run_build(
@@ -1484,10 +1475,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(command_runner.commands(), ["touch foo"]);
-        assert_eq!(
-            context.file_cache().content_hash("bar".as_ref()).await,
-            hash
-        );
+        assert_eq!(context.file_cache().content_hash(&"bar".into()).await, hash);
     }
 
     #[tokio::test]
@@ -1915,7 +1903,7 @@ mod tests {
                 .database()
                 .get_header_dependencies(build.id())
                 .unwrap(),
-            ["foo.h"]
+            ["foo.h".into()]
         );
         assert!(
             !context
@@ -1973,7 +1961,7 @@ mod tests {
                 .database()
                 .get_header_dependencies(build.id())
                 .unwrap(),
-            ["foo.h"]
+            ["foo.h".into()]
         );
         assert_eq!(console.stdout(), "foo.c\n");
     }
@@ -2770,9 +2758,17 @@ mod tests {
                 &context,
                 &build,
                 &["quux".into(), "baz".into()],
-                &["qux", "corge"],
+                &[&"qux".into(), &"corge".into()],
             ),
-            (vec!["bar"], vec!["baz", "qux", "quux", "corge"])
+            (
+                vec![&"bar".into()],
+                vec![
+                    &"baz".into(),
+                    &"qux".into(),
+                    &"quux".into(),
+                    &"corge".into()
+                ]
+            )
         );
     }
 }

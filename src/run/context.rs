@@ -20,7 +20,7 @@ pub struct RunContext {
     build_graph: Mutex<BuildGraph>,
     dynamic_configs: std::collections::HashMap<Arc<str>, OnceCell<DynamicConfig>>,
     file_cache: FileCache,
-    header_dependencies: std::collections::HashMap<BuildId, Vec<String>>,
+    header_dependencies: std::collections::HashMap<BuildId, Vec<Arc<str>>>,
     pools: std::collections::HashMap<Arc<str>, Semaphore>,
     options: RunOptions,
 }
@@ -30,7 +30,7 @@ impl RunContext {
         build: Arc<Context>,
         config: Arc<Config>,
         build_graph: BuildGraph,
-        header_dependencies: std::collections::HashMap<BuildId, Vec<String>>,
+        header_dependencies: std::collections::HashMap<BuildId, Vec<Arc<str>>>,
         options: RunOptions,
     ) -> Self {
         Self {
@@ -83,7 +83,7 @@ impl RunContext {
         &self.file_cache
     }
 
-    pub fn header_dependencies(&self, id: BuildId) -> &[String] {
+    pub fn header_dependencies(&self, id: BuildId) -> &[Arc<str>] {
         self.header_dependencies
             .get(&id)
             .map_or_default(Vec::as_slice)

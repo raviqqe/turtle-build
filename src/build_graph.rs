@@ -91,10 +91,10 @@ impl BuildGraph {
         Ok(())
     }
 
-    pub fn add_header_dependencies(&mut self, output: &Arc<str>, dependencies: &[String]) {
+    pub fn add_header_dependencies(&mut self, output: &Arc<str>, dependencies: &[Arc<str>]) {
         for dependency in dependencies {
             // Header dependencies that are not outputs cannot form cycles.
-            if let Some((dependency, _)) = self.primary_outputs.get_key_value(dependency.as_str()) {
+            if let Some((dependency, _)) = self.primary_outputs.get_key_value(dependency) {
                 self.add_edge(self.primary_outputs[output].clone(), dependency.clone());
             }
         }

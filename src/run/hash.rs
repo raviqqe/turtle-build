@@ -4,14 +4,15 @@ use crate::{
     hash_type::HashType,
     ir::{Build, Rule},
 };
+use alloc::sync::Arc;
 use core::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
 
 pub async fn calculate_timestamp_hash(
     context: &RunContext,
     build: &Build,
-    file_inputs: &[&str],
-    phony_inputs: &[&str],
+    file_inputs: &[&Arc<str>],
+    phony_inputs: &[&Arc<str>],
 ) -> Result<u64, BuildError> {
     if let Some(hash) = calculate_phony_hash(build, file_inputs, phony_inputs) {
         return Ok(hash);
@@ -24,9 +25,9 @@ pub async fn calculate_timestamp_hash(
     for &input in file_inputs {
         context
             .file_cache()
-            .metadata(input.as_ref())
+            .metadata(input)
             .await?
-            .ok_or_else(|| BuildError::FileNotFound(input.into()))?
+            .ok_or_else(|| BuildError::FileNotFound(input.as_ref().into()))?
             .modified_time()
             .hash(&mut hasher);
     }
@@ -41,8 +42,8 @@ pub async fn calculate_timestamp_hash(
 pub async fn calculate_content_hash(
     context: &RunContext,
     build: &Build,
-    file_inputs: &[&str],
-    phony_inputs: &[&str],
+    file_inputs: &[&Arc<str>],
+    phony_inputs: &[&Arc<str>],
 ) -> Result<u64, BuildError> {
     if let Some(hash) = calculate_phony_hash(build, file_inputs, phony_inputs) {
         return Ok(hash);
@@ -52,10 +53,10 @@ pub async fn calculate_content_hash(
 
     hash_command(build, &mut hasher);
 
-    for input in file_inputs {
+    for &input in file_inputs {
         context
             .file_cache()
-            .content_hash(input.as_ref())
+            .content_hash(input)
             .await?
             .hash(&mut hasher);
     }
@@ -83,7 +84,11 @@ fn get_build_hash(context: &RunContext, r#type: HashType, input: &str) -> Result
         .ok_or_else(|| BuildError::InputNotBuilt(input.into()))
 }
 
-fn calculate_phony_hash(build: &Build, file_inputs: &[&str], phony_inputs: &[&str]) -> Option<u64> {
+fn calculate_phony_hash(
+    build: &Build,
+    file_inputs: &[&Arc<str>],
+    phony_inputs: &[&Arc<str>],
+) -> Option<u64> {
     if build.rule().is_none() && file_inputs.is_empty() && phony_inputs.is_empty() {
         Some(rand::random())
     } else {
@@ -176,7 +181,7 @@ mod tests {
             calculate_timestamp_hash(
                 &create_context(&file_system, vec![]),
                 &build,
-                &["foo.c", "foo.h"],
+                &[&"foo.c".into(), &"foo.h".into()],
                 &[]
             )
             .await,
@@ -199,13 +204,13 @@ mod tests {
 
         file_system.write_file("bar", "");
 
-        let hash = calculate_timestamp_hash(&context, &build, &["bar"], &[]).await;
+        let hash = calculate_timestamp_hash(&context, &build, &[&"bar".into()], &[]).await;
 
         file_system.write_file("bar", "");
 
         assert_eq!(
             hash,
-            calculate_timestamp_hash(&context, &build, &["bar"], &[]).await
+            calculate_timestamp_hash(&context, &build, &[&"bar".into()], &[]).await
         );
     }
 
@@ -238,7 +243,7 @@ mod tests {
             calculate_content_hash(
                 &create_context(&file_system, vec![]),
                 &build,
-                &["foo.c", "foo.h"],
+                &[&"foo.c".into(), &"foo.h".into()],
                 &[]
             )
             .await,
@@ -264,7 +269,7 @@ mod tests {
         let hash = calculate_content_hash(
             &create_context(&file_system, vec![]),
             &build,
-            &["bar", "baz"],
+            &[&"bar".into(), &"baz".into()],
             &[],
         )
         .await;
@@ -277,7 +282,7 @@ mod tests {
             calculate_content_hash(
                 &create_context(&file_system, vec![]),
                 &build,
-                &["bar", "baz"],
+                &[&"bar".into(), &"baz".into()],
                 &[]
             )
             .await
@@ -299,13 +304,13 @@ mod tests {
 
         file_system.write_file("bar", "1");
 
-        let hash = calculate_content_hash(&context, &build, &["bar"], &[]).await;
+        let hash = calculate_content_hash(&context, &build, &[&"bar".into()], &[]).await;
 
         file_system.write_file("bar", "2");
 
         assert_eq!(
             hash,
-            calculate_content_hash(&context, &build, &["bar"], &[]).await
+            calculate_content_hash(&context, &build, &[&"bar".into()], &[]).await
         );
     }
 
@@ -333,7 +338,7 @@ mod tests {
                     vec![],
                     None,
                 ),
-                &["bar"],
+                &[&"bar".into()],
                 &[],
             )
             .await,
@@ -367,7 +372,7 @@ mod tests {
                     None,
                 ),
                 &[],
-                &["bar"],
+                &[&"bar".into()],
             )
             .await,
             Err(BuildError::InputNotBuilt("bar".into()))

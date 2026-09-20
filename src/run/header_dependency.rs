@@ -5,14 +5,14 @@ use crate::{
     ir::{HeaderDependency, Rule},
     parse::parse_depfile,
 };
-use alloc::borrow::Cow;
+use alloc::{borrow::Cow, sync::Arc};
 use std::process::Output;
 
 pub async fn read_header_dependencies(
     context: &RunContext,
     rule: &Rule,
     output: &Output,
-) -> Result<Vec<String>, BuildError> {
+) -> Result<Vec<Arc<str>>, BuildError> {
     let dependencies = match rule.header_dependency() {
         None => vec![],
         Some(HeaderDependency::Make { path } | HeaderDependency::Gcc { path }) => {
@@ -24,18 +24,18 @@ pub async fn read_header_dependencies(
     };
 
     if let Some(HeaderDependency::Gcc { path }) = rule.header_dependency()
-        && context.file_cache().exists(path.as_ref()).await?
+        && context.file_cache().exists(path).await?
     {
         context
             .build()
             .file_system()
-            .remove_file(path.as_ref())
+            .remove_file(path.as_ref().as_ref())
             .await?;
     }
 
     Ok(dependencies
         .into_iter()
-        .map(|path| canonicalize_path(&path))
+        .map(|path| canonicalize_path(&path).into())
         .collect())
 }
 
@@ -52,8 +52,8 @@ pub fn exclude_show_includes<'a>(rule: &Rule, output: &'a [u8]) -> Cow<'a, [u8]>
     }
 }
 
-async fn read_depfile(context: &RunContext, path: &str) -> Result<Vec<String>, BuildError> {
-    if !context.file_cache().exists(path.as_ref()).await? {
+async fn read_depfile(context: &RunContext, path: &Arc<str>) -> Result<Vec<String>, BuildError> {
+    if !context.file_cache().exists(path).await? {
         return Ok(vec![]);
     }
 
@@ -61,7 +61,7 @@ async fn read_depfile(context: &RunContext, path: &str) -> Result<Vec<String>, B
         &context
             .build()
             .file_system()
-            .read_file_to_string(path.as_ref())
+            .read_file_to_string(path.as_ref().as_ref())
             .await?,
     )?)
 }

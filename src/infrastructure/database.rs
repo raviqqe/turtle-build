@@ -8,16 +8,17 @@ mod redb;
 pub use self::fake::FakeDatabase;
 pub use self::{error::DatabaseError, fjall::FjallDatabase, redb::RedbDatabase};
 use crate::{hash_type::HashType, ir::BuildId};
+use alloc::sync::Arc;
 
 pub trait Database {
     fn get_hash(&self, r#type: HashType, id: BuildId) -> Result<Option<u64>, DatabaseError>;
     fn set_hash(&self, r#type: HashType, id: BuildId, hash: u64) -> Result<(), DatabaseError>;
 
-    fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<String>, DatabaseError>;
+    fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError>;
     fn set_header_dependencies(
         &self,
         id: BuildId,
-        dependencies: &[String],
+        dependencies: &[Arc<str>],
     ) -> Result<(), DatabaseError>;
 
     fn get_outputs(&self) -> Result<Vec<String>, DatabaseError>;

@@ -2,13 +2,10 @@ use crate::infrastructure::{FileError, FileSystem, Metadata};
 use alloc::sync::Arc;
 use core::hash::{BuildHasher, BuildHasherDefault};
 use scc::HashMap;
-use std::{
-    collections::hash_map::DefaultHasher,
-    path::{Path, PathBuf},
-};
+use std::collections::hash_map::DefaultHasher;
 use tokio::sync::OnceCell;
 
-type Cache<T> = HashMap<PathBuf, Arc<OnceCell<T>>>;
+type Cache<T> = HashMap<Arc<str>, Arc<OnceCell<T>>>;
 
 pub struct FileCache {
     file_system: Arc<dyn FileSystem + Send + Sync>,
@@ -25,13 +22,16 @@ impl FileCache {
         }
     }
 
-    pub async fn exists(&self, path: &Path) -> Result<bool, FileError> {
+    pub async fn exists(&self, path: &Arc<str>) -> Result<bool, FileError> {
         Ok(self.metadata(path).await?.is_some())
     }
 
-    pub async fn metadata(&self, path: &Path) -> Result<Option<Metadata>, FileError> {
+    pub async fn metadata(&self, path: &Arc<str>) -> Result<Option<Metadata>, FileError> {
         match Self::get(&self.metadata, path, || async {
-            self.file_system.metadata(path).await?.ok_or(None)
+            self.file_system
+                .metadata(path.as_ref().as_ref())
+                .await?
+                .ok_or(None)
         })
         .await
         {
@@ -41,9 +41,9 @@ impl FileCache {
         }
     }
 
-    pub async fn set_metadata(&self, path: &Path, metadata: Metadata) {
+    pub async fn set_metadata(&self, path: &Arc<str>, metadata: Metadata) {
         self.metadata
-            .entry_async(path.into())
+            .entry_async(path.clone())
             .await
             .or_default()
             .get()
@@ -51,22 +51,22 @@ impl FileCache {
             .ok();
     }
 
-    pub async fn content_hash(&self, path: &Path) -> Result<u64, FileError> {
+    pub async fn content_hash(&self, path: &Arc<str>) -> Result<u64, FileError> {
         Self::get(&self.content_hashes, path, || async {
             Ok(BuildHasherDefault::<DefaultHasher>::default()
-                .hash_one(self.file_system.read_file(path).await?))
+                .hash_one(self.file_system.read_file(path.as_ref().as_ref()).await?))
         })
         .await
     }
 
-    pub async fn invalidate(&self, path: &Path) {
+    pub async fn invalidate(&self, path: &str) {
         self.metadata.remove_async(path).await;
         self.content_hashes.remove_async(path).await;
     }
 
     async fn get<T: Copy, E, F: Future<Output = Result<T, E>>>(
         cache: &Cache<T>,
-        path: &Path,
+        path: &Arc<str>,
         fetch: impl FnOnce() -> F,
     ) -> Result<T, E> {
         if let Some(Some(value)) = cache.read_async(path, |_, cell| cell.get().copied()).await {
@@ -75,7 +75,7 @@ impl FileCache {
 
         // Do not inline this to avoid holding a lock of a cache across an await point.
         let cell = cache
-            .entry_async(path.into())
+            .entry_async(path.clone())
             .await
             .or_default()
             .get()
@@ -105,7 +105,7 @@ mod tests {
             file_system.write_file("foo", "");
 
             assert_eq!(
-                create_cache(&file_system).exists("foo".as_ref()).await,
+                create_cache(&file_system).exists(&"foo".into()).await,
                 Ok(true)
             );
         }
@@ -117,7 +117,7 @@ mod tests {
             file_system.create_directory("foo".as_ref()).await.unwrap();
 
             assert_eq!(
-                create_cache(&file_system).exists("foo".as_ref()).await,
+                create_cache(&file_system).exists(&"foo".into()).await,
                 Ok(true)
             );
         }
@@ -126,7 +126,7 @@ mod tests {
         async fn check_missing_file() {
             assert_eq!(
                 create_cache(&Default::default())
-                    .exists("foo".as_ref())
+                    .exists(&"foo".into())
                     .await,
                 Ok(false)
             );
@@ -139,11 +139,11 @@ mod tests {
 
             file_system.write_file("foo", "");
 
-            assert_eq!(cache.exists("foo".as_ref()).await, Ok(true));
+            assert_eq!(cache.exists(&"foo".into()).await, Ok(true));
 
             file_system.remove_file("foo".as_ref()).await.unwrap();
 
-            assert_eq!(cache.exists("foo".as_ref()).await, Ok(true));
+            assert_eq!(cache.exists(&"foo".into()).await, Ok(true));
         }
 
         #[tokio::test]
@@ -153,8 +153,8 @@ mod tests {
 
             file_system.write_file("foo", "");
 
-            assert_eq!(cache.exists("foo".as_ref()).await, Ok(true));
-            assert_eq!(cache.exists("bar".as_ref()).await, Ok(false));
+            assert_eq!(cache.exists(&"foo".into()).await, Ok(true));
+            assert_eq!(cache.exists(&"bar".into()).await, Ok(false));
         }
 
         #[tokio::test]
@@ -162,11 +162,11 @@ mod tests {
             let file_system = FakeFileSystem::default();
             let cache = create_cache(&file_system);
 
-            assert_eq!(cache.exists("foo".as_ref()).await, Ok(false));
+            assert_eq!(cache.exists(&"foo".into()).await, Ok(false));
 
             file_system.write_file("foo", "");
 
-            assert_eq!(cache.exists("foo".as_ref()).await, Ok(true));
+            assert_eq!(cache.exists(&"foo".into()).await, Ok(true));
         }
     }
 
@@ -183,7 +183,7 @@ mod tests {
             file_system.write_file("foo", "");
 
             assert_eq!(
-                create_cache(&file_system).metadata("foo".as_ref()).await,
+                create_cache(&file_system).metadata(&"foo".into()).await,
                 Ok(Some(Metadata::new(SystemTime::UNIX_EPOCH, false)))
             );
         }
@@ -192,7 +192,7 @@ mod tests {
         async fn get_missing_file() {
             assert_eq!(
                 create_cache(&Default::default())
-                    .metadata("foo".as_ref())
+                    .metadata(&"foo".into())
                     .await,
                 Ok(None)
             );
@@ -205,11 +205,11 @@ mod tests {
 
             file_system.write_file("foo", "");
 
-            let metadata = cache.metadata("foo".as_ref()).await.unwrap();
+            let metadata = cache.metadata(&"foo".into()).await.unwrap();
 
             file_system.write_file("foo", "");
 
-            assert_eq!(cache.metadata("foo".as_ref()).await, Ok(metadata));
+            assert_eq!(cache.metadata(&"foo".into()).await, Ok(metadata));
         }
 
         #[tokio::test]
@@ -221,11 +221,11 @@ mod tests {
             file_system.write_file("bar", "");
 
             assert_eq!(
-                cache.metadata("foo".as_ref()).await,
+                cache.metadata(&"foo".into()).await,
                 Ok(Some(Metadata::new(SystemTime::UNIX_EPOCH, false)))
             );
             assert_eq!(
-                cache.metadata("bar".as_ref()).await,
+                cache.metadata(&"bar".into()).await,
                 Ok(Some(Metadata::new(
                     SystemTime::UNIX_EPOCH + Duration::from_secs(1),
                     false
@@ -240,12 +240,12 @@ mod tests {
 
             file_system.write_file("foo", "");
 
-            assert_eq!(cache.exists("foo".as_ref()).await, Ok(true));
+            assert_eq!(cache.exists(&"foo".into()).await, Ok(true));
 
             file_system.write_file("foo", "");
 
             assert_eq!(
-                cache.metadata("foo".as_ref()).await,
+                cache.metadata(&"foo".into()).await,
                 Ok(Some(Metadata::new(SystemTime::UNIX_EPOCH, false)))
             );
         }
@@ -255,12 +255,12 @@ mod tests {
             let file_system = FakeFileSystem::default();
             let cache = create_cache(&file_system);
 
-            assert_eq!(cache.metadata("foo".as_ref()).await, Ok(None));
+            assert_eq!(cache.metadata(&"foo".into()).await, Ok(None));
 
             file_system.write_file("foo", "");
 
             assert_eq!(
-                cache.metadata("foo".as_ref()).await,
+                cache.metadata(&"foo".into()).await,
                 Ok(Some(Metadata::new(SystemTime::UNIX_EPOCH, false)))
             );
         }
@@ -279,9 +279,9 @@ mod tests {
             let cache = create_cache(&Default::default());
             let metadata = Metadata::new(SystemTime::UNIX_EPOCH, false);
 
-            cache.set_metadata("foo".as_ref(), metadata).await;
+            cache.set_metadata(&"foo".into(), metadata).await;
 
-            assert_eq!(cache.metadata("foo".as_ref()).await, Ok(Some(metadata)));
+            assert_eq!(cache.metadata(&"foo".into()).await, Ok(Some(metadata)));
         }
 
         #[tokio::test]
@@ -289,10 +289,10 @@ mod tests {
             let cache = create_cache(&Default::default());
 
             cache
-                .set_metadata("foo".as_ref(), Metadata::new(SystemTime::UNIX_EPOCH, false))
+                .set_metadata(&"foo".into(), Metadata::new(SystemTime::UNIX_EPOCH, false))
                 .await;
 
-            assert_eq!(cache.metadata("bar".as_ref()).await, Ok(None));
+            assert_eq!(cache.metadata(&"bar".into()).await, Ok(None));
         }
 
         #[tokio::test]
@@ -302,24 +302,25 @@ mod tests {
 
             file_system.write_file("foo", "");
 
-            let metadata = cache.metadata("foo".as_ref()).await.unwrap();
+            let metadata = cache.metadata(&"foo".into()).await.unwrap();
 
             cache
                 .set_metadata(
-                    "foo".as_ref(),
+                    &"foo".into(),
                     Metadata::new(SystemTime::UNIX_EPOCH + Duration::from_secs(1), false),
                 )
                 .await;
 
-            assert_eq!(cache.metadata("foo".as_ref()).await, Ok(metadata));
+            assert_eq!(cache.metadata(&"foo".into()).await, Ok(metadata));
         }
 
         #[tokio::test]
         async fn keep_metadata_of_in_flight_fetch() {
             let cache = create_cache(&Default::default());
+            let path = "foo".into();
             let metadata = Metadata::new(SystemTime::UNIX_EPOCH, false);
             let notify = Notify::new();
-            let mut future = pin!(FileCache::get(&cache.metadata, "foo".as_ref(), || async {
+            let mut future = pin!(FileCache::get(&cache.metadata, &path, || async {
                 notify.notified().await;
 
                 Ok::<_, FileError>(metadata)
@@ -328,7 +329,7 @@ mod tests {
             assert!(poll!(&mut future).is_pending());
             assert_eq!(
                 poll!(pin!(cache.set_metadata(
-                    "foo".as_ref(),
+                    &path,
                     Metadata::new(SystemTime::UNIX_EPOCH + Duration::from_secs(1), false),
                 ))),
                 Poll::Ready(())
@@ -353,8 +354,8 @@ mod tests {
             file_system.write_file("bar", "baz");
 
             assert_eq!(
-                cache.content_hash("foo".as_ref()).await.unwrap(),
-                cache.content_hash("bar".as_ref()).await.unwrap()
+                cache.content_hash(&"foo".into()).await.unwrap(),
+                cache.content_hash(&"bar".into()).await.unwrap()
             );
         }
 
@@ -367,8 +368,8 @@ mod tests {
             file_system.write_file("bar", "2");
 
             assert_ne!(
-                cache.content_hash("foo".as_ref()).await.unwrap(),
-                cache.content_hash("bar".as_ref()).await.unwrap()
+                cache.content_hash(&"foo".into()).await.unwrap(),
+                cache.content_hash(&"bar".into()).await.unwrap()
             );
         }
 
@@ -379,18 +380,18 @@ mod tests {
 
             file_system.write_file("foo", "1");
 
-            let hash = cache.content_hash("foo".as_ref()).await.unwrap();
+            let hash = cache.content_hash(&"foo".into()).await.unwrap();
 
             file_system.write_file("foo", "2");
 
-            assert_eq!(cache.content_hash("foo".as_ref()).await, Ok(hash));
+            assert_eq!(cache.content_hash(&"foo".into()).await, Ok(hash));
         }
 
         #[tokio::test]
         async fn fail_to_hash_missing_file() {
             assert_eq!(
                 create_cache(&Default::default())
-                    .content_hash("foo".as_ref())
+                    .content_hash(&"foo".into())
                     .await,
                 Err(FileError::new("file not found"))
             );
@@ -401,11 +402,11 @@ mod tests {
             let file_system = FakeFileSystem::default();
             let cache = create_cache(&file_system);
 
-            cache.content_hash("foo".as_ref()).await.unwrap_err();
+            cache.content_hash(&"foo".into()).await.unwrap_err();
 
             file_system.write_file("foo", "");
 
-            assert!(cache.content_hash("foo".as_ref()).await.is_ok());
+            assert!(cache.content_hash(&"foo".into()).await.is_ok());
         }
     }
 
@@ -420,12 +421,12 @@ mod tests {
 
             file_system.write_file("foo", "");
 
-            assert_eq!(cache.exists("foo".as_ref()).await, Ok(true));
+            assert_eq!(cache.exists(&"foo".into()).await, Ok(true));
 
             file_system.remove_file("foo".as_ref()).await.unwrap();
-            cache.invalidate("foo".as_ref()).await;
+            cache.invalidate("foo").await;
 
-            assert_eq!(cache.exists("foo".as_ref()).await, Ok(false));
+            assert_eq!(cache.exists(&"foo".into()).await, Ok(false));
         }
 
         #[tokio::test]
@@ -435,12 +436,12 @@ mod tests {
 
             file_system.write_file("foo", "");
 
-            let metadata = cache.metadata("foo".as_ref()).await.unwrap();
+            let metadata = cache.metadata(&"foo".into()).await.unwrap();
 
             file_system.write_file("foo", "");
-            cache.invalidate("foo".as_ref()).await;
+            cache.invalidate("foo").await;
 
-            assert_ne!(cache.metadata("foo".as_ref()).await, Ok(metadata));
+            assert_ne!(cache.metadata(&"foo".into()).await, Ok(metadata));
         }
 
         #[tokio::test]
@@ -450,12 +451,12 @@ mod tests {
 
             file_system.write_file("foo", "1");
 
-            let hash = cache.content_hash("foo".as_ref()).await.unwrap();
+            let hash = cache.content_hash(&"foo".into()).await.unwrap();
 
             file_system.write_file("foo", "2");
-            cache.invalidate("foo".as_ref()).await;
+            cache.invalidate("foo").await;
 
-            assert_ne!(cache.content_hash("foo".as_ref()).await, Ok(hash));
+            assert_ne!(cache.content_hash(&"foo".into()).await, Ok(hash));
         }
 
         #[tokio::test]
@@ -466,14 +467,14 @@ mod tests {
             file_system.write_file("foo", "1");
             file_system.write_file("bar", "1");
 
-            let metadata = cache.metadata("bar".as_ref()).await;
-            let hash = cache.content_hash("bar".as_ref()).await;
+            let metadata = cache.metadata(&"bar".into()).await;
+            let hash = cache.content_hash(&"bar".into()).await;
 
             file_system.write_file("bar", "2");
-            cache.invalidate("foo".as_ref()).await;
+            cache.invalidate("foo").await;
 
-            assert_eq!(cache.metadata("bar".as_ref()).await, metadata);
-            assert_eq!(cache.content_hash("bar".as_ref()).await, hash);
+            assert_eq!(cache.metadata(&"bar".into()).await, metadata);
+            assert_eq!(cache.content_hash(&"bar".into()).await, hash);
         }
     }
 
@@ -489,8 +490,9 @@ mod tests {
         #[tokio::test]
         async fn share_in_flight_fetch() {
             let cache = Cache::default();
+            let path = "foo".into();
             let notify = Notify::new();
-            let mut first = pin!(FileCache::get(&cache, "foo".as_ref(), || async {
+            let mut first = pin!(FileCache::get(&cache, &path, || async {
                 notify.notified().await;
 
                 Ok::<_, FileError>(1)
@@ -498,7 +500,7 @@ mod tests {
 
             assert!(poll!(&mut first).is_pending());
 
-            let mut second = pin!(FileCache::get(&cache, "foo".as_ref(), || async {
+            let mut second = pin!(FileCache::get(&cache, &path, || async {
                 Ok::<_, FileError>(2)
             }));
 
@@ -516,14 +518,14 @@ mod tests {
             assert!(
                 poll!(pin!(FileCache::get(
                     &cache,
-                    "foo".as_ref(),
+                    &"foo".into(),
                     pending::<Result<_, FileError>>
                 )))
                 .is_pending()
             );
 
             assert_eq!(
-                FileCache::get(&cache, "foo".as_ref(), || async { Ok::<_, FileError>(1) }).await,
+                FileCache::get(&cache, &"foo".into(), || async { Ok::<_, FileError>(1) }).await,
                 Ok(1)
             );
         }
@@ -531,8 +533,9 @@ mod tests {
         #[tokio::test]
         async fn fetch_again_after_removal_during_in_flight_fetch() {
             let cache = Cache::default();
+            let path = "foo".into();
             let notify = Notify::new();
-            let mut first = pin!(FileCache::get(&cache, "foo".as_ref(), || async {
+            let mut first = pin!(FileCache::get(&cache, &path, || async {
                 notify.notified().await;
 
                 Ok::<_, FileError>(1)
@@ -540,10 +543,10 @@ mod tests {
 
             assert!(poll!(&mut first).is_pending());
 
-            cache.remove_async(Path::new("foo")).await;
+            cache.remove_async("foo").await;
 
             assert_eq!(
-                poll!(pin!(FileCache::get(&cache, "foo".as_ref(), || async {
+                poll!(pin!(FileCache::get(&cache, &path, || async {
                     Ok::<_, FileError>(2)
                 }))),
                 Poll::Ready(Ok(2))
@@ -553,7 +556,7 @@ mod tests {
 
             assert_eq!(first.await, Ok(1));
             assert_eq!(
-                FileCache::get(&cache, "foo".as_ref(), || async { Ok::<_, FileError>(3) }).await,
+                FileCache::get(&cache, &path, || async { Ok::<_, FileError>(3) }).await,
                 Ok(2)
             );
         }
@@ -561,9 +564,10 @@ mod tests {
         #[tokio::test]
         async fn fetch_other_paths_during_in_flight_fetch() {
             let cache = Cache::default();
+            let path = "foo".into();
             let mut future = pin!(FileCache::get(
                 &cache,
-                "foo".as_ref(),
+                &path,
                 pending::<Result<(), FileError>>
             ));
 
@@ -573,7 +577,7 @@ mod tests {
                 assert_eq!(
                     poll!(pin!(FileCache::get(
                         &cache,
-                        index.to_string().as_ref(),
+                        &index.to_string().into(),
                         || async { Ok::<_, FileError>(()) }
                     ))),
                     Poll::Ready(Ok(()))

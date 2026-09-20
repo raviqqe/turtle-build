@@ -3,6 +3,7 @@ use crate::{
     infrastructure::{Database, DatabaseError},
     ir::BuildId,
 };
+use alloc::sync::Arc;
 use redb::{
     Durability, Key, ReadOnlyTable, ReadableDatabase, ReadableTable, TableDefinition, Value,
 };
@@ -90,7 +91,7 @@ impl Database for RedbDatabase {
         Ok(self.write(hash_table(r#type), id.to_bytes(), hash)?)
     }
 
-    fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<String>, DatabaseError> {
+    fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError> {
         Ok(self.read(HEADER_DEPENDENCIES, |table| {
             Ok(table
                 .get(id.to_bytes())?
@@ -102,12 +103,12 @@ impl Database for RedbDatabase {
     fn set_header_dependencies(
         &self,
         id: BuildId,
-        dependencies: &[String],
+        dependencies: &[Arc<str>],
     ) -> Result<(), DatabaseError> {
         Ok(self.write(
             HEADER_DEPENDENCIES,
             id.to_bytes(),
-            dependencies.iter().map(String::as_str).collect(),
+            dependencies.iter().map(AsRef::as_ref).collect(),
         )?)
     }
 
@@ -269,7 +270,7 @@ mod tests {
 
         assert_eq!(
             database.get_header_dependencies(BuildId::new(0)).unwrap(),
-            vec!["foo", "bar"]
+            vec!["foo".into(), "bar".into()]
         );
     }
 
@@ -279,7 +280,7 @@ mod tests {
 
         assert_eq!(
             database.get_header_dependencies(BuildId::new(0)).unwrap(),
-            Vec::<String>::new()
+            Vec::<Arc<str>>::new()
         );
     }
 
@@ -331,7 +332,7 @@ mod tests {
         );
         assert_eq!(
             database.get_header_dependencies(BuildId::new(0)).unwrap(),
-            vec!["foo"]
+            vec!["foo".into()]
         );
         assert_eq!(database.get_outputs().unwrap(), vec!["foo"]);
         assert_eq!(database.get_source("foo").unwrap(), Some("bar".into()));

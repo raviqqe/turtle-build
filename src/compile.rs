@@ -239,8 +239,8 @@ fn compile_header_dependency(
             resolve_variable(DEPFILE_VARIABLE, variables),
         ) {
             (None, None) => None,
-            (None, Some(path)) => Some(HeaderDependency::Make { path }),
-            (Some("gcc"), Some(path)) => Some(HeaderDependency::Gcc { path }),
+            (None, Some(path)) => Some(HeaderDependency::Make { path: path.into() }),
+            (Some("gcc"), Some(path)) => Some(HeaderDependency::Gcc { path: path.into() }),
             (Some("gcc"), None) => return Err(CompileError::MissingDepfile(rule.into())),
             (Some("msvc"), _) => Some(HeaderDependency::Msvc {
                 prefix: resolve_variable(MSVC_DEPS_PREFIX_VARIABLE, variables)

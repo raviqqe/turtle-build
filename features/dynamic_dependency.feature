@@ -99,6 +99,47 @@ Feature: Dynamic dependency
     When I successfully run `turtle foo`
     Then the stdout should contain exactly "ok"
 
+  Scenario: Use a dyndep file shared by builds
+    Given a file named "build.ninja" with:
+      """
+      rule touch
+        command = touch $out
+      rule cp
+        command = echo $out && cp $in $out
+      rule dd
+        command = printf 'ninja_dyndep_version = 1\nbuild foo: dyndep | baz\nbuild bar: dyndep | qux\n' > $out
+
+      build foo: touch || foo.dd
+        dyndep = foo.dd
+      build bar: touch foo || foo.dd
+        dyndep = foo.dd
+      build foo.dd: dd
+      build baz: cp quux
+      build qux: cp quux
+
+      """
+    And a file named "quux" with ""
+    When I successfully run `turtle bar`
+    Then the stdout should contain "baz"
+    And the stdout should contain "qux"
+
+  Scenario: Fail to use a dyndep file that is not an input
+    Given a file named "build.ninja" with:
+      """
+      rule touch
+        command = touch $out
+      rule dd
+        command = echo ninja_dyndep_version = 1 >> $out && echo build foo: dyndep >> $out
+
+      build foo: touch
+        dyndep = foo.dd
+      build foo.dd: dd
+
+      """
+    When I run `turtle foo`
+    Then the exit status should not be 0
+    And the output should contain "foo.dd"
+
   Scenario: Fail to use a dyndep file naming an unknown output
     Given a file named "build.ninja" with:
       """

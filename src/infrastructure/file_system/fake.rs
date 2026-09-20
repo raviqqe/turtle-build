@@ -17,6 +17,7 @@ use std::{
 pub struct FakeFileSystem {
     files: Arc<Mutex<HashMap<PathBuf, FakeFile>>>,
     directories: Arc<Mutex<HashSet<PathBuf>>>,
+    read_requests: Arc<Mutex<Vec<PathBuf>>>,
     metadata_requests: Arc<Mutex<Vec<PathBuf>>>,
     metadata_failures: Arc<Mutex<HashSet<PathBuf>>>,
     clock: Arc<AtomicU64>,
@@ -40,6 +41,10 @@ impl FakeFileSystem {
         );
     }
 
+    pub fn read_requests(&self) -> Vec<PathBuf> {
+        self.read_requests.lock().unwrap().clone()
+    }
+
     pub fn metadata_requests(&self) -> Vec<PathBuf> {
         self.metadata_requests.lock().unwrap().clone()
     }
@@ -49,6 +54,8 @@ impl FakeFileSystem {
     }
 
     fn file(&self, path: &Path) -> Result<FakeFile, FileError> {
+        self.read_requests.lock().unwrap().push(path.into());
+
         self.files
             .lock()
             .unwrap()

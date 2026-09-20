@@ -3,13 +3,13 @@ use crate::{
     BuildError,
     build_graph::BuildGraph,
     context::Context,
-    ir::{BuildId, Config, Pool},
+    ir::{BuildId, Config, DynamicConfig, Pool},
 };
 use alloc::sync::Arc;
 use core::pin::Pin;
 use futures::future::Shared;
 use scc::HashMap;
-use tokio::sync::{Mutex, Semaphore, SemaphorePermit};
+use tokio::sync::{Mutex, OnceCell, Semaphore, SemaphorePermit};
 
 type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<(), BuildError>> + Send>>>;
 
@@ -18,6 +18,7 @@ pub struct RunContext {
     config: Arc<Config>,
     build_futures: HashMap<BuildId, BuildFuture>,
     build_graph: Mutex<BuildGraph>,
+    dynamic_configs: std::collections::HashMap<Arc<str>, OnceCell<DynamicConfig>>,
     file_cache: FileCache,
     header_dependencies: std::collections::HashMap<BuildId, Vec<String>>,
     pools: std::collections::HashMap<Arc<str>, Semaphore>,
@@ -36,6 +37,11 @@ impl RunContext {
             file_cache: FileCache::new(build.file_system().clone()),
             build,
             build_graph: build_graph.into(),
+            dynamic_configs: config
+                .outputs()
+                .values()
+                .filter_map(|build| Some((build.dynamic_module()?.clone(), Default::default())))
+                .collect(),
             header_dependencies,
             pools: config
                 .pools()
@@ -67,6 +73,10 @@ impl RunContext {
 
     pub const fn build_graph(&self) -> &Mutex<BuildGraph> {
         &self.build_graph
+    }
+
+    pub fn dynamic_config(&self, path: &str) -> &OnceCell<DynamicConfig> {
+        &self.dynamic_configs[path]
     }
 
     pub const fn file_cache(&self) -> &FileCache {

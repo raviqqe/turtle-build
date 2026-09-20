@@ -5,6 +5,8 @@ use thiserror::Error;
 pub enum CompileError {
     #[error("pool \"{0}\" already defined")]
     DuplicatePool(String),
+    #[error("dynamic dependency file \"{0}\" is not an input of its build")]
+    DynamicModuleNotInput(String),
     #[error("dependency style \"{0}\" not supported")]
     InvalidDependencyStyle(String),
     #[error("pool \"{0}\" has invalid depth \"{1}\"")]

@@ -18,7 +18,7 @@ use crate::{
     error::BuildError,
     hash_type::HashType,
     infrastructure::{Console, Metadata},
-    ir::{Build, Config, Pool, Rule},
+    ir::{Build, Config, DynamicConfig, Pool, Rule},
     parse::parse_dynamic,
 };
 use alloc::sync::Arc;
@@ -127,29 +127,9 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             get_output_metadata(&context, &build),
         )?;
 
-        // TODO Consider caching dynamic modules.
-        let dynamic_config = if let Some(dynamic_module) = build.dynamic_module() {
-            let config = compile_dynamic(&parse_dynamic(
-                &context
-                    .build()
-                    .file_system()
-                    .read_file_to_string(dynamic_module.as_ref().as_ref())
-                    .await?,
-            )?)?;
+        let dynamic_inputs = if let Some(path) = build.dynamic_module() {
+            let config = load_dynamic_config(&context, path).await?;
 
-            context
-                .build_graph()
-                .lock()
-                .await
-                .validate_dynamic(&config)
-                .map_err(|error| map_build_graph_error(&context, &error))?;
-
-            Some(config)
-        } else {
-            None
-        };
-
-        let dynamic_inputs = if let Some(config) = &dynamic_config {
             build
                 .outputs()
                 .iter()
@@ -278,6 +258,33 @@ async fn build_input(context: Arc<RunContext>, input: &str) -> Result<(), BuildE
     } else {
         check_file_existence(&context, input).await
     }
+}
+
+async fn load_dynamic_config<'a>(
+    context: &'a RunContext,
+    path: &str,
+) -> Result<&'a DynamicConfig, BuildError> {
+    context
+        .dynamic_config(path)
+        .get_or_try_init(|| async {
+            let config = compile_dynamic(&parse_dynamic(
+                &context
+                    .build()
+                    .file_system()
+                    .read_file_to_string(path.as_ref())
+                    .await?,
+            )?)?;
+
+            context
+                .build_graph()
+                .lock()
+                .await
+                .validate_dynamic(&config)
+                .map_err(|error| map_build_graph_error(context, &error))?;
+
+            Ok(config)
+        })
+        .await
 }
 
 async fn get_output_metadata(
@@ -2198,6 +2205,100 @@ mod tests {
             command_runner.commands(),
             ["touch foo.dd", "touch bar", "touch foo"]
         );
+    }
+
+    #[tokio::test]
+    async fn build_dynamic_inputs_of_builds_sharing_dynamic_module() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+
+        file_system.write_file(
+            "foo.dd",
+            "ninja_dyndep_version = 1\nbuild foo: dyndep | baz\nbuild bar: dyndep | qux\n",
+        );
+        file_system.write_file("foo", "");
+        file_system.write_file("baz", "");
+        file_system.write_file("qux", "");
+
+        run(
+            &create_context(&command_runner, &Default::default(), &file_system),
+            create_simple_config(
+                vec![
+                    Build::new(
+                        vec!["foo".into()],
+                        vec![],
+                        Rule::new("touch foo".into(), None).into(),
+                        vec![],
+                        vec!["foo.dd".into()],
+                        Some("foo.dd".into()),
+                    ),
+                    Build::new(
+                        vec!["bar".into()],
+                        vec![],
+                        Rule::new("touch bar".into(), None).into(),
+                        vec!["foo".into()],
+                        vec!["foo.dd".into()],
+                        Some("foo.dd".into()),
+                    ),
+                    explicit_build(
+                        vec!["baz".into()],
+                        Rule::new("touch baz".into(), None),
+                        vec![],
+                    ),
+                    explicit_build(
+                        vec!["qux".into()],
+                        Rule::new("touch qux".into(), None),
+                        vec![],
+                    ),
+                ],
+                &["bar"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            command_runner.commands(),
+            ["touch baz", "touch foo", "touch qux", "touch bar"]
+        );
+    }
+
+    #[tokio::test]
+    async fn read_dynamic_module_once() {
+        let file_system = FakeFileSystem::default();
+
+        file_system.write_file(
+            "foo.dd",
+            "ninja_dyndep_version = 1\nbuild foo: dyndep\nbuild bar: dyndep\n",
+        );
+
+        run(
+            &create_context(&Default::default(), &Default::default(), &file_system),
+            create_simple_config(
+                ["foo", "bar"]
+                    .into_iter()
+                    .map(|output| {
+                        Build::new(
+                            vec![output.into()],
+                            vec![],
+                            Rule::new(format!("touch {output}"), None).into(),
+                            vec![],
+                            vec!["foo.dd".into()],
+                            Some("foo.dd".into()),
+                        )
+                    })
+                    .collect(),
+                &["foo", "bar"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(file_system.read_requests(), [Path::new("foo.dd")]);
     }
 
     #[tokio::test]

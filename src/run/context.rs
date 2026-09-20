@@ -7,7 +7,7 @@ use crate::{
 };
 use alloc::sync::Arc;
 use core::pin::Pin;
-use futures::future::Shared;
+use futures::future::{Shared, TryFutureExt};
 use scc::HashMap;
 use tokio::sync::{Mutex, OnceCell, Semaphore, SemaphorePermit};
 
@@ -18,7 +18,7 @@ pub struct RunContext {
     config: Arc<Config>,
     build_futures: HashMap<BuildId, BuildFuture>,
     build_graph: Mutex<BuildGraph>,
-    dynamic_configs: std::collections::HashMap<Arc<str>, OnceCell<DynamicConfig>>,
+    dynamic_configs: HashMap<Arc<str>, Arc<OnceCell<Arc<DynamicConfig>>>>,
     file_cache: FileCache,
     header_dependencies: std::collections::HashMap<BuildId, Vec<Arc<str>>>,
     pools: std::collections::HashMap<Arc<str>, Semaphore>,
@@ -37,11 +37,7 @@ impl RunContext {
             file_cache: FileCache::new(build.file_system().clone()),
             build,
             build_graph: build_graph.into(),
-            dynamic_configs: config
-                .outputs()
-                .values()
-                .filter_map(|build| Some((build.dynamic_module()?.clone(), Default::default())))
-                .collect(),
+            dynamic_configs: HashMap::new(),
             header_dependencies,
             pools: config
                 .pools()
@@ -75,8 +71,23 @@ impl RunContext {
         &self.build_graph
     }
 
-    pub fn dynamic_config(&self, path: &str) -> &OnceCell<DynamicConfig> {
-        &self.dynamic_configs[path]
+    pub async fn dynamic_config(
+        &self,
+        path: &Arc<str>,
+        future: impl Future<Output = Result<DynamicConfig, BuildError>>,
+    ) -> Result<Arc<DynamicConfig>, BuildError> {
+        // Do not inline this to avoid holding a lock of dynamic configs across an await point.
+        let cell = self
+            .dynamic_configs
+            .entry_async(path.clone())
+            .await
+            .or_default()
+            .get()
+            .clone();
+
+        cell.get_or_try_init(|| future.map_ok(Arc::new))
+            .await
+            .cloned()
     }
 
     pub const fn file_cache(&self) -> &FileCache {

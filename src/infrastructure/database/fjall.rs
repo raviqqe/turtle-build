@@ -3,12 +3,8 @@ use crate::{
     infrastructure::{Database, DatabaseError},
     ir::BuildId,
 };
-use async_trait::async_trait;
-use core::{
-    str,
-    sync::atomic::{AtomicBool, Ordering},
-};
-use fjall::{Keyspace, KeyspaceCreateOptions, PersistMode};
+use core::str;
+use fjall::{Keyspace, KeyspaceCreateOptions};
 use std::{path::Path, sync::LazyLock};
 
 const KEYSPACE_NAME: &str = "build";
@@ -31,7 +27,6 @@ static BINCODE_CONFIG: LazyLock<bincode::config::Configuration> = LazyLock::new(
 pub struct FjallDatabase {
     database: fjall::Database,
     keyspace: Keyspace,
-    written: AtomicBool,
 }
 
 impl FjallDatabase {
@@ -42,13 +37,11 @@ impl FjallDatabase {
         Ok(Self {
             keyspace: database.keyspace(KEYSPACE_NAME, KeyspaceCreateOptions::default)?,
             database,
-            written: AtomicBool::new(false),
         })
     }
 
     fn insert(&self, key: &[u8], value: &[u8]) -> Result<(), DatabaseError> {
         self.keyspace.insert(key, value)?;
-        self.written.store(true, Ordering::Relaxed);
 
         Ok(())
     }
@@ -65,7 +58,6 @@ fn key(tag: u8, payload: &[u8]) -> Vec<u8> {
     [[tag].as_slice(), payload].concat()
 }
 
-#[async_trait]
 impl Database for FjallDatabase {
     fn get_hash(&self, r#type: HashType, id: BuildId) -> Result<Option<u64>, DatabaseError> {
         Ok(self
@@ -127,16 +119,6 @@ impl Database for FjallDatabase {
     fn set_source(&self, output: &str, source: &str) -> Result<(), DatabaseError> {
         self.insert(&key(SOURCE_TAG, output.as_bytes()), source.as_bytes())
     }
-
-    async fn flush(&self) -> Result<(), DatabaseError> {
-        if !self.written.load(Ordering::Relaxed) {
-            return Ok(());
-        }
-
-        self.database.persist(PersistMode::SyncAll)?;
-
-        Ok(())
-    }
 }
 
 #[cfg(test)]
@@ -147,19 +129,6 @@ mod tests {
     #[test]
     fn new() {
         FjallDatabase::new(tempdir().unwrap().path()).unwrap();
-    }
-
-    #[tokio::test]
-    async fn flush() {
-        let database = FjallDatabase::new(tempdir().unwrap().path()).unwrap();
-        database.flush().await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn flush_after_write() {
-        let database = FjallDatabase::new(tempdir().unwrap().path()).unwrap();
-        database.set_output("foo").unwrap();
-        database.flush().await.unwrap();
     }
 
     #[test]
@@ -262,8 +231,8 @@ mod tests {
         assert_eq!(database.get_source("foo").unwrap(), Some("bar".into()));
     }
 
-    #[tokio::test]
-    async fn reopen() {
+    #[test]
+    fn reopen() {
         let directory = tempdir().unwrap();
 
         let database = FjallDatabase::new(directory.path()).unwrap();
@@ -276,7 +245,6 @@ mod tests {
             .unwrap();
         database.set_output("foo").unwrap();
         database.set_source("foo", "bar").unwrap();
-        database.flush().await.unwrap();
 
         drop(database);
 

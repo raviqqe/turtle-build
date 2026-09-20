@@ -4,7 +4,6 @@ use crate::{
     ir::BuildId,
 };
 use alloc::{collections::BTreeSet, sync::Arc};
-use async_trait::async_trait;
 use std::{collections::HashMap, sync::Mutex};
 
 #[derive(Clone, Debug, Default)]
@@ -30,7 +29,6 @@ impl FakeDatabase {
     }
 }
 
-#[async_trait]
 impl Database for FakeDatabase {
     fn get_hash(&self, r#type: HashType, id: BuildId) -> Result<Option<u64>, DatabaseError> {
         Ok(self.hashes(r#type).lock().unwrap().get(&id).copied())
@@ -87,10 +85,6 @@ impl Database for FakeDatabase {
             .unwrap()
             .insert(output.into(), source.into());
 
-        Ok(())
-    }
-
-    async fn flush(&self) -> Result<(), DatabaseError> {
         Ok(())
     }
 }

@@ -1,24 +1,21 @@
 use crate::infrastructure::{FileError, FileSystem, Metadata};
 use alloc::sync::Arc;
 use core::hash::{BuildHasher, BuildHasherDefault};
-use scc::HashMap;
+use moka::future::Cache;
 use std::collections::hash_map::DefaultHasher;
-use tokio::sync::OnceCell;
-
-type Cache<T> = HashMap<Arc<str>, Arc<OnceCell<T>>>;
 
 pub struct FileCache {
     file_system: Arc<dyn FileSystem + Send + Sync>,
-    metadata: Cache<Metadata>,
-    content_hashes: Cache<u64>,
+    metadata: Cache<Arc<str>, Metadata>,
+    content_hashes: Cache<Arc<str>, u64>,
 }
 
 impl FileCache {
     pub fn new(file_system: Arc<dyn FileSystem + Send + Sync>) -> Self {
         Self {
             file_system,
-            metadata: HashMap::new(),
-            content_hashes: HashMap::new(),
+            metadata: Cache::builder().build(),
+            content_hashes: Cache::builder().build(),
         }
     }
 
@@ -27,13 +24,16 @@ impl FileCache {
     }
 
     pub async fn metadata(&self, path: &Arc<str>) -> Result<Option<Metadata>, FileError> {
-        match Self::get(&self.metadata, path, || async {
-            self.file_system
-                .metadata(path.as_ref().as_ref())
-                .await?
-                .ok_or(None)
-        })
-        .await
+        match self
+            .metadata
+            .try_get_with_by_ref(path, async {
+                self.file_system
+                    .metadata(path.as_ref().as_ref())
+                    .await?
+                    .ok_or(None)
+            })
+            .await
+            .map_err(Arc::unwrap_or_clone)
         {
             Ok(metadata) => Ok(Some(metadata)),
             Err(None) => Ok(None),
@@ -42,46 +42,22 @@ impl FileCache {
     }
 
     pub async fn set_metadata(&self, path: &Arc<str>, metadata: Metadata) {
-        self.metadata
-            .entry_async(path.clone())
-            .await
-            .or_default()
-            .get()
-            .set(metadata)
-            .ok();
+        self.metadata.entry_by_ref(path).or_insert(metadata).await;
     }
 
     pub async fn content_hash(&self, path: &Arc<str>) -> Result<u64, FileError> {
-        Self::get(&self.content_hashes, path, || async {
-            Ok(BuildHasherDefault::<DefaultHasher>::default()
-                .hash_one(self.file_system.read_file(path.as_ref().as_ref()).await?))
-        })
-        .await
+        self.content_hashes
+            .try_get_with_by_ref(path, async {
+                Ok(BuildHasherDefault::<DefaultHasher>::default()
+                    .hash_one(self.file_system.read_file(path.as_ref().as_ref()).await?))
+            })
+            .await
+            .map_err(Arc::unwrap_or_clone)
     }
 
     pub async fn invalidate(&self, path: &str) {
-        self.metadata.remove_async(path).await;
-        self.content_hashes.remove_async(path).await;
-    }
-
-    async fn get<T: Copy, E, F: Future<Output = Result<T, E>>>(
-        cache: &Cache<T>,
-        path: &Arc<str>,
-        fetch: impl FnOnce() -> F,
-    ) -> Result<T, E> {
-        if let Some(Some(value)) = cache.read_async(path, |_, cell| cell.get().copied()).await {
-            return Ok(value);
-        }
-
-        // Do not inline this to avoid holding a lock of a cache across an await point.
-        let cell = cache
-            .entry_async(path.clone())
-            .await
-            .or_default()
-            .get()
-            .clone();
-
-        cell.get_or_try_init(fetch).await.copied()
+        self.metadata.invalidate(path).await;
+        self.content_hashes.invalidate(path).await;
     }
 }
 
@@ -320,7 +296,7 @@ mod tests {
             let path = "foo".into();
             let metadata = Metadata::new(SystemTime::UNIX_EPOCH, false);
             let notify = Notify::new();
-            let mut future = pin!(FileCache::get(&cache.metadata, &path, || async {
+            let mut future = pin!(cache.metadata.try_get_with_by_ref(&path, async {
                 notify.notified().await;
 
                 Ok::<_, FileError>(metadata)
@@ -338,6 +314,7 @@ mod tests {
             notify.notify_one();
 
             assert_eq!(future.await, Ok(metadata));
+            assert_eq!(cache.metadata(&path).await, Ok(Some(metadata)));
         }
     }
 
@@ -475,114 +452,6 @@ mod tests {
 
             assert_eq!(cache.metadata(&"bar".into()).await, metadata);
             assert_eq!(cache.content_hash(&"bar".into()).await, hash);
-        }
-    }
-
-    mod get {
-        use super::*;
-        use core::{future::pending, pin::pin, task::Poll};
-        use futures::{future::join, poll};
-        use pretty_assertions::assert_eq;
-        use tokio::sync::Notify;
-
-        const PATH_COUNT: usize = 64;
-
-        #[tokio::test]
-        async fn share_in_flight_fetch() {
-            let cache = Cache::default();
-            let path = "foo".into();
-            let notify = Notify::new();
-            let mut first = pin!(FileCache::get(&cache, &path, || async {
-                notify.notified().await;
-
-                Ok::<_, FileError>(1)
-            }));
-
-            assert!(poll!(&mut first).is_pending());
-
-            let mut second = pin!(FileCache::get(&cache, &path, || async {
-                Ok::<_, FileError>(2)
-            }));
-
-            assert!(poll!(&mut second).is_pending());
-
-            notify.notify_one();
-
-            assert_eq!(join(first, second).await, (Ok(1), Ok(1)));
-        }
-
-        #[tokio::test]
-        async fn fetch_again_after_cancelled_fetch() {
-            let cache = Cache::default();
-
-            assert!(
-                poll!(pin!(FileCache::get(
-                    &cache,
-                    &"foo".into(),
-                    pending::<Result<_, FileError>>
-                )))
-                .is_pending()
-            );
-
-            assert_eq!(
-                FileCache::get(&cache, &"foo".into(), || async { Ok::<_, FileError>(1) }).await,
-                Ok(1)
-            );
-        }
-
-        #[tokio::test]
-        async fn fetch_again_after_removal_during_in_flight_fetch() {
-            let cache = Cache::default();
-            let path = "foo".into();
-            let notify = Notify::new();
-            let mut first = pin!(FileCache::get(&cache, &path, || async {
-                notify.notified().await;
-
-                Ok::<_, FileError>(1)
-            }));
-
-            assert!(poll!(&mut first).is_pending());
-
-            cache.remove_async("foo").await;
-
-            assert_eq!(
-                poll!(pin!(FileCache::get(&cache, &path, || async {
-                    Ok::<_, FileError>(2)
-                }))),
-                Poll::Ready(Ok(2))
-            );
-
-            notify.notify_one();
-
-            assert_eq!(first.await, Ok(1));
-            assert_eq!(
-                FileCache::get(&cache, &path, || async { Ok::<_, FileError>(3) }).await,
-                Ok(2)
-            );
-        }
-
-        #[tokio::test]
-        async fn fetch_other_paths_during_in_flight_fetch() {
-            let cache = Cache::default();
-            let path = "foo".into();
-            let mut future = pin!(FileCache::get(
-                &cache,
-                &path,
-                pending::<Result<(), FileError>>
-            ));
-
-            assert!(poll!(&mut future).is_pending());
-
-            for index in 0..PATH_COUNT {
-                assert_eq!(
-                    poll!(pin!(FileCache::get(
-                        &cache,
-                        &index.to_string().into(),
-                        || async { Ok::<_, FileError>(()) }
-                    ))),
-                    Poll::Ready(Ok(()))
-                );
-            }
         }
     }
 }

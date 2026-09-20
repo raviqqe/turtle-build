@@ -707,7 +707,7 @@ mod tests {
             explicit_build(
                 vec!["foo".into()],
                 "bar".into(),
-                vec!["bazblah".into()],
+                vec!["bazblah".into()], // cspell: disable-line
                 vec![]
             )
         );

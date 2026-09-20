@@ -32,6 +32,12 @@ impl From<fjall::Error> for DatabaseError {
     }
 }
 
+impl From<redb::Error> for DatabaseError {
+    fn from(error: redb::Error) -> Self {
+        Self::new(error)
+    }
+}
+
 impl From<Utf8Error> for DatabaseError {
     fn from(error: Utf8Error) -> Self {
         Self::new(error)

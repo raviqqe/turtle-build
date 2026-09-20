@@ -2,10 +2,11 @@ mod error;
 #[cfg(test)]
 mod fake;
 mod fjall;
+mod redb;
 
 #[cfg(test)]
 pub use self::fake::FakeDatabase;
-pub use self::{error::DatabaseError, fjall::FjallDatabase};
+pub use self::{error::DatabaseError, fjall::FjallDatabase, redb::RedbDatabase};
 use crate::{hash_type::HashType, ir::BuildId};
 
 pub trait Database {

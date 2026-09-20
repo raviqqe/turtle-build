@@ -24,6 +24,7 @@
     "keyspace",
     "kosaraju",
     "libc",
+    "moka",
     "msvc",
     "muffy",
     "neul",

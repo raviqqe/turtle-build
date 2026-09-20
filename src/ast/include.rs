@@ -4,7 +4,7 @@ pub struct Include {
 }
 
 impl Include {
-    pub fn new(path: String) -> Self {
+    pub const fn new(path: String) -> Self {
         Self { path }
     }
 

@@ -5,7 +5,7 @@ pub struct VariableDefinition {
 }
 
 impl VariableDefinition {
-    pub fn new(name: String, value: String) -> Self {
+    pub const fn new(name: String, value: String) -> Self {
         Self { name, value }
     }
 

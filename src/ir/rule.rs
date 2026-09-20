@@ -9,7 +9,7 @@ pub struct Rule {
 }
 
 impl Rule {
-    pub fn new(command: String, description: Option<String>) -> Self {
+    pub const fn new(command: String, description: Option<String>) -> Self {
         Self {
             command,
             description,

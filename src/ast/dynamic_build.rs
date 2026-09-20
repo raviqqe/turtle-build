@@ -5,7 +5,7 @@ pub struct DynamicBuild {
 }
 
 impl DynamicBuild {
-    pub fn new(output: String, implicit_inputs: Vec<String>) -> Self {
+    pub const fn new(output: String, implicit_inputs: Vec<String>) -> Self {
         Self {
             output,
             implicit_inputs,

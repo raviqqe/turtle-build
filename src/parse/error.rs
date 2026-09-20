@@ -7,7 +7,7 @@ pub struct ParseError {
 }
 
 impl ParseError {
-    pub fn new(message: String) -> Self {
+    pub const fn new(message: String) -> Self {
         Self { message }
     }
 }

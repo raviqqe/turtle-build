@@ -4,7 +4,7 @@ pub struct Submodule {
 }
 
 impl Submodule {
-    pub fn new(path: String) -> Self {
+    pub const fn new(path: String) -> Self {
         Self { path }
     }
 

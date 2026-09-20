@@ -5,7 +5,7 @@ pub struct Pool {
 }
 
 impl Pool {
-    pub fn new(name: String, depth: String) -> Self {
+    pub const fn new(name: String, depth: String) -> Self {
         Self { name, depth }
     }
 

@@ -12,7 +12,7 @@ pub struct Build {
 }
 
 impl Build {
-    pub fn new(
+    pub const fn new(
         outputs: Vec<String>,
         implicit_outputs: Vec<String>,
         rule: String,

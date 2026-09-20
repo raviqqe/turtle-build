@@ -32,6 +32,7 @@
     "octocov",
     "petgraph",
     "raviqqe",
+    "redb",
     "reimplementation",
     "restat",
     "rlimit",

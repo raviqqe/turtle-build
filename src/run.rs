@@ -127,9 +127,12 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             get_output_metadata(&context, &build),
         )?;
 
-        let dynamic_inputs = if let Some(path) = build.dynamic_module() {
-            let config = load_dynamic_config(&context, path).await?;
-
+        let dynamic_config = if let Some(path) = build.dynamic_module() {
+            Some(load_dynamic_config(&context, path).await?)
+        } else {
+            None
+        };
+        let dynamic_inputs = if let Some(config) = &dynamic_config {
             build
                 .outputs()
                 .iter()
@@ -264,18 +267,18 @@ async fn build_input(context: Arc<RunContext>, input: &Arc<str>) -> Result<(), B
     }
 }
 
-async fn load_dynamic_config<'a>(
-    context: &'a RunContext,
-    path: &str,
-) -> Result<&'a DynamicConfig, BuildError> {
+async fn load_dynamic_config(
+    context: &RunContext,
+    path: &Arc<str>,
+) -> Result<Arc<DynamicConfig>, BuildError> {
     context
-        .dynamic_config(path)
-        .get_or_try_init(|| async {
+        .dynamic_configs()
+        .try_get_with_by_ref(path, async {
             let config = compile_dynamic(&parse_dynamic(
                 &context
                     .build()
                     .file_system()
-                    .read_file_to_string(path.as_ref())
+                    .read_file_to_string(path.as_ref().as_ref())
                     .await?,
             )?)?;
 
@@ -286,9 +289,10 @@ async fn load_dynamic_config<'a>(
                 .validate_dynamic(&config)
                 .map_err(|error| map_build_graph_error(context, &error))?;
 
-            Ok(config)
+            Ok(config.into())
         })
         .await
+        .map_err(Arc::unwrap_or_clone)
 }
 
 async fn get_output_metadata(

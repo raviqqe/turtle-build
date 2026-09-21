@@ -7,7 +7,7 @@ Feature: Pool statement
         depth = 1
 
       rule lock
-        command = mkdir lock && sleep 0.1 && rmdir lock && touch $out
+        command = sh -c 'mkdir lock && sleep 0.1 && rmdir lock && touch $out'
         pool = foo
 
       build bar: lock
@@ -27,7 +27,7 @@ Feature: Pool statement
         depth = 1
 
       rule lock
-        command = mkdir lock && sleep 0.1 && rmdir lock && touch $out
+        command = sh -c 'mkdir lock && sleep 0.1 && rmdir lock && touch $out'
 
       build bar: lock
         pool = foo
@@ -46,7 +46,7 @@ Feature: Pool statement
         depth = 2
 
       rule wait
-        command = touch $out.started && for _ in $$(seq 100); do if [ -e $other.started ]; then touch $out; exit; fi; sleep 0.05; done; exit 1
+        command = sh -c 'touch $out.started && for _ in $$(seq 100); do if [ -e $other.started ]; then touch $out; exit; fi; sleep 0.05; done; exit 1'
         pool = foo
 
       build bar: wait
@@ -66,7 +66,7 @@ Feature: Pool statement
         depth = 0
 
       rule wait
-        command = touch $out.started && for _ in $$(seq 100); do if [ -e $other.started ]; then touch $out; exit; fi; sleep 0.05; done; exit 1
+        command = sh -c 'touch $out.started && for _ in $$(seq 100); do if [ -e $other.started ]; then touch $out; exit; fi; sleep 0.05; done; exit 1'
         pool = foo
 
       build bar: wait
@@ -86,7 +86,7 @@ Feature: Pool statement
         depth = 1
 
       rule wait
-        command = touch $out.started && for _ in $$(seq 100); do if [ -e $other.started ]; then touch $out; exit; fi; sleep 0.05; done; exit 1
+        command = sh -c 'touch $out.started && for _ in $$(seq 100); do if [ -e $other.started ]; then touch $out; exit; fi; sleep 0.05; done; exit 1'
         pool = foo
 
       build bar: wait
@@ -108,7 +108,7 @@ Feature: Pool statement
         depth = 1
 
       rule lock
-        command = mkdir lock && sleep 0.1 && rmdir lock && touch $out
+        command = sh -c 'mkdir lock && sleep 0.1 && rmdir lock && touch $out'
         pool = foo
 
       build bar: lock
@@ -160,7 +160,7 @@ Feature: Pool statement
     Given a file named "build.ninja" with:
       """
       rule lock
-        command = mkdir lock && sleep 0.1 && rmdir lock && touch $out
+        command = sh -c 'mkdir lock && sleep 0.1 && rmdir lock && touch $out'
         pool = console
 
       build bar: lock
@@ -175,7 +175,7 @@ Feature: Pool statement
     Given a file named "build.ninja" with:
       """
       rule cat
-        command = cat > $out
+        command = sh -c 'cat > $out'
         pool = console
 
       build foo: cat
@@ -188,7 +188,7 @@ Feature: Pool statement
     Given a file named "build.ninja" with:
       """
       rule echo
-        command = echo hello >&2
+        command = sh -c 'echo hello >&2'
         pool = console
 
       build foo: echo
@@ -201,7 +201,7 @@ Feature: Pool statement
     Given a file named "build.ninja" with:
       """
       rule cat
-        command = cat > $out
+        command = sh -c 'cat > $out'
 
       build foo: cat
 
@@ -213,14 +213,14 @@ Feature: Pool statement
     Given a file named "build.ninja" with:
       """
       rule console
-        command = sleep 1 && echo console
+        command = sh -c 'sleep 1 && echo console'
         pool = console
 
       rule echo
-        command = echo normal && touch $out
+        command = sh -c 'echo normal && touch $out'
 
       rule sleep
-        command = sleep 0.5 && touch $out
+        command = sh -c 'sleep 0.5 && touch $out'
 
       build foo: console
       build bar: sleep
@@ -257,7 +257,7 @@ Feature: Pool statement
     Given a file named "build.ninja" with:
       """
       rule fail
-        command = exit 1
+        command = false
         pool = console
 
       build foo: fail

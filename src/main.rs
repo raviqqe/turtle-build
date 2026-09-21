@@ -116,7 +116,13 @@ async fn execute(arguments: &Arguments, console: &Arc<Mutex<OsConsole>>) -> Resu
 
     validate_modules(&dependencies)?;
 
-    let config = Arc::new(compile(&modules, &dependencies, &root_module_path)?);
+    let path_pool = Arc::new(PathPool::new());
+    let config = Arc::new(compile(
+        &modules,
+        &dependencies,
+        &root_module_path,
+        &path_pool,
+    )?);
     let context = Arc::new(Context::new(
         OsCommandRunner::new(job_limit),
         console.clone(),
@@ -128,7 +134,7 @@ async fn execute(arguments: &Arguments, console: &Arc<Mutex<OsConsole>>) -> Resu
                 .join(DATABASE_DIRECTORY)
                 .join(env!("CARGO_PKG_VERSION").replace('.', "_"))
                 .with_extension(DATABASE_EXTENSION),
-            PathPool::new().into(),
+            path_pool,
         )?,
         file_system,
     ));

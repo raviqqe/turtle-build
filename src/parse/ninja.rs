@@ -7,12 +7,13 @@ use nom::{
     branch::alt,
     bytes::complete::{is_not, tag, take_while1},
     character::complete::{line_ending, none_of, one_of, satisfy, space1},
-    combinator::{all_consuming, into, map, map_opt, not, opt, peek, value},
+    combinator::{all_consuming, into, map, map_opt, not, opt, peek, recognize, value},
     multi::{fold_many1, many0, many0_count, many1, many1_count},
     sequence::{preceded, terminated},
 };
 
 const OPERATOR_CHARACTERS: &str = "|:";
+const ESCAPED_CHARACTERS: &str = "$ :";
 const DYNAMIC_MODULE_VERSION_VARIABLE: &str = "ninja_dyndep_version";
 
 pub fn module(input: &str) -> IResult<&str, Module> {
@@ -204,7 +205,12 @@ fn string<'a>(
     text: impl Parser<&'a str, Output = &'a str, Error = nom::error::Error<&'a str>>,
 ) -> impl Parser<&'a str, Output = String, Error = nom::error::Error<&'a str>> {
     fold_many1(
-        alt((text, tag("$$"), value("", line_continuation), tag("$"))),
+        alt((
+            text,
+            recognize((tag("$"), one_of(ESCAPED_CHARACTERS))),
+            value("", line_continuation),
+            tag("$"),
+        )),
         String::new,
         |string, chunk| string + chunk,
     )
@@ -728,6 +734,19 @@ mod tests {
     }
 
     #[test]
+    fn parse_build_with_escaped_character() {
+        assert_eq!(
+            build("build C$:\\foo$ bar: baz C$:\\qux\n").unwrap().1,
+            explicit_build(
+                vec!["C$:\\foo$ bar".into()],
+                "baz".into(),
+                vec!["C$:\\qux".into()],
+                vec![]
+            )
+        );
+    }
+
+    #[test]
     fn parse_dynamic_build() {
         assert_eq!(
             dynamic_build("build foo: dyndep\n").unwrap().1,
@@ -796,6 +815,11 @@ mod tests {
     }
 
     #[test]
+    fn parse_string_line_with_escaped_character() {
+        assert_eq!(string_line("foo$ bar$:baz\n").unwrap().1, "foo$ bar$:baz");
+    }
+
+    #[test]
     fn parse_string_literal() {
         assert!(string_literal("").is_err());
         assert_eq!(string_literal("foo").unwrap().1, "foo");
@@ -810,6 +834,14 @@ mod tests {
         assert_eq!(string_literal(" $\n foo").unwrap().1, "foo");
         assert_eq!(string_literal("foo$$\nbar").unwrap().1, "foo$$");
         assert_eq!(string_literal("foo$$$\n bar").unwrap().1, "foo$$bar");
+    }
+
+    #[test]
+    fn parse_string_literal_with_escaped_character() {
+        assert_eq!(string_literal("foo$ bar baz").unwrap().1, "foo$ bar");
+        assert_eq!(string_literal("C$:\\foo: bar").unwrap().1, "C$:\\foo");
+        assert_eq!(string_literal("foo$$ bar").unwrap().1, "foo$$");
+        assert_eq!(string_literal("foo$$: bar").unwrap().1, "foo$$");
     }
 
     #[test]

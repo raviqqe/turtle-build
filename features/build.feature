@@ -247,3 +247,15 @@ Feature: Build statement
     And a file named "baz" with ""
     When I successfully run `turtle`
     Then the stdout should contain exactly "bar baz"
+
+  Scenario: Escape a space and colon in a build statement
+    Given a file named "build.ninja" with:
+      """
+      rule touch
+        command = touch 'foo bar:baz'
+
+      build foo$ bar$:baz: touch
+
+      """
+    When I successfully run `turtle`
+    Then the file named "foo bar:baz" should exist

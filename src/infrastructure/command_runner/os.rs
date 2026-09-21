@@ -1,7 +1,13 @@
 use crate::infrastructure::{CommandError, CommandRunner};
 use async_trait::async_trait;
-use std::process::{ExitStatus, Output, Stdio};
+use std::{
+    io,
+    process::{ExitStatus, Output, Stdio},
+};
 use tokio::{process::Command, sync::Semaphore};
+
+#[cfg(any(windows, test))]
+const BLANK_CHARACTERS: [char; 2] = [' ', '\t'];
 
 /// A command runner backed by an operating system.
 #[derive(Debug)]
@@ -18,18 +24,27 @@ impl OsCommandRunner {
     }
 
     fn create_command(command: &str) -> Command {
-        if cfg!(target_os = "windows") {
-            let components = command.split_whitespace().collect::<Vec<_>>();
-            let mut process = Command::new(components[0]);
+        cfg_select! {
+            windows => {
+                // Commands run with no shell and their arguments are passed as they are
+                // like ninja does because programs parse command lines by themselves.
+                let (program, arguments) = split_program(command);
+                let mut process = Command::new(program);
 
-            process.args(&components[1..]);
-            process
-        } else {
-            let mut process = Command::new("sh");
+                process.raw_arg(arguments);
+                process
+            }
+            _ => {
+                let mut process = Command::new("sh");
 
-            process.arg("-ec").arg(command);
-            process
+                process.arg("-ec").arg(command);
+                process
+            }
         }
+    }
+
+    fn error(error: io::Error, command: &str) -> CommandError {
+        CommandError::new(format!("{error}: {command}"))
     }
 }
 
@@ -38,16 +53,218 @@ impl CommandRunner for OsCommandRunner {
     async fn run(&self, command: &str) -> Result<Output, CommandError> {
         let _permit = self.semaphore.acquire().await?;
 
-        Ok(Self::create_command(command)
+        Self::create_command(command)
             .stdin(Stdio::null())
             .output()
-            .await?)
+            .await
+            .map_err(|error| Self::error(error, command))
     }
 
     async fn run_with_console(&self, command: &str) -> Result<ExitStatus, CommandError> {
         let _permit = self.semaphore.acquire().await?;
 
         // Inherit standard input, output, and error.
-        Ok(Self::create_command(command).status().await?)
+        Self::create_command(command)
+            .status()
+            .await
+            .map_err(|error| Self::error(error, command))
+    }
+}
+
+// A program is split off a command line in the same way as the C runtime on
+// Windows does, where quotes protect blanks and are not part of the program.
+#[cfg(any(windows, test))]
+fn split_program(command: &str) -> (String, &str) {
+    let command = command.trim_start_matches(BLANK_CHARACTERS);
+    let (program, arguments) = command.split_at(
+        command
+            .char_indices()
+            .scan(false, |quoted, (index, character)| {
+                *quoted ^= character == '"';
+
+                Some((index, !*quoted && BLANK_CHARACTERS.contains(&character)))
+            })
+            .find(|&(_, end)| end)
+            .map_or(command.len(), |(index, _)| index),
+    );
+
+    (
+        program.replace('"', ""),
+        arguments.trim_start_matches(BLANK_CHARACTERS),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod run {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[tokio::test]
+        async fn run_command() {
+            let output = OsCommandRunner::new(1)
+                .run(cfg_select! {
+                    windows => "cmd /c echo foo",
+                    _ => "echo foo",
+                })
+                .await
+                .unwrap();
+
+            assert!(output.status.success());
+            assert_eq!(String::from_utf8(output.stdout).unwrap().trim_end(), "foo");
+        }
+
+        #[tokio::test]
+        async fn run_command_with_quoted_argument() {
+            let output = OsCommandRunner::new(1)
+                .run(cfg_select! {
+                    windows => "cmd /c \"echo foo  bar\"",
+                    _ => "echo 'foo  bar'",
+                })
+                .await
+                .unwrap();
+
+            assert!(output.status.success());
+            assert_eq!(
+                String::from_utf8(output.stdout).unwrap().trim_end(),
+                "foo  bar"
+            );
+        }
+
+        #[tokio::test]
+        async fn run_failing_command() {
+            assert_eq!(
+                OsCommandRunner::new(1)
+                    .run(cfg_select! {
+                        windows => "cmd /c exit 42",
+                        _ => "exit 42",
+                    })
+                    .await
+                    .unwrap()
+                    .status
+                    .code(),
+                Some(42)
+            );
+        }
+
+        #[cfg(windows)]
+        #[tokio::test]
+        async fn fail_to_run_missing_program() {
+            assert!(
+                OsCommandRunner::new(1)
+                    .run("missing-program foo")
+                    .await
+                    .unwrap_err()
+                    .to_string()
+                    .ends_with(": missing-program foo")
+            );
+        }
+    }
+
+    mod run_with_console {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[tokio::test]
+        async fn run_command() {
+            assert!(
+                OsCommandRunner::new(1)
+                    .run_with_console(cfg_select! {
+                        windows => "cmd /c exit 0",
+                        _ => "exit 0",
+                    })
+                    .await
+                    .unwrap()
+                    .success()
+            );
+        }
+
+        #[tokio::test]
+        async fn run_failing_command() {
+            assert_eq!(
+                OsCommandRunner::new(1)
+                    .run_with_console(cfg_select! {
+                        windows => "cmd /c exit 42",
+                        _ => "exit 42",
+                    })
+                    .await
+                    .unwrap()
+                    .code(),
+                Some(42)
+            );
+        }
+
+        #[cfg(windows)]
+        #[tokio::test]
+        async fn fail_to_run_missing_program() {
+            assert!(
+                OsCommandRunner::new(1)
+                    .run_with_console("missing-program foo")
+                    .await
+                    .unwrap_err()
+                    .to_string()
+                    .ends_with(": missing-program foo")
+            );
+        }
+    }
+
+    mod split_program {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[test]
+        fn split_no_argument() {
+            assert_eq!(split_program("foo"), ("foo".into(), ""));
+        }
+
+        #[test]
+        fn split_arguments() {
+            assert_eq!(split_program("foo bar baz"), ("foo".into(), "bar baz"));
+            assert_eq!(split_program("foo\tbar"), ("foo".into(), "bar"));
+            assert_eq!(split_program("foo  bar  baz "), ("foo".into(), "bar  baz "));
+        }
+
+        #[test]
+        fn split_quoted_arguments() {
+            assert_eq!(
+                split_program("foo \"bar baz\" \\\"qux"),
+                ("foo".into(), "\"bar baz\" \\\"qux")
+            );
+        }
+
+        #[test]
+        fn split_leading_blanks() {
+            assert_eq!(split_program(" \tfoo bar"), ("foo".into(), "bar"));
+        }
+
+        #[test]
+        fn split_quoted_program() {
+            assert_eq!(
+                split_program("\"C:\\Program Files\\foo.exe\" bar"),
+                ("C:\\Program Files\\foo.exe".into(), "bar")
+            );
+            assert_eq!(split_program("\"foo bar\""), ("foo bar".into(), ""));
+        }
+
+        #[test]
+        fn split_partially_quoted_program() {
+            assert_eq!(
+                split_program("\"C:\\Program Files\"\\foo.exe bar"),
+                ("C:\\Program Files\\foo.exe".into(), "bar")
+            );
+        }
+
+        #[test]
+        fn split_program_with_unclosed_quote() {
+            assert_eq!(split_program("\"foo bar"), ("foo bar".into(), ""));
+        }
+
+        #[test]
+        fn split_empty_command() {
+            assert_eq!(split_program(""), ("".into(), ""));
+            assert_eq!(split_program(" "), ("".into(), ""));
+        }
     }
 }

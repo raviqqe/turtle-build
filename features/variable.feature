@@ -60,6 +60,20 @@ Feature: Variable definition
     When I successfully run `turtle`
     Then the stdout should contain exactly "$y $$"
 
+  Scenario: Escape a space and colon in a variable
+    Given a file named "build.ninja" with:
+      """
+      x = a$ b$:c
+
+      rule echo
+        command = echo '$x'
+
+      build foo: echo
+
+      """
+    When I successfully run `turtle`
+    Then the stdout should contain exactly "a b:c"
+
   Scenario: Escape a newline in a variable
     Given a file named "build.ninja" with:
       """

@@ -159,7 +159,7 @@ fn compile_module<'a>(
                             )
                             .with_pool(pool)
                             .with_header_dependency(
-                                compile_header_dependency(build.rule(), &variables)?,
+                                compile_header_dependency(context, build.rule(), &variables)?,
                             ),
                         )
                     },
@@ -235,6 +235,7 @@ fn compile_module<'a>(
 }
 
 fn compile_header_dependency(
+    context: &CompileContext,
     rule: &str,
     variables: &TrainMap<&str, Arc<str>>,
 ) -> Result<Option<HeaderDependency>, CompileError> {
@@ -244,8 +245,12 @@ fn compile_header_dependency(
             resolve_variable(DEPFILE_VARIABLE, variables),
         ) {
             (None, None) => None,
-            (None, Some(path)) => Some(HeaderDependency::Make { path: path.into() }),
-            (Some("gcc"), Some(path)) => Some(HeaderDependency::Gcc { path: path.into() }),
+            (None, Some(path)) => Some(HeaderDependency::Make {
+                path: context.path_pool().intern(&path),
+            }),
+            (Some("gcc"), Some(path)) => Some(HeaderDependency::Gcc {
+                path: context.path_pool().intern(&path),
+            }),
             (Some("gcc"), None) => return Err(CompileError::MissingDepfile(rule.into())),
             (Some("msvc"), _) => Some(HeaderDependency::Msvc {
                 prefix: resolve_variable(MSVC_DEPS_PREFIX_VARIABLE, variables)
@@ -2250,6 +2255,40 @@ mod tests {
                 ["bar".into()].into_iter().collect()
             )
         );
+    }
+
+    #[test]
+    fn intern_depfile_paths() {
+        let path_pool = PathPool::new();
+        let config = compile(
+            &[(
+                ROOT_MODULE_PATH.clone(),
+                ast::Module::new(vec![
+                    ast_rule("foo", &[("command", ""), ("depfile", "foo.d")]).into(),
+                    ast_rule(
+                        "bar",
+                        &[("command", ""), ("depfile", "bar.d"), ("deps", "gcc")],
+                    )
+                    .into(),
+                    ast_explicit_build(vec!["baz".into()], "foo".into(), vec![], vec![]).into(),
+                    ast_explicit_build(vec!["qux".into()], "bar".into(), vec![], vec![]).into(),
+                ]),
+            )]
+            .into_iter()
+            .collect(),
+            &DEFAULT_DEPENDENCIES,
+            &ROOT_MODULE_PATH,
+            &path_pool,
+        )
+        .unwrap();
+
+        for (output, depfile) in [("baz", "foo.d"), ("qux", "bar.d")] {
+            assert!(matches!(
+                config.outputs()[output].rule().unwrap().header_dependency(),
+                Some(HeaderDependency::Make { path } | HeaderDependency::Gcc { path })
+                    if Arc::ptr_eq(path, &path_pool.intern(depfile))
+            ));
+        }
     }
 
     #[test]

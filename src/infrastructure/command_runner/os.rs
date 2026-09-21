@@ -76,8 +76,6 @@ impl CommandRunner for OsCommandRunner {
     }
 }
 
-// A program is split off a command line in the same way as the C runtime on
-// Windows does, where quotes protect blanks and are not part of the program.
 #[cfg(any(windows, test))]
 fn split_program(command: &str) -> (String, &str) {
     let command = command.trim_start_matches(BLANK_CHARACTERS);

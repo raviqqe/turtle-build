@@ -132,6 +132,7 @@ fn compile_module<'a>(
                 let order_only_inputs =
                     interpolate_strings(context, build.order_only_inputs(), &variables);
 
+                // TODO Quote paths with spaces in the input and output variables like ninja.
                 variables.extend([
                     ("in", inputs.join(" ").into()),
                     ("in_newline", inputs.join("\n").into()),
@@ -348,6 +349,8 @@ fn interpolate_strings(
     strings: &[String],
     variables: &TrainMap<&str, Arc<str>>,
 ) -> Vec<Arc<str>> {
+    // TODO Canonicalize paths like ninja so that they match header dependencies
+    // regardless of path separators on Windows.
     strings
         .iter()
         .map(|string| {

@@ -134,9 +134,10 @@ async fn execute(arguments: &Arguments, console: &Arc<Mutex<OsConsole>>) -> Resu
                 .join(DATABASE_DIRECTORY)
                 .join(env!("CARGO_PKG_VERSION").replace('.', "_"))
                 .with_extension(DATABASE_EXTENSION),
-            path_pool,
+            path_pool.clone(),
         )?,
         file_system,
+        path_pool,
     ));
 
     if let Some(tool) = &arguments.tool {

@@ -271,13 +271,16 @@ async fn load_dynamic_config<'a>(
     context
         .dynamic_config(path)
         .get_or_try_init(|| async {
-            let config = compile_dynamic(&parse_dynamic(
-                &context
-                    .build()
-                    .file_system()
-                    .read_file_to_string(path.as_ref())
-                    .await?,
-            )?)?;
+            let config = compile_dynamic(
+                &parse_dynamic(
+                    &context
+                        .build()
+                        .file_system()
+                        .read_file_to_string(path.as_ref())
+                        .await?,
+                )?,
+                context.build().path_pool(),
+            )?;
 
             context
                 .build_graph()
@@ -546,6 +549,7 @@ mod tests {
             Mutex::new(console.clone()).into(),
             FakeDatabase::default(),
             file_system.clone(),
+            Default::default(),
         )
         .into()
     }
@@ -1967,6 +1971,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn intern_header_dependencies() {
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&Default::default(), &Default::default(), &file_system);
+        let build = explicit_build(
+            vec!["foo.o".into()],
+            Rule::new("cc foo.c".into(), None).with_header_dependency(Some(
+                HeaderDependency::Gcc {
+                    path: "foo.d".into(),
+                },
+            )),
+            vec!["foo.c".into()],
+        );
+
+        file_system.write_file("foo.c", "");
+        file_system.write_file("foo.h", "");
+        file_system.write_file("foo.d", "foo.o: ./foo.h\n");
+
+        run(
+            &context,
+            create_simple_config(vec![build.clone()], &["foo.o"]),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert!(Arc::ptr_eq(
+            &context
+                .database()
+                .get_header_dependencies(build.id())
+                .unwrap()[0],
+            &context.path_pool().intern("foo.h")
+        ));
+    }
+
+    #[tokio::test]
     async fn build_generated_header_dependency() {
         let command_runner = FakeCommandRunner::default();
         let file_system = FakeFileSystem::default();
@@ -2041,6 +2081,7 @@ mod tests {
             Mutex::new(FakeConsole::default()).into(),
             database.clone(),
             file_system.clone(),
+            Default::default(),
         ));
         let build = explicit_build(
             vec!["foo.o".into()],
@@ -2287,6 +2328,43 @@ mod tests {
         .unwrap();
 
         assert_eq!(file_system.read_requests(), [Path::new("foo.dd")]);
+    }
+
+    #[tokio::test]
+    async fn intern_dynamic_input() {
+        let file_system = FakeFileSystem::default();
+        let config = create_simple_config(
+            vec![Build::new(
+                vec!["foo".into()],
+                vec![],
+                Rule::new("touch foo".into(), None).into(),
+                vec![],
+                vec!["foo.dd".into()],
+                Some("foo.dd".into()),
+            )],
+            &[],
+        );
+        let context = RunContext::new(
+            create_context(&Default::default(), &Default::default(), &file_system),
+            config.clone(),
+            BuildGraph::new(config.outputs()),
+            Default::default(),
+            DEFAULT_OPTIONS,
+        );
+
+        file_system.write_file(
+            "foo.dd",
+            "ninja_dyndep_version = 1\nbuild foo: dyndep | bar\n",
+        );
+
+        assert!(Arc::ptr_eq(
+            &load_dynamic_config(&context, "foo.dd")
+                .await
+                .unwrap()
+                .outputs()["foo"]
+                .inputs()[0],
+            &context.build().path_pool().intern("bar")
+        ));
     }
 
     #[tokio::test]

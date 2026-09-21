@@ -292,19 +292,22 @@ fn compile_dynamic_module_path<'a>(
     ))
 }
 
-pub fn compile_dynamic(module: &ast::DynamicModule) -> Result<DynamicConfig, CompileError> {
+pub fn compile_dynamic(
+    module: &ast::DynamicModule,
+    path_pool: &PathPool,
+) -> Result<DynamicConfig, CompileError> {
     Ok(DynamicConfig::new(
         module
             .builds()
             .iter()
             .map(|build| {
                 (
-                    build.output().into(),
+                    path_pool.intern(build.output()),
                     DynamicBuild::new(
                         build
                             .implicit_inputs()
                             .iter()
-                            .map(|string| string.as_str().into())
+                            .map(|path| path_pool.intern(path))
                             .collect(),
                     ),
                 )
@@ -1373,6 +1376,23 @@ mod tests {
         ] {
             assert!(Arc::ptr_eq(path, &path_pool.intern("foo/baz")));
         }
+    }
+
+    #[test]
+    fn intern_dynamic_paths() {
+        let path_pool = PathPool::new();
+        let config = compile_dynamic(
+            &ast::DynamicModule::new(vec![ast::DynamicBuild::new(
+                "foo".into(),
+                vec!["bar".into()],
+            )]),
+            &path_pool,
+        )
+        .unwrap();
+        let (output, build) = config.outputs().iter().next().unwrap();
+
+        assert!(Arc::ptr_eq(output, &path_pool.intern("foo")));
+        assert!(Arc::ptr_eq(&build.inputs()[0], &path_pool.intern("bar")));
     }
 
     #[test]

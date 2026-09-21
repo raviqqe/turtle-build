@@ -985,7 +985,7 @@ checksum = "f7dad2089ed99e4a9ec50c9bcf58ea794459e63db2e5102789930b47df6abdd2"
 
 [[package]]
 name = "turtle-build"
-version = "0.5.5"
+version = "0.5.6"
 dependencies = [
  "async-recursion",
  "async-trait",

@@ -85,7 +85,7 @@ Turtle aims to support full syntax of the Ninja build files. It also supports ba
   - [x] `depfile` option
   - [x] `deps` option
 - [ ] `rspfile` and `rspfile_content` options
-- [ ] Windows support
+- [x] Windows support
 
 ## Technical notes
 

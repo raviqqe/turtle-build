@@ -74,10 +74,6 @@ mod tests {
             canonicalize_path("/usr/include/stdio.h"),
             "/usr/include/stdio.h"
         );
-        assert_eq!(
-            canonicalize_path("//usr/include/stdio.h"),
-            "/usr/include/stdio.h"
-        );
         assert_eq!(canonicalize_path("/../usr/include"), "/usr/include");
         assert_eq!(canonicalize_path("/"), "/");
     }
@@ -85,6 +81,15 @@ mod tests {
     #[test]
     fn canonicalize_unchanged_path() {
         assert_eq!(canonicalize_path("foo.c"), "foo.c");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonicalize_unix_path() {
+        assert_eq!(
+            canonicalize_path("//usr/include/stdio.h"),
+            "/usr/include/stdio.h"
+        );
     }
 
     #[cfg(windows)]
@@ -96,6 +101,10 @@ mod tests {
         assert_eq!(canonicalize_path("\\a\\b"), "/a/b");
         assert_eq!(
             canonicalize_path("\\\\server\\share\\a\\..\\b"),
+            "//server/share/b"
+        );
+        assert_eq!(
+            canonicalize_path("//server/share/a/../b"),
             "//server/share/b"
         );
     }

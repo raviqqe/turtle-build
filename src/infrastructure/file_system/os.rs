@@ -217,6 +217,8 @@ mod tests {
         );
     }
 
+    // Windows reports a path under a file as a missing file.
+    #[cfg(unix)]
     #[tokio::test]
     async fn fail_to_get_metadata_under_file() {
         let directory = tempdir().unwrap();

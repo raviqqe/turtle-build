@@ -36,7 +36,7 @@ const MSVC_DEPS_PREFIX_VARIABLE: &str = "msvc_deps_prefix";
 const DEFAULT_MSVC_DEPS_PREFIX: &str = "Note: including file: ";
 
 static VARIABLE_PATTERN: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\$(\$|\{([[:alnum:]_.-]+)\}|[[:alpha:]_][[:alnum:]_]*)").unwrap());
+    Lazy::new(|| Regex::new(r"\$([$ :]|\{([[:alnum:]_.-]+)\}|[[:alpha:]_][[:alnum:]_]*)").unwrap());
 
 /// Compiles modules.
 pub fn compile(
@@ -132,6 +132,7 @@ fn compile_module<'a>(
                 let order_only_inputs =
                     interpolate_strings(context, build.order_only_inputs(), &variables);
 
+                // TODO Quote paths with spaces in the input and output variables like ninja.
                 variables.extend([
                     ("in", inputs.join(" ").into()),
                     ("in_newline", inputs.join("\n").into()),
@@ -301,18 +302,20 @@ pub fn compile_dynamic(
     module: &ast::DynamicModule,
     path_pool: &PathPool,
 ) -> Result<DynamicConfig, CompileError> {
+    let intern = |path| path_pool.intern(&interpolate_variables(path, &TrainMap::new()));
+
     Ok(DynamicConfig::new(
         module
             .builds()
             .iter()
             .map(|build| {
                 (
-                    path_pool.intern(build.output()),
+                    intern(build.output()),
                     DynamicBuild::new(
                         build
                             .implicit_inputs()
                             .iter()
-                            .map(|path| path_pool.intern(path))
+                            .map(|path| intern(path))
                             .collect(),
                     ),
                 )
@@ -346,6 +349,8 @@ fn interpolate_strings(
     strings: &[String],
     variables: &TrainMap<&str, Arc<str>>,
 ) -> Vec<Arc<str>> {
+    // TODO Canonicalize paths like ninja so that they match header dependencies
+    // regardless of path separators on Windows.
     strings
         .iter()
         .map(|string| {
@@ -362,6 +367,8 @@ fn interpolate_variables<'a>(
 ) -> Cow<'a, str> {
     VARIABLE_PATTERN.replace_all(template, |captures: &Captures| match &captures[1] {
         "$" => "$",
+        " " => " ",
+        ":" => ":",
         name => variables
             .get(captures.get(2).map_or(name, |name| name.as_str()))
             .map(|string| string.as_ref())
@@ -634,6 +641,41 @@ mod tests {
                     "bar".into(),
                     ir_explicit_build(vec!["bar".into()], Rule::new("$".into(), None), vec![])
                         .into()
+                )]
+                .into_iter()
+                .collect(),
+                ["bar".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
+    fn interpolate_space_and_colon_in_command() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast_rule("foo", &[("command", "C$:\\foo$ bar")]).into(),
+                        ast_explicit_build(vec!["bar".into()], "foo".into(), vec![], vec![]).into()
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH,
+                &Default::default(),
+            )
+            .unwrap(),
+            create_simple_config(
+                [(
+                    "bar".into(),
+                    ir_explicit_build(
+                        vec!["bar".into()],
+                        Rule::new("C:\\foo bar".into(), None),
+                        vec![]
+                    )
+                    .into()
                 )]
                 .into_iter()
                 .collect(),
@@ -1260,6 +1302,47 @@ mod tests {
     }
 
     #[test]
+    fn unescape_space_and_colon_in_path() {
+        assert_eq!(
+            compile(
+                &[(
+                    ROOT_MODULE_PATH.clone(),
+                    ast::Module::new(vec![
+                        ast_rule("foo", &[("command", "$in $out")]).into(),
+                        ast_explicit_build(
+                            vec!["C$:\\bar$ baz".into()],
+                            "foo".into(),
+                            vec!["C$:\\qux".into()],
+                            vec![]
+                        )
+                        .into(),
+                    ])
+                )]
+                .into_iter()
+                .collect(),
+                &DEFAULT_DEPENDENCIES,
+                &ROOT_MODULE_PATH,
+                &Default::default(),
+            )
+            .unwrap(),
+            create_simple_config(
+                [(
+                    "C:\\bar baz".into(),
+                    ir_explicit_build(
+                        vec!["C:\\bar baz".into()],
+                        Rule::new("C:\\qux C:\\bar baz".into(), None),
+                        vec!["C:\\qux".into()]
+                    )
+                    .into()
+                )]
+                .into_iter()
+                .collect(),
+                ["C:\\bar baz".into()].into_iter().collect()
+            )
+        );
+    }
+
+    #[test]
     fn do_not_interpolate_in_and_out_variables_in_paths() {
         assert_eq!(
             compile(
@@ -1398,6 +1481,28 @@ mod tests {
 
         assert!(Arc::ptr_eq(output, &path_pool.intern("foo")));
         assert!(Arc::ptr_eq(&build.inputs()[0], &path_pool.intern("bar")));
+    }
+
+    #[test]
+    fn unescape_dynamic_paths() {
+        assert_eq!(
+            compile_dynamic(
+                &ast::DynamicModule::new(vec![ast::DynamicBuild::new(
+                    "C$:\\foo$ bar".into(),
+                    vec!["baz$$qux".into()],
+                )]),
+                &Default::default(),
+            )
+            .unwrap(),
+            DynamicConfig::new(
+                [(
+                    "C:\\foo bar".into(),
+                    DynamicBuild::new(vec!["baz$qux".into()])
+                )]
+                .into_iter()
+                .collect()
+            )
+        );
     }
 
     #[test]

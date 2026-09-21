@@ -200,6 +200,7 @@ async fn resolve_submodule_path(
     file_system: &OsFileSystem,
     path: &str,
 ) -> Result<(String, PathBuf), BuildError> {
+    // TODO Interpolate variables in paths of included and sub-ninja files like ninja.
     Ok((
         path.into(),
         file_system.canonicalize_path(path.as_ref()).await?,

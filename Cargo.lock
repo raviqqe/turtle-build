@@ -979,9 +979,9 @@ dependencies = [
 
 [[package]]
 name = "train-map"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbd64c8891e46d52c4f174c3046bb868616648ed1aa2197e5a8dca717a07726c"
+checksum = "f7dad2089ed99e4a9ec50c9bcf58ea794459e63db2e5102789930b47df6abdd2"
 
 [[package]]
 name = "turtle-build"

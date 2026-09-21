@@ -26,8 +26,8 @@ impl OsCommandRunner {
     fn create_command(command: &str) -> Command {
         cfg_select! {
             windows => {
-                // Commands run with no shell and their arguments are passed as they are
-                // like ninja does because programs parse command lines by themselves.
+                // Arguments are passed as they are with no shell like ninja does because
+                // programs parse command lines by themselves on Windows.
                 let (program, arguments) = split_program(command);
                 let mut process = Command::new(program);
 
@@ -43,8 +43,13 @@ impl OsCommandRunner {
         }
     }
 
-    fn error(error: io::Error, command: &str) -> CommandError {
-        CommandError::new(format!("{error}: {command}"))
+    // Errors show only programs because commands are incomprehensible to end-users.
+    fn error(error: io::Error, process: &Command) -> CommandError {
+        CommandError::new(format!(
+            "{}: {}",
+            error,
+            process.as_std().get_program().display()
+        ))
     }
 }
 
@@ -52,22 +57,24 @@ impl OsCommandRunner {
 impl CommandRunner for OsCommandRunner {
     async fn run(&self, command: &str) -> Result<Output, CommandError> {
         let _permit = self.semaphore.acquire().await?;
+        let mut process = Self::create_command(command);
 
-        Self::create_command(command)
+        process
             .stdin(Stdio::null())
             .output()
             .await
-            .map_err(|error| Self::error(error, command))
+            .map_err(|error| Self::error(error, &process))
     }
 
     async fn run_with_console(&self, command: &str) -> Result<ExitStatus, CommandError> {
         let _permit = self.semaphore.acquire().await?;
+        let mut process = Self::create_command(command);
 
         // Inherit standard input, output, and error.
-        Self::create_command(command)
+        process
             .status()
             .await
-            .map_err(|error| Self::error(error, command))
+            .map_err(|error| Self::error(error, &process))
     }
 }
 
@@ -158,7 +165,7 @@ mod tests {
                     .await
                     .unwrap_err()
                     .to_string()
-                    .ends_with(": missing-program foo")
+                    .ends_with(": missing-program")
             );
         }
     }
@@ -205,7 +212,7 @@ mod tests {
                     .await
                     .unwrap_err()
                     .to_string()
-                    .ends_with(": missing-program foo")
+                    .ends_with(": missing-program")
             );
         }
     }

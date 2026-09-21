@@ -2,7 +2,7 @@ use crate::{
     hash_type::HashType,
     infrastructure::{Database, DatabaseError},
     ir::BuildId,
-    path_pool::PathPool,
+    path_pool::{FilePath, PathPool},
 };
 use alloc::sync::Arc;
 use core::str;
@@ -65,7 +65,7 @@ impl Database for FjallDatabase {
         )
     }
 
-    fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError> {
+    fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<FilePath>, DatabaseError> {
         Ok(self
             .keyspace
             .get(key(HEADER_DEPENDENCY_TAG, &id.to_bytes()))?
@@ -86,7 +86,7 @@ impl Database for FjallDatabase {
     fn set_header_dependencies(
         &self,
         id: BuildId,
-        dependencies: &[Arc<str>],
+        dependencies: &[FilePath],
     ) -> Result<(), DatabaseError> {
         self.insert(
             &key(HEADER_DEPENDENCY_TAG, &id.to_bytes()),

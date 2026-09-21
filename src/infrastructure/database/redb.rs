@@ -2,7 +2,7 @@ use crate::{
     hash_type::HashType,
     infrastructure::{Database, DatabaseError},
     ir::BuildId,
-    path_pool::PathPool,
+    path_pool::{FilePath, PathPool},
 };
 use alloc::sync::Arc;
 use redb::{
@@ -94,7 +94,7 @@ impl Database for RedbDatabase {
         Ok(self.write(hash_table(r#type), id.to_bytes(), hash)?)
     }
 
-    fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError> {
+    fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<FilePath>, DatabaseError> {
         Ok(self.read(HEADER_DEPENDENCIES, |table| {
             Ok(table
                 .get(id.to_bytes())?
@@ -112,7 +112,7 @@ impl Database for RedbDatabase {
     fn set_header_dependencies(
         &self,
         id: BuildId,
-        dependencies: &[Arc<str>],
+        dependencies: &[FilePath],
     ) -> Result<(), DatabaseError> {
         Ok(self.write(
             HEADER_DEPENDENCIES,
@@ -293,7 +293,7 @@ mod tests {
 
         assert_eq!(
             database.get_header_dependencies(BuildId::new(0)).unwrap(),
-            Vec::<Arc<str>>::new()
+            Vec::<FilePath>::new()
         );
     }
 

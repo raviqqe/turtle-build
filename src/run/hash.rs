@@ -3,6 +3,7 @@ use crate::{
     error::BuildError,
     hash_type::HashType,
     ir::{Build, Rule},
+    path_pool::FilePath,
 };
 use alloc::sync::Arc;
 use core::hash::{Hash, Hasher};
@@ -11,8 +12,8 @@ use std::collections::hash_map::DefaultHasher;
 pub async fn calculate_timestamp_hash(
     context: &RunContext,
     build: &Build,
-    file_inputs: &[&Arc<str>],
-    phony_inputs: &[&Arc<str>],
+    file_inputs: &[&FilePath],
+    phony_inputs: &[&FilePath],
 ) -> Result<u64, BuildError> {
     if let Some(hash) = calculate_phony_hash(build, file_inputs, phony_inputs) {
         return Ok(hash);
@@ -42,8 +43,8 @@ pub async fn calculate_timestamp_hash(
 pub async fn calculate_content_hash(
     context: &RunContext,
     build: &Build,
-    file_inputs: &[&Arc<str>],
-    phony_inputs: &[&Arc<str>],
+    file_inputs: &[&FilePath],
+    phony_inputs: &[&FilePath],
 ) -> Result<u64, BuildError> {
     if let Some(hash) = calculate_phony_hash(build, file_inputs, phony_inputs) {
         return Ok(hash);
@@ -86,8 +87,8 @@ fn get_build_hash(context: &RunContext, r#type: HashType, input: &str) -> Result
 
 fn calculate_phony_hash(
     build: &Build,
-    file_inputs: &[&Arc<str>],
-    phony_inputs: &[&Arc<str>],
+    file_inputs: &[&FilePath],
+    phony_inputs: &[&FilePath],
 ) -> Option<u64> {
     if build.rule().is_none() && file_inputs.is_empty() && phony_inputs.is_empty() {
         Some(rand::random())

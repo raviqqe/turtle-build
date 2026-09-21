@@ -1,11 +1,14 @@
-use crate::infrastructure::{FileError, FileSystem, Metadata};
+use crate::{
+    infrastructure::{FileError, FileSystem, Metadata},
+    path_pool::FilePath,
+};
 use alloc::sync::Arc;
 use core::hash::{BuildHasher, BuildHasherDefault};
 use scc::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use tokio::sync::OnceCell;
 
-type Cache<T> = HashMap<Arc<str>, Arc<OnceCell<T>>>;
+type Cache<T> = HashMap<FilePath, Arc<OnceCell<T>>>;
 
 pub struct FileCache {
     file_system: Arc<dyn FileSystem + Send + Sync>,
@@ -22,11 +25,11 @@ impl FileCache {
         }
     }
 
-    pub async fn exists(&self, path: &Arc<str>) -> Result<bool, FileError> {
+    pub async fn exists(&self, path: &FilePath) -> Result<bool, FileError> {
         Ok(self.metadata(path).await?.is_some())
     }
 
-    pub async fn metadata(&self, path: &Arc<str>) -> Result<Option<Metadata>, FileError> {
+    pub async fn metadata(&self, path: &FilePath) -> Result<Option<Metadata>, FileError> {
         match Self::get(&self.metadata, path, || async {
             self.file_system
                 .metadata(path.as_ref().as_ref())
@@ -41,7 +44,7 @@ impl FileCache {
         }
     }
 
-    pub async fn set_metadata(&self, path: &Arc<str>, metadata: Metadata) {
+    pub async fn set_metadata(&self, path: &FilePath, metadata: Metadata) {
         self.metadata
             .entry_async(path.clone())
             .await
@@ -51,7 +54,7 @@ impl FileCache {
             .ok();
     }
 
-    pub async fn content_hash(&self, path: &Arc<str>) -> Result<u64, FileError> {
+    pub async fn content_hash(&self, path: &FilePath) -> Result<u64, FileError> {
         Self::get(&self.content_hashes, path, || async {
             Ok(BuildHasherDefault::<DefaultHasher>::default()
                 .hash_one(self.file_system.read_file(path.as_ref().as_ref()).await?))
@@ -66,7 +69,7 @@ impl FileCache {
 
     async fn get<T: Copy, E, F: Future<Output = Result<T, E>>>(
         cache: &Cache<T>,
-        path: &Arc<str>,
+        path: &FilePath,
         fetch: impl FnOnce() -> F,
     ) -> Result<T, E> {
         if let Some(Some(value)) = cache.read_async(path, |_, cell| cell.get().copied()).await {

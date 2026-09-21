@@ -20,6 +20,7 @@ use crate::{
     infrastructure::{Console, Metadata},
     ir::{Build, Config, DynamicConfig, Pool, Rule},
     parse::parse_dynamic,
+    path_pool::FilePath,
 };
 use alloc::sync::Arc;
 use async_recursion::async_recursion;
@@ -256,7 +257,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
     .await?
 }
 
-async fn build_input(context: Arc<RunContext>, input: &Arc<str>) -> Result<(), BuildError> {
+async fn build_input(context: Arc<RunContext>, input: &FilePath) -> Result<(), BuildError> {
     if let Some(build) = context.config().outputs().get(input) {
         run_build(context.clone(), build).await
     } else {
@@ -333,8 +334,8 @@ async fn cache_output_metadata(context: &RunContext, build: &Build, metadata: &[
 
 async fn filter_existing_header_dependencies<'a>(
     context: &RunContext,
-    dependencies: &'a [Arc<str>],
-) -> Result<Vec<&'a Arc<str>>, BuildError> {
+    dependencies: &'a [FilePath],
+) -> Result<Vec<&'a FilePath>, BuildError> {
     let mut existing_dependencies = vec![];
 
     for dependency in dependencies {
@@ -346,7 +347,7 @@ async fn filter_existing_header_dependencies<'a>(
     Ok(existing_dependencies)
 }
 
-async fn check_file_existence(context: &RunContext, path: &Arc<str>) -> Result<(), BuildError> {
+async fn check_file_existence(context: &RunContext, path: &FilePath) -> Result<(), BuildError> {
     if !context.file_cache().exists(path).await? {
         return Err(BuildError::FileNotFound(
             context
@@ -381,9 +382,9 @@ async fn invalidate_outputs(context: &RunContext, build: &Build) {
 fn classify_inputs<'a>(
     context: &'a RunContext,
     build: &'a Build,
-    dynamic_inputs: &'a [Arc<str>],
-    header_dependencies: &'a [&'a Arc<str>],
-) -> (Vec<&'a Arc<str>>, Vec<&'a Arc<str>>) {
+    dynamic_inputs: &'a [FilePath],
+    header_dependencies: &'a [&'a FilePath],
+) -> (Vec<&'a FilePath>, Vec<&'a FilePath>) {
     let (phony_inputs, file_inputs) = build
         .inputs()
         .iter()
@@ -554,7 +555,7 @@ mod tests {
         .into()
     }
 
-    fn create_outputs(builds: Vec<Build>) -> HashMap<Arc<str>, Arc<Build>> {
+    fn create_outputs(builds: Vec<Build>) -> HashMap<FilePath, Arc<Build>> {
         builds
             .into_iter()
             .map(Arc::new)
@@ -594,7 +595,7 @@ mod tests {
         .into()
     }
 
-    fn explicit_build(outputs: Vec<Arc<str>>, rule: Rule, inputs: Vec<Arc<str>>) -> Build {
+    fn explicit_build(outputs: Vec<FilePath>, rule: Rule, inputs: Vec<FilePath>) -> Build {
         Build::new(outputs, vec![], rule.into(), inputs, vec![], None)
     }
 

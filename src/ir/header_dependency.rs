@@ -1,8 +1,8 @@
-use alloc::sync::Arc;
+use crate::path_pool::FilePath;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum HeaderDependency {
-    Make { path: Arc<str> },
-    Gcc { path: Arc<str> },
+    Make { path: FilePath },
+    Gcc { path: FilePath },
     Msvc { prefix: String },
 }

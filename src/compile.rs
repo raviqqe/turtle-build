@@ -9,7 +9,7 @@ use crate::{
     ast,
     ir::{Build, Config, DynamicBuild, DynamicConfig, HeaderDependency, Pool, Rule},
     module_dependency::ModuleDependencyMap,
-    path_pool::PathPool,
+    path_pool::{FilePath, PathPool},
 };
 use alloc::{borrow::Cow, sync::Arc};
 use core::num::NonZeroUsize;
@@ -282,9 +282,9 @@ fn compile_pool(
 }
 
 fn compile_dynamic_module_path<'a>(
-    mut inputs: impl Iterator<Item = &'a Arc<str>>,
+    mut inputs: impl Iterator<Item = &'a FilePath>,
     variables: &TrainMap<&str, Arc<str>>,
-) -> Result<Option<Arc<str>>, CompileError> {
+) -> Result<Option<FilePath>, CompileError> {
     let Some(path) = resolve_variable(DYNAMIC_MODULE_VARIABLE, variables) else {
         return Ok(None);
     };
@@ -345,7 +345,7 @@ fn interpolate_strings(
     context: &CompileContext,
     strings: &[String],
     variables: &TrainMap<&str, Arc<str>>,
-) -> Vec<Arc<str>> {
+) -> Vec<FilePath> {
     strings
         .iter()
         .map(|string| {
@@ -411,13 +411,13 @@ mod tests {
         )
     }
 
-    fn ir_explicit_build(outputs: Vec<Arc<str>>, rule: Rule, inputs: Vec<Arc<str>>) -> Build {
+    fn ir_explicit_build(outputs: Vec<FilePath>, rule: Rule, inputs: Vec<FilePath>) -> Build {
         Build::new(outputs, vec![], rule.into(), inputs, vec![], None)
     }
 
     fn create_simple_config(
-        outputs: HashMap<Arc<str>, Arc<Build>>,
-        default_outputs: HashSet<Arc<str>>,
+        outputs: HashMap<FilePath, Arc<Build>>,
+        default_outputs: HashSet<FilePath>,
     ) -> Config {
         Config::new(
             outputs,

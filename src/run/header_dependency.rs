@@ -4,6 +4,7 @@ use crate::{
     file::canonicalize_path,
     ir::{HeaderDependency, Rule},
     parse::parse_depfile,
+    path_pool::FilePath,
 };
 use alloc::{borrow::Cow, sync::Arc};
 use std::process::Output;
@@ -12,7 +13,7 @@ pub async fn read_header_dependencies(
     context: &RunContext,
     rule: &Rule,
     output: &Output,
-) -> Result<Vec<Arc<str>>, BuildError> {
+) -> Result<Vec<FilePath>, BuildError> {
     let dependencies = match rule.header_dependency() {
         None => vec![],
         Some(HeaderDependency::Make { path } | HeaderDependency::Gcc { path }) => {
@@ -57,7 +58,7 @@ pub fn exclude_show_includes<'a>(rule: &Rule, output: &'a [u8]) -> Cow<'a, [u8]>
     }
 }
 
-async fn read_depfile(context: &RunContext, path: &Arc<str>) -> Result<Vec<String>, BuildError> {
+async fn read_depfile(context: &RunContext, path: &FilePath) -> Result<Vec<String>, BuildError> {
     if !context.file_cache().exists(path).await? {
         return Ok(vec![]);
     }

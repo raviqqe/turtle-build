@@ -1,4 +1,5 @@
 use super::Rule;
+use crate::path_pool::FilePath;
 use alloc::sync::Arc;
 use core::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
@@ -21,22 +22,22 @@ pub struct Build {
     // IDs are persistent across different builds so that they can be used for,
     // for example, caching.
     id: BuildId,
-    outputs: Vec<Arc<str>>,
-    implicit_outputs: Vec<Arc<str>>,
+    outputs: Vec<FilePath>,
+    implicit_outputs: Vec<FilePath>,
     rule: Option<Rule>,
-    inputs: Vec<Arc<str>>,
-    order_only_inputs: Vec<Arc<str>>,
-    dynamic_module: Option<Arc<str>>,
+    inputs: Vec<FilePath>,
+    order_only_inputs: Vec<FilePath>,
+    dynamic_module: Option<FilePath>,
 }
 
 impl Build {
     pub fn new(
-        outputs: Vec<Arc<str>>,
-        implicit_outputs: Vec<Arc<str>>,
+        outputs: Vec<FilePath>,
+        implicit_outputs: Vec<FilePath>,
         rule: Option<Rule>,
-        inputs: Vec<Arc<str>>,
-        order_only_inputs: Vec<Arc<str>>,
-        dynamic_module: Option<Arc<str>>,
+        inputs: Vec<FilePath>,
+        order_only_inputs: Vec<FilePath>,
+        dynamic_module: Option<FilePath>,
     ) -> Self {
         Self {
             id: Self::calculate_id(&outputs, &implicit_outputs),
@@ -53,11 +54,11 @@ impl Build {
         self.id
     }
 
-    pub fn outputs(&self) -> &[Arc<str>] {
+    pub fn outputs(&self) -> &[FilePath] {
         &self.outputs
     }
 
-    pub fn implicit_outputs(&self) -> &[Arc<str>] {
+    pub fn implicit_outputs(&self) -> &[FilePath] {
         &self.implicit_outputs
     }
 
@@ -65,19 +66,19 @@ impl Build {
         self.rule.as_ref()
     }
 
-    pub fn inputs(&self) -> &[Arc<str>] {
+    pub fn inputs(&self) -> &[FilePath] {
         &self.inputs
     }
 
-    pub fn order_only_inputs(&self) -> &[Arc<str>] {
+    pub fn order_only_inputs(&self) -> &[FilePath] {
         &self.order_only_inputs
     }
 
-    pub const fn dynamic_module(&self) -> Option<&Arc<str>> {
+    pub const fn dynamic_module(&self) -> Option<&FilePath> {
         self.dynamic_module.as_ref()
     }
 
-    fn calculate_id(outputs: &[Arc<str>], implicit_outputs: &[Arc<str>]) -> BuildId {
+    fn calculate_id(outputs: &[FilePath], implicit_outputs: &[FilePath]) -> BuildId {
         let mut hasher = DefaultHasher::new();
 
         outputs.hash(&mut hasher);

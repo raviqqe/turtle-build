@@ -1,4 +1,7 @@
-use crate::ir::{Build, DynamicConfig};
+use crate::{
+    ir::{Build, DynamicConfig},
+    path_pool::FilePath,
+};
 use alloc::sync::Arc;
 use itertools::Itertools;
 use petgraph::{
@@ -11,16 +14,16 @@ use thiserror::Error;
 
 #[derive(Debug)]
 pub struct BuildGraph {
-    graph: Graph<Arc<str>, ()>,
-    nodes: HashMap<Arc<str>, NodeIndex<DefaultIx>>,
-    primary_outputs: HashMap<Arc<str>, Arc<str>>,
+    graph: Graph<FilePath, ()>,
+    nodes: HashMap<FilePath, NodeIndex<DefaultIx>>,
+    primary_outputs: HashMap<FilePath, FilePath>,
 }
 
 impl BuildGraph {
-    pub fn new(outputs: &HashMap<Arc<str>, Arc<Build>>) -> Self {
+    pub fn new(outputs: &HashMap<FilePath, Arc<Build>>) -> Self {
         let mut this = Self {
-            graph: Graph::<Arc<str>, ()>::new(),
-            nodes: HashMap::<Arc<str>, NodeIndex<DefaultIx>>::new(),
+            graph: Graph::<FilePath, ()>::new(),
+            nodes: HashMap::<FilePath, NodeIndex<DefaultIx>>::new(),
             primary_outputs: HashMap::new(),
         };
 
@@ -91,7 +94,7 @@ impl BuildGraph {
         Ok(())
     }
 
-    pub fn add_header_dependencies(&mut self, output: &Arc<str>, dependencies: &[Arc<str>]) {
+    pub fn add_header_dependencies(&mut self, output: &FilePath, dependencies: &[FilePath]) {
         for dependency in dependencies {
             // Header dependencies that are not outputs cannot form cycles.
             if let Some((dependency, _)) = self.primary_outputs.get_key_value(dependency) {
@@ -100,7 +103,7 @@ impl BuildGraph {
         }
     }
 
-    fn add_edge(&mut self, output: Arc<str>, input: Arc<str>) {
+    fn add_edge(&mut self, output: FilePath, input: FilePath) {
         self.add_node(&output);
         self.add_node(&input);
 
@@ -108,7 +111,7 @@ impl BuildGraph {
             .add_edge(self.nodes[&output], self.nodes[&input], ());
     }
 
-    fn add_node(&mut self, output: &Arc<str>) {
+    fn add_node(&mut self, output: &FilePath) {
         if !self.nodes.contains_key(output) {
             self.nodes
                 .insert(output.clone(), self.graph.add_node(output.clone()));
@@ -122,9 +125,9 @@ pub enum BuildGraphError {
         "dependency cycle detected: {}",
         .0.iter().chain(.0.first()).dedup().join(" -> ")
     )]
-    CircularDependency(Vec<Arc<str>>),
+    CircularDependency(Vec<FilePath>),
     #[error("output \"{0}\" not found")]
-    OutputNotFound(Arc<str>),
+    OutputNotFound(FilePath),
 }
 
 #[cfg(test)]
@@ -133,12 +136,12 @@ mod tests {
     use crate::ir::{DynamicBuild, Rule};
 
     fn validate_builds(
-        dependencies: &HashMap<Arc<str>, Arc<Build>>,
+        dependencies: &HashMap<FilePath, Arc<Build>>,
     ) -> Result<(), BuildGraphError> {
         BuildGraph::new(dependencies).validate()
     }
 
-    fn explicit_build(outputs: Vec<Arc<str>>, inputs: Vec<Arc<str>>) -> Build {
+    fn explicit_build(outputs: Vec<FilePath>, inputs: Vec<FilePath>) -> Build {
         Build::new(
             outputs,
             vec![],

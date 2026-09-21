@@ -1,22 +1,23 @@
 use super::Build;
+use crate::path_pool::FilePath;
 use alloc::sync::Arc;
 use core::num::NonZeroUsize;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Config {
-    outputs: HashMap<Arc<str>, Arc<Build>>,
-    default_outputs: HashSet<Arc<str>>,
-    source_map: HashMap<Arc<str>, Arc<str>>,
+    outputs: HashMap<FilePath, Arc<Build>>,
+    default_outputs: HashSet<FilePath>,
+    source_map: HashMap<FilePath, Arc<str>>,
     pools: HashMap<Arc<str>, NonZeroUsize>,
     build_directory: Option<Arc<str>>,
 }
 
 impl Config {
     pub const fn new(
-        outputs: HashMap<Arc<str>, Arc<Build>>,
-        default_outputs: HashSet<Arc<str>>,
-        source_map: HashMap<Arc<str>, Arc<str>>,
+        outputs: HashMap<FilePath, Arc<Build>>,
+        default_outputs: HashSet<FilePath>,
+        source_map: HashMap<FilePath, Arc<str>>,
         pools: HashMap<Arc<str>, NonZeroUsize>,
         build_directory: Option<Arc<str>>,
     ) -> Self {
@@ -29,15 +30,15 @@ impl Config {
         }
     }
 
-    pub const fn outputs(&self) -> &HashMap<Arc<str>, Arc<Build>> {
+    pub const fn outputs(&self) -> &HashMap<FilePath, Arc<Build>> {
         &self.outputs
     }
 
-    pub const fn default_outputs(&self) -> &HashSet<Arc<str>> {
+    pub const fn default_outputs(&self) -> &HashSet<FilePath> {
         &self.default_outputs
     }
 
-    pub const fn source_map(&self) -> &HashMap<Arc<str>, Arc<str>> {
+    pub const fn source_map(&self) -> &HashMap<FilePath, Arc<str>> {
         &self.source_map
     }
 

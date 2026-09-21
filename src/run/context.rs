@@ -4,6 +4,7 @@ use crate::{
     build_graph::BuildGraph,
     context::Context,
     ir::{BuildId, Config, DynamicConfig, Pool},
+    path_pool::FilePath,
 };
 use alloc::sync::Arc;
 use core::pin::Pin;
@@ -18,9 +19,9 @@ pub struct RunContext {
     config: Arc<Config>,
     build_futures: HashMap<BuildId, BuildFuture>,
     build_graph: Mutex<BuildGraph>,
-    dynamic_configs: std::collections::HashMap<Arc<str>, OnceCell<DynamicConfig>>,
+    dynamic_configs: std::collections::HashMap<FilePath, OnceCell<DynamicConfig>>,
     file_cache: FileCache,
-    header_dependencies: std::collections::HashMap<BuildId, Vec<Arc<str>>>,
+    header_dependencies: std::collections::HashMap<BuildId, Vec<FilePath>>,
     pools: std::collections::HashMap<Arc<str>, Semaphore>,
     options: RunOptions,
 }
@@ -30,7 +31,7 @@ impl RunContext {
         build: Arc<Context>,
         config: Arc<Config>,
         build_graph: BuildGraph,
-        header_dependencies: std::collections::HashMap<BuildId, Vec<Arc<str>>>,
+        header_dependencies: std::collections::HashMap<BuildId, Vec<FilePath>>,
         options: RunOptions,
     ) -> Self {
         Self {
@@ -83,7 +84,7 @@ impl RunContext {
         &self.file_cache
     }
 
-    pub fn header_dependencies(&self, id: BuildId) -> &[Arc<str>] {
+    pub fn header_dependencies(&self, id: BuildId) -> &[FilePath] {
         self.header_dependencies
             .get(&id)
             .map_or_default(Vec::as_slice)

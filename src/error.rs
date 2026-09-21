@@ -5,6 +5,7 @@ use crate::{
     ir::Build,
     module_dependency::ModuleDependencyError,
     parse::ParseError,
+    path_pool::FilePath,
 };
 use alloc::sync::Arc;
 use thiserror::Error;
@@ -36,7 +37,7 @@ pub enum BuildError {
     Database(#[from] DatabaseError),
     /// A default output not found.
     #[error("default output \"{0}\" not found")]
-    DefaultOutputNotFound(Arc<str>),
+    DefaultOutputNotFound(FilePath),
     /// A dynamic dependency not found.
     #[error(
         "outputs {} not found in dynamic dependency file {}",

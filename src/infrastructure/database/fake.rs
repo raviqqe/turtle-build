@@ -2,6 +2,7 @@ use crate::{
     hash_type::HashType,
     infrastructure::{Database, DatabaseError},
     ir::BuildId,
+    path_pool::FilePath,
 };
 use alloc::{collections::BTreeSet, sync::Arc};
 use std::{collections::HashMap, sync::Mutex};
@@ -10,7 +11,7 @@ use std::{collections::HashMap, sync::Mutex};
 pub struct FakeDatabase {
     timestamp_hashes: Arc<Mutex<HashMap<BuildId, u64>>>,
     content_hashes: Arc<Mutex<HashMap<BuildId, u64>>>,
-    header_dependencies: Arc<Mutex<HashMap<BuildId, Vec<Arc<str>>>>>,
+    header_dependencies: Arc<Mutex<HashMap<BuildId, Vec<FilePath>>>>,
     header_dependency_requests: Arc<Mutex<Vec<BuildId>>>,
     outputs: Arc<Mutex<BTreeSet<String>>>,
     sources: Arc<Mutex<HashMap<String, String>>>,
@@ -40,7 +41,7 @@ impl Database for FakeDatabase {
         Ok(())
     }
 
-    fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError> {
+    fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<FilePath>, DatabaseError> {
         self.header_dependency_requests.lock().unwrap().push(id);
 
         Ok(self
@@ -55,7 +56,7 @@ impl Database for FakeDatabase {
     fn set_header_dependencies(
         &self,
         id: BuildId,
-        dependencies: &[Arc<str>],
+        dependencies: &[FilePath],
     ) -> Result<(), DatabaseError> {
         self.header_dependencies
             .lock()

@@ -19,8 +19,8 @@ use std::{
 use tokio::{sync::Mutex, time::sleep};
 use turtle_build::{
     BuildError, Console, Context, FileSystem, Module, ModuleDependencyMap, OsCommandRunner,
-    OsConsole, OsFileSystem, PathPool, RedbDatabase, RunOptions, Statement, clean_dead, compile,
-    parse, run, validate_modules,
+    OsConsole, OsFileSystem, RedbDatabase, RunOptions, Statement, clean_dead, compile, parse, run,
+    validate_modules,
 };
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
@@ -116,13 +116,7 @@ async fn execute(arguments: &Arguments, console: &Arc<Mutex<OsConsole>>) -> Resu
 
     validate_modules(&dependencies)?;
 
-    let path_pool = Arc::new(PathPool::new());
-    let config = Arc::new(compile(
-        &modules,
-        &dependencies,
-        &root_module_path,
-        &path_pool,
-    )?);
+    let config = Arc::new(compile(&modules, &dependencies, &root_module_path)?);
     let context = Arc::new(Context::new(
         OsCommandRunner::new(job_limit),
         console.clone(),
@@ -134,10 +128,8 @@ async fn execute(arguments: &Arguments, console: &Arc<Mutex<OsConsole>>) -> Resu
                 .join(DATABASE_DIRECTORY)
                 .join(env!("CARGO_PKG_VERSION").replace('.', "_"))
                 .with_extension(DATABASE_EXTENSION),
-            path_pool.clone(),
         )?,
         file_system,
-        path_pool,
     ));
 
     if let Some(tool) = &arguments.tool {

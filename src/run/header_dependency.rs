@@ -35,12 +35,7 @@ pub async fn read_header_dependencies(
 
     Ok(dependencies
         .into_iter()
-        .map(|path| {
-            context
-                .build()
-                .path_pool()
-                .intern(&canonicalize_path(&path))
-        })
+        .map(|path| canonicalize_path(&path).into())
         .collect())
 }
 

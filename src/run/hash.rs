@@ -128,7 +128,6 @@ mod tests {
                 Mutex::new(FakeConsole::default()).into(),
                 FakeDatabase::default(),
                 file_system.clone(),
-                Default::default(),
             )
             .into(),
             Config::new(

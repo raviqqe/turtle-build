@@ -2,7 +2,6 @@ use crate::{
     hash_type::HashType,
     infrastructure::{Database, DatabaseError},
     ir::BuildId,
-    path_pool::PathPool,
 };
 use alloc::sync::Arc;
 use core::str;
@@ -19,16 +18,12 @@ const BINCODE_CONFIG: bincode::config::Configuration = bincode::config::standard
 /// A Fjall database.
 pub struct FjallDatabase {
     keyspace: Keyspace,
-    path_pool: Arc<PathPool>,
 }
 
 impl FjallDatabase {
     /// Creates a database.
-    pub const fn new(keyspace: Keyspace, path_pool: Arc<PathPool>) -> Self {
-        Self {
-            keyspace,
-            path_pool,
-        }
+    pub const fn new(keyspace: Keyspace) -> Self {
+        Self { keyspace }
     }
 
     fn insert(&self, key: &[u8], value: &[u8]) -> Result<(), DatabaseError> {
@@ -70,14 +65,8 @@ impl Database for FjallDatabase {
             .keyspace
             .get(key(HEADER_DEPENDENCY_TAG, &id.to_bytes()))?
             .map(|value| {
-                bincode::borrow_decode_from_slice::<Vec<&str>, _>(&value, BINCODE_CONFIG).map(
-                    |(dependencies, _)| {
-                        dependencies
-                            .into_iter()
-                            .map(|path| self.path_pool.intern(path))
-                            .collect()
-                    },
-                )
+                bincode::borrow_decode_from_slice::<Vec<&str>, _>(&value, BINCODE_CONFIG)
+                    .map(|(dependencies, _)| dependencies.into_iter().map(From::from).collect())
             })
             .transpose()?
             .unwrap_or_default())
@@ -132,7 +121,6 @@ mod tests {
                 database
                     .keyspace("build", KeyspaceCreateOptions::default)
                     .unwrap(),
-                Default::default(),
             ),
             database,
         )
@@ -225,29 +213,6 @@ mod tests {
             database.get_header_dependencies(BuildId::new(0)).unwrap(),
             vec!["foo".into(), "bar".into()]
         );
-    }
-
-    #[test]
-    fn intern_header_dependencies() {
-        let directory = tempdir().unwrap();
-        let path_pool = Arc::new(PathPool::new());
-        let database = FjallDatabase::new(
-            fjall::Database::builder(directory.path())
-                .open()
-                .unwrap()
-                .keyspace("build", KeyspaceCreateOptions::default)
-                .unwrap(),
-            path_pool.clone(),
-        );
-
-        database
-            .set_header_dependencies(BuildId::new(0), &["foo".into()])
-            .unwrap();
-
-        assert!(Arc::ptr_eq(
-            &database.get_header_dependencies(BuildId::new(0)).unwrap()[0],
-            &path_pool.intern("foo")
-        ));
     }
 
     #[test]

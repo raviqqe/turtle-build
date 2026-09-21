@@ -301,7 +301,7 @@ pub fn compile_dynamic(
     module: &ast::DynamicModule,
     path_pool: &PathPool,
 ) -> Result<DynamicConfig, CompileError> {
-    let intern = |path: &str| path_pool.intern(&interpolate_variables(path, &TrainMap::new()));
+    let intern = |path| path_pool.intern(&interpolate_variables(path, &TrainMap::new()));
 
     Ok(DynamicConfig::new(
         module

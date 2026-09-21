@@ -19,8 +19,8 @@ use std::{
 use tokio::{sync::Mutex, time::sleep};
 use turtle_build::{
     BuildError, Console, Context, FileSystem, Module, ModuleDependencyMap, OsCommandRunner,
-    OsConsole, OsFileSystem, RedbDatabase, RunOptions, Statement, clean_dead, compile, parse, run,
-    validate_modules,
+    OsConsole, OsFileSystem, PathPool, RedbDatabase, RunOptions, Statement, clean_dead, compile,
+    parse, run, validate_modules,
 };
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
@@ -128,6 +128,7 @@ async fn execute(arguments: &Arguments, console: &Arc<Mutex<OsConsole>>) -> Resu
                 .join(DATABASE_DIRECTORY)
                 .join(env!("CARGO_PKG_VERSION").replace('.', "_"))
                 .with_extension(DATABASE_EXTENSION),
+            PathPool::new().into(),
         )?,
         file_system,
     ));

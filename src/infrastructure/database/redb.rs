@@ -2,6 +2,7 @@ use crate::{
     hash_type::HashType,
     infrastructure::{Database, DatabaseError},
     ir::BuildId,
+    path_pool::PathPool,
 };
 use alloc::sync::Arc;
 use redb::{
@@ -19,13 +20,15 @@ const SOURCES: TableDefinition<&str, &str> = TableDefinition::new("sources");
 /// A redb database.
 pub struct RedbDatabase {
     database: redb::Database,
+    path_pool: Arc<PathPool>,
 }
 
 impl RedbDatabase {
     /// Creates a database.
-    pub fn new(path: &Path) -> Result<Self, DatabaseError> {
+    pub fn new(path: &Path, path_pool: Arc<PathPool>) -> Result<Self, DatabaseError> {
         Ok(Self {
             database: Self::open(path)?,
+            path_pool,
         })
     }
 
@@ -95,7 +98,13 @@ impl Database for RedbDatabase {
         Ok(self.read(HEADER_DEPENDENCIES, |table| {
             Ok(table
                 .get(id.to_bytes())?
-                .map(|dependencies| dependencies.value().into_iter().map(From::from).collect())
+                .map(|dependencies| {
+                    dependencies
+                        .value()
+                        .into_iter()
+                        .map(|path| self.path_pool.intern(path))
+                        .collect()
+                })
                 .unwrap_or_default())
         })?)
     }
@@ -147,7 +156,7 @@ mod tests {
         let directory = tempdir().unwrap();
 
         (
-            RedbDatabase::new(&directory.path().join(FILENAME)).unwrap(),
+            RedbDatabase::new(&directory.path().join(FILENAME), Default::default()).unwrap(),
             directory,
         )
     }
@@ -161,7 +170,11 @@ mod tests {
     fn new_in_missing_directory() {
         let directory = tempdir().unwrap();
 
-        RedbDatabase::new(&directory.path().join("foo").join("bar").join(FILENAME)).unwrap();
+        RedbDatabase::new(
+            &directory.path().join("foo").join("bar").join(FILENAME),
+            Default::default(),
+        )
+        .unwrap();
     }
 
     #[test]
@@ -285,6 +298,23 @@ mod tests {
     }
 
     #[test]
+    fn intern_header_dependencies() {
+        let directory = tempdir().unwrap();
+        let path_pool = Arc::new(PathPool::new());
+        let database =
+            RedbDatabase::new(&directory.path().join(FILENAME), path_pool.clone()).unwrap();
+
+        database
+            .set_header_dependencies(BuildId::new(0), &["foo".into()])
+            .unwrap();
+
+        assert!(Arc::ptr_eq(
+            &database.get_header_dependencies(BuildId::new(0)).unwrap()[0],
+            &path_pool.intern("foo")
+        ));
+    }
+
+    #[test]
     fn set_source() {
         let (database, _directory) = open();
 
@@ -322,7 +352,8 @@ mod tests {
 
         drop(database);
 
-        let database = RedbDatabase::new(&directory.path().join(FILENAME)).unwrap();
+        let database =
+            RedbDatabase::new(&directory.path().join(FILENAME), Default::default()).unwrap();
 
         assert_eq!(
             database

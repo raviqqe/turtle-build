@@ -41,7 +41,6 @@ impl OsCommandRunner {
         }
     }
 
-    // Errors show only programs because commands are incomprehensible to end-users.
     fn error(error: io::Error, process: &Command) -> CommandError {
         CommandError::new(format!(
             "{}: {}",

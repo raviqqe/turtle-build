@@ -25,7 +25,7 @@ impl AsRef<Path> for FilePath {
 
 impl Display for FilePath {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "{}", self.as_str())
+        self.as_str().fmt(formatter)
     }
 }
 

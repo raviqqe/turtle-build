@@ -6,7 +6,7 @@ use crate::{
     parse::parse_depfile,
     path_pool::FilePath,
 };
-use alloc::{borrow::Cow, sync::Arc};
+use alloc::borrow::Cow;
 use std::process::Output;
 
 pub async fn read_header_dependencies(

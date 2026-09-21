@@ -76,7 +76,7 @@ impl RunContext {
         &self.build_graph
     }
 
-    pub fn dynamic_config(&self, path: &str) -> &OnceCell<DynamicConfig> {
+    pub fn dynamic_config(&self, path: &FilePath) -> &OnceCell<DynamicConfig> {
         &self.dynamic_configs[path]
     }
 

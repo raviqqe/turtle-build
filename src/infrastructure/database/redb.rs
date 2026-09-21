@@ -117,7 +117,7 @@ impl Database for RedbDatabase {
         Ok(self.write(
             HEADER_DEPENDENCIES,
             id.to_bytes(),
-            dependencies.iter().map(AsRef::as_ref).collect(),
+            dependencies.iter().map(FilePath::as_str).collect(),
         )?)
     }
 
@@ -148,6 +148,8 @@ impl Database for RedbDatabase {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::path_pool::TEST_PATH_POOL;
+    use core::ptr;
     use tempfile::{TempDir, tempdir};
 
     const FILENAME: &str = "database";
@@ -156,7 +158,7 @@ mod tests {
         let directory = tempdir().unwrap();
 
         (
-            RedbDatabase::new(&directory.path().join(FILENAME), Default::default()).unwrap(),
+            RedbDatabase::new(&directory.path().join(FILENAME), TEST_PATH_POOL.clone()).unwrap(),
             directory,
         )
     }
@@ -308,9 +310,9 @@ mod tests {
             .set_header_dependencies(BuildId::new(0), &["foo".into()])
             .unwrap();
 
-        assert!(Arc::ptr_eq(
-            &database.get_header_dependencies(BuildId::new(0)).unwrap()[0],
-            &path_pool.intern("foo")
+        assert!(ptr::eq(
+            database.get_header_dependencies(BuildId::new(0)).unwrap()[0].as_str(),
+            path_pool.intern("foo").as_str()
         ));
     }
 
@@ -353,7 +355,7 @@ mod tests {
         drop(database);
 
         let database =
-            RedbDatabase::new(&directory.path().join(FILENAME), Default::default()).unwrap();
+            RedbDatabase::new(&directory.path().join(FILENAME), TEST_PATH_POOL.clone()).unwrap();
 
         assert_eq!(
             database

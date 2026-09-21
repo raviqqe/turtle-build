@@ -65,7 +65,7 @@ impl BuildGraph {
                     .find(|component| component.contains(&cycle.node_id()))
                     .unwrap()
                     .into_iter()
-                    .map(|id| self.graph[id].clone())
+                    .map(|id| self.graph[id].as_str().into())
                     .collect(),
             ));
         }
@@ -78,7 +78,7 @@ impl BuildGraph {
             let output = self
                 .primary_outputs
                 .get(output)
-                .ok_or_else(|| BuildGraphError::OutputNotFound(output.clone()))?
+                .ok_or_else(|| BuildGraphError::OutputNotFound(output.as_str().into()))?
                 .clone();
 
             for input in build.inputs() {
@@ -125,9 +125,9 @@ pub enum BuildGraphError {
         "dependency cycle detected: {}",
         .0.iter().chain(.0.first()).dedup().join(" -> ")
     )]
-    CircularDependency(Vec<FilePath>),
+    CircularDependency(Vec<String>),
     #[error("output \"{0}\" not found")]
-    OutputNotFound(FilePath),
+    OutputNotFound(String),
 }
 
 #[cfg(test)]
@@ -292,9 +292,9 @@ mod tests {
         assert_eq!(
             &paths,
             &if &*paths[0] == "foo" {
-                ["foo".into(), "bar".into()]
+                ["foo", "bar"]
             } else {
-                ["bar".into(), "foo".into()]
+                ["bar", "foo"]
             }
         );
     }
@@ -563,7 +563,7 @@ mod tests {
 
         graph.add_header_dependencies(&"foo".into(), &["bar.h".into()]);
 
-        assert!(!graph.nodes.contains_key("bar.h"));
+        assert!(!graph.nodes.contains_key(&"bar.h".into()));
         assert_eq!(graph.validate(), Ok(()));
     }
 

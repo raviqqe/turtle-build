@@ -31,10 +31,7 @@ impl FileCache {
 
     pub async fn metadata(&self, path: &FilePath) -> Result<Option<Metadata>, FileError> {
         match Self::get(&self.metadata, path, || async {
-            self.file_system
-                .metadata(path.as_ref().as_ref())
-                .await?
-                .ok_or(None)
+            self.file_system.metadata(path.as_ref()).await?.ok_or(None)
         })
         .await
         {
@@ -57,12 +54,12 @@ impl FileCache {
     pub async fn content_hash(&self, path: &FilePath) -> Result<u64, FileError> {
         Self::get(&self.content_hashes, path, || async {
             Ok(BuildHasherDefault::<DefaultHasher>::default()
-                .hash_one(self.file_system.read_file(path.as_ref().as_ref()).await?))
+                .hash_one(self.file_system.read_file(path.as_ref()).await?))
         })
         .await
     }
 
-    pub async fn invalidate(&self, path: &str) {
+    pub async fn invalidate(&self, path: &FilePath) {
         self.metadata.remove_async(path).await;
         self.content_hashes.remove_async(path).await;
     }
@@ -427,7 +424,7 @@ mod tests {
             assert_eq!(cache.exists(&"foo".into()).await, Ok(true));
 
             file_system.remove_file("foo".as_ref()).await.unwrap();
-            cache.invalidate("foo").await;
+            cache.invalidate(&"foo".into()).await;
 
             assert_eq!(cache.exists(&"foo".into()).await, Ok(false));
         }
@@ -442,7 +439,7 @@ mod tests {
             let metadata = cache.metadata(&"foo".into()).await.unwrap();
 
             file_system.write_file("foo", "");
-            cache.invalidate("foo").await;
+            cache.invalidate(&"foo".into()).await;
 
             assert_ne!(cache.metadata(&"foo".into()).await, Ok(metadata));
         }
@@ -457,7 +454,7 @@ mod tests {
             let hash = cache.content_hash(&"foo".into()).await.unwrap();
 
             file_system.write_file("foo", "2");
-            cache.invalidate("foo").await;
+            cache.invalidate(&"foo".into()).await;
 
             assert_ne!(cache.content_hash(&"foo".into()).await, Ok(hash));
         }
@@ -474,7 +471,7 @@ mod tests {
             let hash = cache.content_hash(&"bar".into()).await;
 
             file_system.write_file("bar", "2");
-            cache.invalidate("foo").await;
+            cache.invalidate(&"foo".into()).await;
 
             assert_eq!(cache.metadata(&"bar".into()).await, metadata);
             assert_eq!(cache.content_hash(&"bar".into()).await, hash);
@@ -546,7 +543,7 @@ mod tests {
 
             assert!(poll!(&mut first).is_pending());
 
-            cache.remove_async("foo").await;
+            cache.remove_async(&FilePath::from("foo")).await;
 
             assert_eq!(
                 poll!(pin!(FileCache::get(&cache, &path, || async {
@@ -580,7 +577,7 @@ mod tests {
                 assert_eq!(
                     poll!(pin!(FileCache::get(
                         &cache,
-                        &index.to_string().into(),
+                        &index.to_string().as_str().into(),
                         || async { Ok::<_, FileError>(()) }
                     ))),
                     Poll::Ready(Ok(()))

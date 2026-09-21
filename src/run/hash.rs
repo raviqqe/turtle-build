@@ -5,7 +5,6 @@ use crate::{
     ir::{Build, Rule},
     path_pool::FilePath,
 };
-use alloc::sync::Arc;
 use core::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
 
@@ -28,7 +27,7 @@ pub async fn calculate_timestamp_hash(
             .file_cache()
             .metadata(input)
             .await?
-            .ok_or_else(|| BuildError::FileNotFound(input.as_ref().into()))?
+            .ok_or_else(|| BuildError::FileNotFound(input.as_str().into()))?
             .modified_time()
             .hash(&mut hasher);
     }
@@ -69,7 +68,11 @@ pub async fn calculate_content_hash(
     Ok(hasher.finish())
 }
 
-fn get_build_hash(context: &RunContext, r#type: HashType, input: &str) -> Result<u64, BuildError> {
+fn get_build_hash(
+    context: &RunContext,
+    r#type: HashType,
+    input: &FilePath,
+) -> Result<u64, BuildError> {
     context
         .build()
         .database()
@@ -79,10 +82,10 @@ fn get_build_hash(context: &RunContext, r#type: HashType, input: &str) -> Result
                 .config()
                 .outputs()
                 .get(input)
-                .ok_or_else(|| BuildError::InputNotFound(input.into()))?
+                .ok_or_else(|| BuildError::InputNotFound(input.as_str().into()))?
                 .id(),
         )?
-        .ok_or_else(|| BuildError::InputNotBuilt(input.into()))
+        .ok_or_else(|| BuildError::InputNotBuilt(input.as_str().into()))
 }
 
 fn calculate_phony_hash(
@@ -112,6 +115,7 @@ mod tests {
         context::Context,
         infrastructure::{FakeCommandRunner, FakeConsole, FakeDatabase, FakeFileSystem},
         ir::{Config, HeaderDependency},
+        path_pool::TEST_PATH_POOL,
     };
     use alloc::sync::Arc;
     use core::{
@@ -129,7 +133,7 @@ mod tests {
                 Mutex::new(FakeConsole::default()).into(),
                 FakeDatabase::default(),
                 file_system.clone(),
-                Default::default(),
+                TEST_PATH_POOL.clone(),
             )
             .into(),
             Config::new(

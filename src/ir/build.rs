@@ -1,6 +1,5 @@
 use super::Rule;
 use crate::path_pool::FilePath;
-use alloc::sync::Arc;
 use core::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
 
@@ -81,9 +80,54 @@ impl Build {
     fn calculate_id(outputs: &[FilePath], implicit_outputs: &[FilePath]) -> BuildId {
         let mut hasher = DefaultHasher::new();
 
-        outputs.hash(&mut hasher);
-        implicit_outputs.hash(&mut hasher);
+        // IDs depend only on path strings because they are persistent.
+        for paths in [outputs, implicit_outputs] {
+            paths.len().hash(&mut hasher);
+
+            for path in paths {
+                path.as_str().hash(&mut hasher);
+            }
+        }
 
         BuildId::new(hasher.finish())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::path_pool::PathPool;
+    use pretty_assertions::assert_eq;
+
+    fn create_build(path_pool: &PathPool) -> Build {
+        Build::new(
+            vec![path_pool.intern("foo")],
+            vec![path_pool.intern("bar")],
+            None,
+            vec![],
+            vec![],
+            None,
+        )
+    }
+
+    #[test]
+    fn keep_id_format() {
+        let mut hasher = DefaultHasher::new();
+
+        ["foo"].hash(&mut hasher);
+        ["bar"].hash(&mut hasher);
+
+        assert_eq!(
+            create_build(&PathPool::new()).id(),
+            BuildId::new(hasher.finish())
+        );
+    }
+
+    #[test]
+    fn keep_id_across_path_pools() {
+        assert_eq!(
+            create_build(&PathPool::new()).id(),
+            create_build(&PathPool::new()).id()
+        );
     }
 }

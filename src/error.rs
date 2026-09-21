@@ -5,9 +5,9 @@ use crate::{
     ir::Build,
     module_dependency::ModuleDependencyError,
     parse::ParseError,
-    path_pool::FilePath,
 };
 use alloc::sync::Arc;
+use itertools::Itertools;
 use thiserror::Error;
 use tokio::{io, sync::AcquireError, task::JoinError};
 
@@ -37,11 +37,11 @@ pub enum BuildError {
     Database(#[from] DatabaseError),
     /// A default output not found.
     #[error("default output \"{0}\" not found")]
-    DefaultOutputNotFound(FilePath),
+    DefaultOutputNotFound(String),
     /// A dynamic dependency not found.
     #[error(
         "outputs {} not found in dynamic dependency file {}",
-        .0.outputs().join(", "),
+        .0.outputs().iter().join(", "),
         .0.dynamic_module().unwrap()
     )]
     DynamicDependencyNotFound(Arc<Build>),

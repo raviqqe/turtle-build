@@ -77,8 +77,8 @@ pub async fn run(
                     context
                         .config()
                         .outputs()
-                        .get(output.as_ref())
-                        .ok_or_else(|| BuildError::DefaultOutputNotFound(output.clone()))
+                        .get(output)
+                        .ok_or_else(|| BuildError::DefaultOutputNotFound(output.as_str().into()))
                 })
                 .collect::<Result<Vec<_>, _>>()?
         } else {
@@ -88,7 +88,7 @@ pub async fn run(
                     context
                         .config()
                         .outputs()
-                        .get(output.as_str())
+                        .get(&context.build().path_pool().intern(output))
                         .ok_or_else(|| BuildError::OutputNotFound(output.clone()))
                 })
                 .collect::<Result<Vec<_>, _>>()?
@@ -135,7 +135,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                 .outputs()
                 .iter()
                 .chain(build.implicit_outputs())
-                .find_map(|output| config.outputs().get(output.as_ref()))
+                .find_map(|output| config.outputs().get(output))
                 .map(|build| build.inputs())
                 .ok_or_else(|| BuildError::DynamicDependencyNotFound(build.clone()))?
         } else {
@@ -219,10 +219,13 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
                 .set_header_dependencies(build.id(), &new_header_dependencies)?;
 
             for output in build.outputs() {
-                context.build().database().set_output(output)?;
+                context.build().database().set_output(output.as_str())?;
 
                 if let Some(source) = context.config().source_map().get(output) {
-                    context.build().database().set_source(output, source)?;
+                    context
+                        .build()
+                        .database()
+                        .set_source(output.as_str(), source)?;
                 }
             }
 
@@ -267,7 +270,7 @@ async fn build_input(context: Arc<RunContext>, input: &FilePath) -> Result<(), B
 
 async fn load_dynamic_config<'a>(
     context: &'a RunContext,
-    path: &str,
+    path: &FilePath,
 ) -> Result<&'a DynamicConfig, BuildError> {
     context
         .dynamic_config(path)
@@ -304,12 +307,7 @@ async fn get_output_metadata(
             .outputs()
             .iter()
             .chain(build.implicit_outputs())
-            .map(|path| {
-                context
-                    .build()
-                    .file_system()
-                    .metadata(path.as_ref().as_ref())
-            }),
+            .map(|path| context.build().file_system().metadata(path.as_ref())),
     )
     .await?
     .into_iter()
@@ -353,8 +351,8 @@ async fn check_file_existence(context: &RunContext, path: &FilePath) -> Result<(
             context
                 .build()
                 .database()
-                .get_source(path)?
-                .unwrap_or_else(|| path.as_ref().into()),
+                .get_source(path.as_str())?
+                .unwrap_or_else(|| path.as_str().into()),
         ));
     }
 
@@ -500,7 +498,6 @@ fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> Build
                         .build()
                         .database()
                         .get_source(output)?
-                        .map(|string| string.into())
                         .unwrap_or_else(|| output.clone()))
                 })
                 .collect::<Result<Vec<_>, BuildError>>()
@@ -522,8 +519,9 @@ mod tests {
     use crate::{
         infrastructure::{FakeCommandRunner, FakeConsole, FakeDatabase, FakeFileSystem, FileError},
         ir::HeaderDependency,
+        path_pool::TEST_PATH_POOL,
     };
-    use core::{num::NonZeroUsize, pin::pin};
+    use core::{num::NonZeroUsize, pin::pin, ptr};
     use futures::poll;
     use pretty_assertions::{assert_eq, assert_ne};
     use regex::Regex;
@@ -550,7 +548,7 @@ mod tests {
             Mutex::new(console.clone()).into(),
             FakeDatabase::default(),
             file_system.clone(),
-            Default::default(),
+            TEST_PATH_POOL.clone(),
         )
         .into()
     }
@@ -1998,12 +1996,13 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(Arc::ptr_eq(
-            &context
+        assert!(ptr::eq(
+            context
                 .database()
                 .get_header_dependencies(build.id())
-                .unwrap()[0],
-            &context.path_pool().intern("foo.h")
+                .unwrap()[0]
+                .as_str(),
+            context.path_pool().intern("foo.h").as_str()
         ));
     }
 
@@ -2082,7 +2081,7 @@ mod tests {
             Mutex::new(FakeConsole::default()).into(),
             database.clone(),
             file_system.clone(),
-            Default::default(),
+            TEST_PATH_POOL.clone(),
         ));
         let build = explicit_build(
             vec!["foo.o".into()],
@@ -2358,13 +2357,14 @@ mod tests {
             "ninja_dyndep_version = 1\nbuild foo: dyndep | bar\n",
         );
 
-        assert!(Arc::ptr_eq(
-            &load_dynamic_config(&context, "foo.dd")
+        assert!(ptr::eq(
+            load_dynamic_config(&context, &"foo.dd".into())
                 .await
                 .unwrap()
-                .outputs()["foo"]
-                .inputs()[0],
-            &context.build().path_pool().intern("bar")
+                .outputs()[&"foo".into()]
+                .inputs()[0]
+                .as_str(),
+            context.build().path_pool().intern("bar").as_str()
         ));
     }
 

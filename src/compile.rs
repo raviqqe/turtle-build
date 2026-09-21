@@ -13,6 +13,7 @@ use crate::{
 };
 use alloc::{borrow::Cow, sync::Arc};
 use core::num::NonZeroUsize;
+use itertools::Itertools;
 use once_cell::sync::Lazy;
 use regex::{Captures, Regex};
 use std::{
@@ -133,9 +134,9 @@ fn compile_module<'a>(
                     interpolate_strings(context, build.order_only_inputs(), &variables);
 
                 variables.extend([
-                    ("in", inputs.join(" ").into()),
-                    ("in_newline", inputs.join("\n").into()),
-                    ("out", outputs.join(" ").into()),
+                    ("in", inputs.iter().join(" ").into()),
+                    ("in_newline", inputs.iter().join("\n").into()),
+                    ("out", outputs.iter().join(" ").into()),
                 ]);
 
                 let dynamic_module = compile_dynamic_module_path(
@@ -291,7 +292,7 @@ fn compile_dynamic_module_path<'a>(
 
     Ok(Some(
         inputs
-            .find(|input| input.as_ref() == path)
+            .find(|input| input.as_str() == path)
             .ok_or(CompileError::DynamicModuleNotInput(path))?
             .clone(),
     ))
@@ -372,7 +373,8 @@ fn interpolate_variables<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast;
+    use crate::{ast, path_pool::TEST_PATH_POOL};
+    use core::ptr;
     use once_cell::sync::Lazy;
     use pretty_assertions::assert_eq;
     use std::collections::HashSet;
@@ -435,7 +437,7 @@ mod tests {
                 .collect(),
             &DEFAULT_DEPENDENCIES,
             &ROOT_MODULE_PATH,
-            &Default::default(),
+            &TEST_PATH_POOL,
         )
     }
 
@@ -475,7 +477,7 @@ mod tests {
                     .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(Default::default(), Default::default())
@@ -498,7 +500,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -531,7 +533,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -563,7 +565,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -595,7 +597,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -626,7 +628,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -658,7 +660,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -691,7 +693,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -725,7 +727,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -758,7 +760,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -791,7 +793,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -823,7 +825,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -860,7 +862,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -904,7 +906,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -945,7 +947,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -989,7 +991,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -1027,7 +1029,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -1076,7 +1078,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -1112,7 +1114,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -1169,7 +1171,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -1207,7 +1209,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -1243,7 +1245,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -1280,7 +1282,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -1319,7 +1321,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -1374,12 +1376,14 @@ mod tests {
         )
         .unwrap();
 
-        for path in [
-            &config.outputs()["foo/baz"].outputs()[0],
-            &config.outputs()["qux"].inputs()[0],
-            config.default_outputs().get("foo/baz").unwrap(),
+        let path = path_pool.intern("foo/baz");
+
+        for other in [
+            &config.outputs()[&path].outputs()[0],
+            &config.outputs()[&path_pool.intern("qux")].inputs()[0],
+            config.default_outputs().get(&path).unwrap(),
         ] {
-            assert!(Arc::ptr_eq(path, &path_pool.intern("foo/baz")));
+            assert!(ptr::eq(other.as_str(), path.as_str()));
         }
     }
 
@@ -1396,8 +1400,11 @@ mod tests {
         .unwrap();
         let (output, build) = config.outputs().iter().next().unwrap();
 
-        assert!(Arc::ptr_eq(output, &path_pool.intern("foo")));
-        assert!(Arc::ptr_eq(&build.inputs()[0], &path_pool.intern("bar")));
+        assert!(ptr::eq(output.as_str(), path_pool.intern("foo").as_str()));
+        assert!(ptr::eq(
+            build.inputs()[0].as_str(),
+            path_pool.intern("bar").as_str()
+        ));
     }
 
     #[test]
@@ -1416,7 +1423,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -1460,7 +1467,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -1495,7 +1502,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -1530,7 +1537,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -1570,7 +1577,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -1602,7 +1609,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -1646,7 +1653,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             Config::new(
@@ -1685,7 +1692,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -1722,7 +1729,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             Config::new(
@@ -1750,7 +1757,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             Config::new(
@@ -1783,7 +1790,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -1827,7 +1834,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -1874,7 +1881,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -2048,7 +2055,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -2091,7 +2098,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -2139,7 +2146,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -2184,7 +2191,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -2233,7 +2240,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -2284,9 +2291,12 @@ mod tests {
 
         for (output, depfile) in [("baz", "foo.d"), ("qux", "bar.d")] {
             assert!(matches!(
-                config.outputs()[output].rule().unwrap().header_dependency(),
+                config.outputs()[&path_pool.intern(output)]
+                    .rule()
+                    .unwrap()
+                    .header_dependency(),
                 Some(HeaderDependency::Make { path } | HeaderDependency::Gcc { path })
-                    if Arc::ptr_eq(path, &path_pool.intern(depfile))
+                    if ptr::eq(path.as_str(), path_pool.intern(depfile).as_str())
             ));
         }
     }
@@ -2306,7 +2316,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             ),
             Err(CompileError::MissingDepfile("foo".into()))
         );
@@ -2327,7 +2337,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             ),
             Err(CompileError::InvalidDependencyStyle("clang".into()))
         );
@@ -2348,7 +2358,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -2391,7 +2401,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -2438,7 +2448,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -2485,7 +2495,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -2529,7 +2539,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -2581,7 +2591,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -2637,7 +2647,7 @@ mod tests {
                 .collect(),
                 &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
             .unwrap(),
             create_simple_config(
@@ -2930,7 +2940,7 @@ mod tests {
                 .into_iter()
                 .collect(),
                 &ROOT_MODULE_PATH,
-                &Default::default(),
+                &TEST_PATH_POOL,
             )
         }
 
@@ -2971,7 +2981,7 @@ mod tests {
                     .into_iter()
                     .collect(),
                     &ROOT_MODULE_PATH,
-                    &Default::default(),
+                    &TEST_PATH_POOL,
                 )
                 .unwrap(),
                 create_simple_config(
@@ -3024,7 +3034,7 @@ mod tests {
                     .into_iter()
                     .collect(),
                     &ROOT_MODULE_PATH,
-                    &Default::default(),
+                    &TEST_PATH_POOL,
                 )
                 .unwrap(),
                 create_simple_config(
@@ -3078,7 +3088,7 @@ mod tests {
                     .into_iter()
                     .collect(),
                     &ROOT_MODULE_PATH,
-                    &Default::default(),
+                    &TEST_PATH_POOL,
                 )
                 .unwrap(),
                 create_simple_config(

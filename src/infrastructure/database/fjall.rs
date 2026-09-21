@@ -90,7 +90,13 @@ impl Database for FjallDatabase {
     ) -> Result<(), DatabaseError> {
         self.insert(
             &key(HEADER_DEPENDENCY_TAG, &id.to_bytes()),
-            &bincode::encode_to_vec(dependencies, BINCODE_CONFIG)?,
+            &bincode::encode_to_vec(
+                dependencies
+                    .iter()
+                    .map(FilePath::as_str)
+                    .collect::<Vec<_>>(),
+                BINCODE_CONFIG,
+            )?,
         )
     }
 
@@ -120,6 +126,8 @@ impl Database for FjallDatabase {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::path_pool::TEST_PATH_POOL;
+    use core::ptr;
     use fjall::KeyspaceCreateOptions;
     use std::path::Path;
     use tempfile::tempdir;
@@ -132,7 +140,7 @@ mod tests {
                 database
                     .keyspace("build", KeyspaceCreateOptions::default)
                     .unwrap(),
-                Default::default(),
+                TEST_PATH_POOL.clone(),
             ),
             database,
         )
@@ -244,9 +252,9 @@ mod tests {
             .set_header_dependencies(BuildId::new(0), &["foo".into()])
             .unwrap();
 
-        assert!(Arc::ptr_eq(
-            &database.get_header_dependencies(BuildId::new(0)).unwrap()[0],
-            &path_pool.intern("foo")
+        assert!(ptr::eq(
+            database.get_header_dependencies(BuildId::new(0)).unwrap()[0].as_str(),
+            path_pool.intern("foo").as_str()
         ));
     }
 

@@ -13,6 +13,7 @@ mod infrastructure;
 mod ir;
 mod module_dependency;
 mod parse;
+mod path_pool;
 mod run;
 mod tool;
 
@@ -27,6 +28,7 @@ pub use self::{
     },
     module_dependency::{ModuleDependencyMap, validate_modules},
     parse::parse,
+    path_pool::PathPool,
     run::{RunOptions, run},
     tool::clean_dead,
 };

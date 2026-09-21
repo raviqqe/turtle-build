@@ -1,4 +1,7 @@
-use crate::infrastructure::{CommandRunner, Console, Database, FileSystem};
+use crate::{
+    infrastructure::{CommandRunner, Console, Database, FileSystem},
+    path_pool::PathPool,
+};
 use alloc::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -8,6 +11,7 @@ pub struct Context {
     console: Arc<Mutex<dyn Console + Send + Sync>>,
     database: Box<dyn Database + Send + Sync>,
     file_system: Arc<dyn FileSystem + Send + Sync>,
+    path_pool: Arc<PathPool>,
 }
 
 impl Context {
@@ -17,12 +21,14 @@ impl Context {
         console: Arc<Mutex<impl Console + Send + Sync + 'static>>,
         database: impl Database + Send + Sync + 'static,
         file_system: impl FileSystem + Send + Sync + 'static,
+        path_pool: Arc<PathPool>,
     ) -> Self {
         Self {
             command_runner: Box::new(command_runner),
             console,
             file_system: Arc::new(file_system),
             database: Box::new(database),
+            path_pool,
         }
     }
 
@@ -44,5 +50,10 @@ impl Context {
     /// Returns a file system.
     pub fn file_system(&self) -> &Arc<dyn FileSystem + Send + Sync> {
         &self.file_system
+    }
+
+    /// Returns a path pool.
+    pub fn path_pool(&self) -> &PathPool {
+        &self.path_pool
     }
 }

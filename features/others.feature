@@ -71,7 +71,7 @@ Feature: Others
     When I successfully run `turtle foo`
     Then the stdout should contain exactly "hello"
 
-  @turtle
+  @turtle @unix
   Scenario: Increase an open file limit
     Given a file named "build.ninja" with:
       """

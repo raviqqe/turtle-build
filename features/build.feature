@@ -4,7 +4,7 @@ Feature: Build statement
     Given a file named "build.ninja" with:
       """
       rule cp
-        command = echo hello && cp $in $out
+        command = sh -c 'echo hello && cp $in $out'
 
       build foo: cp bar
 
@@ -24,7 +24,7 @@ Feature: Build statement
     Given a file named "build.ninja" with:
       """
       rule cp
-        command = echo hello && cp $in $out
+        command = sh -c 'echo hello && cp $in $out'
 
       build foo: cp bar
 
@@ -42,7 +42,7 @@ Feature: Build statement
     Given a file named "build.ninja" with:
       """
       rule cp
-        command = echo hello && cp bar $out
+        command = sh -c 'echo hello && cp bar $out'
 
       build foo: cp | bar
 
@@ -62,7 +62,7 @@ Feature: Build statement
     Given a file named "build.ninja" with:
       """
       rule cp
-        command = echo hello && cp bar $out
+        command = sh -c 'echo hello && cp bar $out'
 
       build foo: cp | bar
 
@@ -80,7 +80,7 @@ Feature: Build statement
     Given a file named "build.ninja" with:
       """
       rule cp
-        command = [ ! -r $out ] && cp bar $out
+        command = sh -c '[ ! -r $out ] && cp bar $out'
 
       build foo: cp || bar
 
@@ -109,7 +109,7 @@ Feature: Build statement
     Given a file named "build.ninja" with:
       """
       rule cp
-        command = cp $in $out && cp $in baz
+        command = sh -c 'cp $in $out && cp $in baz'
 
       build foo | baz: cp bar
 
@@ -124,7 +124,7 @@ Feature: Build statement
     Given a file named "build.ninja" with:
       """
       rule cp
-        command = echo hello && cp $in $out
+        command = sh -c 'echo hello && cp $in $out'
 
       build bar: cp baz
       build foo: cp bar
@@ -146,7 +146,7 @@ Feature: Build statement
     Given a file named "build.ninja" with:
       """
       rule gen
-        command = cat $in > $out && cat $in > bar
+        command = sh -c 'cat $in > $out && cat $in > bar'
 
       rule cp
         command = cp $in $out
@@ -168,7 +168,7 @@ Feature: Build statement
         command = touch $out
 
       rule cat
-        command = cat $in > $out
+        command = sh -c 'cat $in > $out'
 
       build foo bar: touch
       build baz: cat foo bar
@@ -195,7 +195,7 @@ Feature: Build statement
     Given a file named "build.ninja" with:
       """
       rule cp
-        command = [ ! -r $out ] && cp $in $out
+        command = sh -c '[ ! -r $out ] && cp $in $out'
 
       build foo: cp bar
 
@@ -210,7 +210,7 @@ Feature: Build statement
       directory = foo
 
       rule touch
-        command = [ ! -e $out ] && touch $out $directory/baz
+        command = sh -c '[ ! -e $out ] && touch $out $directory/baz'
 
       build bar | $directory/baz: touch
 
@@ -222,7 +222,7 @@ Feature: Build statement
     Given a file named "build.ninja" with:
       """
       rule fail
-        command = exit 1
+        command = false
 
       build foo: fail
 
@@ -248,14 +248,27 @@ Feature: Build statement
     When I successfully run `turtle`
     Then the stdout should contain exactly "bar baz"
 
-  Scenario: Escape a space and colon in a build statement
+  Scenario: Escape a space in a build statement
     Given a file named "build.ninja" with:
       """
       rule touch
-        command = touch 'foo bar:baz'
+        command = touch "foo bar"
 
-      build foo$ bar$:baz: touch
+      build foo$ bar: touch
 
       """
     When I successfully run `turtle`
-    Then the file named "foo bar:baz" should exist
+    Then the file named "foo bar" should exist
+
+  @unix
+  Scenario: Escape a colon in a build statement
+    Given a file named "build.ninja" with:
+      """
+      rule touch
+        command = touch $out
+
+      build foo$:bar: touch
+
+      """
+    When I successfully run `turtle`
+    Then the file named "foo:bar" should exist

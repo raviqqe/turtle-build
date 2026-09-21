@@ -4,7 +4,7 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule cc
-        command = printf 'building\n' && printf '$out: $in header.h\n' > $out.d && cp $in $out
+        command = sh -c 'printf "building\n" && printf "$out: $in header.h\n" > $out.d && cp $in $out'
         depfile = $out.d
         deps = gcc
 
@@ -27,7 +27,7 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule cc
-        command = printf 'building\n' && printf '$out: $in header.h\n' > $out.d && cp $in $out
+        command = sh -c 'printf "building\n" && printf "$out: $in header.h\n" > $out.d && cp $in $out'
         depfile = $out.d
         deps = gcc
 
@@ -53,7 +53,7 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule cc
-        command = printf 'building\n' && printf '$out: $in header.h\n' > $out.d && cp $in $out
+        command = sh -c 'printf "building\n" && printf "$out: $in header.h\n" > $out.d && cp $in $out'
         depfile = $out.d
 
       build foo.o: cc source.c
@@ -75,7 +75,7 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule cc
-        command = printf 'building\n' && printf '$out: $in header.h\n' > $out.d && cp $in $out
+        command = sh -c 'printf "building\n" && printf "$out: $in header.h\n" > $out.d && cp $in $out'
 
       build foo.o: cc source.c
         depfile = foo.o.d
@@ -98,7 +98,7 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule cc
-        command = printf 'Note: including file: header.h\ncompiled\n' && cp $in $out
+        command = sh -c 'printf "Note: including file: header.h\ncompiled\n" && cp $in $out'
         deps = msvc
 
       build foo.o: cc source.c
@@ -119,7 +119,7 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule cc
-        command = printf 'Remarque : inclusion du fichier : header.h\ncompiled\n' && cp $in $out
+        command = sh -c 'printf "Remarque : inclusion du fichier : header.h\ncompiled\n" && cp $in $out'
         deps = msvc
         msvc_deps_prefix = Remarque : inclusion du fichier :
 
@@ -143,7 +143,7 @@ Feature: C and C++ header dependencies
       msvc_deps_prefix = Remarque : inclusion du fichier :
 
       rule cc
-        command = printf 'Remarque : inclusion du fichier : header.h\ncompiled\n' && cp $in $out
+        command = sh -c 'printf "Remarque : inclusion du fichier : header.h\ncompiled\n" && cp $in $out'
         deps = msvc
 
       build foo.o: cc source.c
@@ -164,7 +164,7 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule cc
-        command = printf 'Remarque : inclusion du fichier : header.h\ncompiled\n' && cp $in $out
+        command = sh -c 'printf "Remarque : inclusion du fichier : header.h\ncompiled\n" && cp $in $out'
         deps = msvc
         msvc_deps_prefix = WRONG:
 
@@ -189,7 +189,7 @@ Feature: C and C++ header dependencies
       msvc_deps_prefix = WRONG:
 
       rule cc
-        command = printf 'Remarque : inclusion du fichier : header.h\ncompiled\n' && cp $in $out
+        command = sh -c 'printf "Remarque : inclusion du fichier : header.h\ncompiled\n" && cp $in $out'
         deps = msvc
         msvc_deps_prefix = Remarque : inclusion du fichier :
 
@@ -212,7 +212,7 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule cc
-        command = printf 'building\n' && printf '$out: $in header.h\n' > $out.d && cat $in > $out
+        command = sh -c 'printf "building\n" && printf "$out: $in header.h\n" > $out.d && cat $in > $out'
         depfile = $out.d
         deps = gcc
 
@@ -232,7 +232,7 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule cc
-        command = printf 'Note: including file: header.h\ncompiled\n' && cat $in > $out
+        command = sh -c 'printf "Note: including file: header.h\ncompiled\n" && cat $in > $out'
         deps = msvc
 
       build foo.o: cc source.c
@@ -251,7 +251,7 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule cc
-        command = printf 'building\n' && cp $in $out
+        command = sh -c 'printf "building\n" && cp $in $out'
         depfile = $out.d
         deps = gcc
 
@@ -266,7 +266,7 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule cc
-        command = printf 'building\n' && printf '$out: $in header.h\n' > $out.d && cp $in $out
+        command = sh -c 'printf "building\n" && printf "$out: $in header.h\n" > $out.d && cp $in $out'
         depfile = $out.d
         deps = gcc
 
@@ -289,7 +289,7 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule cc
-        command = printf 'building\n' && printf '$out: $in header.h\n' > $out.d && cp $in $out
+        command = sh -c 'printf "building\n" && printf "$out: $in header.h\n" > $out.d && cp $in $out'
         depfile = $out.d
         deps = gcc
 
@@ -312,10 +312,10 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule gen
-        command = sleep 1 && rm -f header.h && cp $in $out
+        command = sh -c 'sleep 1 && rm -f header.h && cp $in $out'
 
       rule cc
-        command = printf '$out: $in gen.h header.h\n' > $out.d && cp $in $out
+        command = sh -c 'printf "$out: $in gen.h header.h\n" > $out.d && cp $in $out'
         depfile = $out.d
         deps = gcc
 
@@ -334,10 +334,10 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule gen
-        command = printf '#define G 1\n' > $out
+        command = sh -c 'printf "#define G 1\n" > $out'
 
       rule cc
-        command = printf 'building\n' && printf '$out: $in gen.h\n' > $out.d && cp $in $out
+        command = sh -c 'printf "building\n" && printf "$out: $in gen.h\n" > $out.d && cp $in $out'
         depfile = $out.d
         deps = gcc
 
@@ -353,7 +353,7 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule cc
-        command = printf 'building\n' && printf '$out: $in header.h\n' > $out.d && cp $in $out
+        command = sh -c 'printf "building\n" && printf "$out: $in header.h\n" > $out.d && cp $in $out'
         depfile = $out.d
         deps = gcc
 
@@ -371,7 +371,7 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule cc
-        command = printf '$out: $in header.h\n' > $out.d && cat $in header.h > $out
+        command = sh -c 'printf "$out: $in header.h\n" > $out.d && cat $in header.h > $out'
         depfile = $out.d
         deps = gcc
 
@@ -392,10 +392,10 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule gen
-        command = cp gen.h.in gen.h && touch $out
+        command = sh -c 'cp gen.h.in gen.h && touch $out'
 
       rule cc
-        command = printf 'building\n' && printf '$out: $in gen.h\n' > $out.d && cat $in gen.h > $out
+        command = sh -c 'printf "building\n" && printf "$out: $in gen.h\n" > $out.d && cat $in gen.h > $out'
         depfile = $out.d
         deps = gcc
 
@@ -414,10 +414,10 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule gen
-        command = cp gen.h.in gen.h && touch $out
+        command = sh -c 'cp gen.h.in gen.h && touch $out'
 
       rule cc
-        command = printf '$out: $in gen.h\n' > $out.d && cat $in gen.h > $out
+        command = sh -c 'printf "$out: $in gen.h\n" > $out.d && cat $in gen.h > $out'
         depfile = $out.d
         deps = gcc
 
@@ -438,13 +438,13 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule gen
-        command = cp gen.h.in gen.h && touch $out
+        command = sh -c 'cp gen.h.in gen.h && touch $out'
 
       rule alias
         command = true
 
       rule cc
-        command = printf '$out: $in gen.h\n' > $out.d && cat $in gen.h > $out
+        command = sh -c 'printf "$out: $in gen.h\n" > $out.d && cat $in gen.h > $out'
         depfile = $out.d
         deps = gcc
 
@@ -468,7 +468,7 @@ Feature: C and C++ header dependencies
         command = cp $in $out
 
       rule cc
-        command = printf 'building\n' && printf '$out: $in gen.h\n' > $out.d && cat $in gen.h > $out
+        command = sh -c 'printf "building\n" && printf "$out: $in gen.h\n" > $out.d && cat $in gen.h > $out'
         depfile = $out.d
         deps = gcc
 
@@ -489,7 +489,7 @@ Feature: C and C++ header dependencies
         command = cp $in $out
 
       rule cc
-        command = printf '$out: $in gen.h\n' > $out.d && cat $in gen.h > $out
+        command = sh -c 'printf "$out: $in gen.h\n" > $out.d && cat $in gen.h > $out'
         depfile = $out.d
         deps = gcc
 
@@ -512,7 +512,7 @@ Feature: C and C++ header dependencies
         command = cp $in $out
 
       rule cc
-        command = printf '$out: $in gen.h\n' > $out.d && cat $in gen.h > $out
+        command = sh -c 'printf "$out: $in gen.h\n" > $out.d && cat $in gen.h > $out'
         depfile = $out.d
         deps = gcc
 
@@ -538,15 +538,15 @@ Feature: C and C++ header dependencies
         command = cp $in $out
 
       rule gen
-        command = sleep 1 && cp $in $out
+        command = sh -c 'sleep 1 && cp $in $out'
 
       rule cc
-        command = printf '$out: %s\n' "$$(cat $in)" > $out.d && cp $in $out
+        command = sh -c 'printf "$out: %s\n" "$$(cat $in)" > $out.d && cp $in $out'
         depfile = $out.d
         deps = gcc
 
       rule cat
-        command = cat $in > $out
+        command = sh -c 'cat $in > $out'
 
       build gen.h.tmp: cp gen.h.in
       build gen.h: gen gen.h.tmp
@@ -570,15 +570,15 @@ Feature: C and C++ header dependencies
         command = cp $in $out
 
       rule gen
-        command = sleep 1 && cp $in gen.h && touch $out
+        command = sh -c 'sleep 1 && cp $in gen.h && touch $out'
 
       rule cc
-        command = printf '$out: %s\n' "$$(cat $in)" > $out.d && cp $in $out
+        command = sh -c 'printf "$out: %s\n" "$$(cat $in)" > $out.d && cp $in $out'
         depfile = $out.d
         deps = gcc
 
       rule cc_header
-        command = printf '$out: $in gen.h\n' > $out.d && cat $in gen.h > $out
+        command = sh -c 'printf "$out: $in gen.h\n" > $out.d && cat $in gen.h > $out'
         depfile = $out.d
         deps = gcc
 
@@ -605,7 +605,7 @@ Feature: C and C++ header dependencies
         command = cp $in $out
 
       rule cc
-        command = printf '$out: $in gen.h\n' > $out.d && cp $in $out
+        command = sh -c 'printf "$out: $in gen.h\n" > $out.d && cp $in $out'
         depfile = $out.d
         deps = gcc
 
@@ -623,12 +623,16 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule cc
-        command = printf 'building\n' && printf '$out: $in my\\ header.h\n' > $out.d && cat $in > $out
+        command = sh -c 'printf "building\n" && cp $out.d.in $out.d && cat $in > $out'
         depfile = $out.d
         deps = gcc
 
       build foo.o: cc source.c
 
+      """
+    And a file named "foo.o.d.in" with:
+      """
+      foo.o: source.c my\ header.h
       """
     And a file named "source.c" with "int main(void) { return 0; }"
     And a file named "my header.h" with "#define FOO 1"
@@ -643,7 +647,7 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule cc
-        command = printf 'Note: including file: header.h\ncompiled\n' && printf '$out: $in nonexistent.h\n' > $out.d && cp $in $out
+        command = sh -c 'printf "Note: including file: header.h\ncompiled\n" && printf "$out: $in nonexistent.h\n" > $out.d && cp $in $out'
         depfile = $out.d
         deps = msvc
 
@@ -659,7 +663,7 @@ Feature: C and C++ header dependencies
     Given a file named "build.ninja" with:
       """
       rule cc
-        command = printf 'building\n' && cp $in $out
+        command = sh -c 'printf "building\n" && cp $in $out'
         deps = gcc
 
       build foo.o: cc source.c

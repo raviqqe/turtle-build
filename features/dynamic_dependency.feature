@@ -6,7 +6,7 @@ Feature: Dynamic dependency
       rule cp
         command = cp $in $out
       rule dd
-        command = echo ok && echo ninja_dyndep_version = 1 >> $out && echo build foo: dyndep >> $out
+        command = sh -c 'echo ok && echo ninja_dyndep_version = 1 >> $out && echo build foo: dyndep >> $out'
 
       build foo: cp bar || foo.dd
         dyndep = foo.dd
@@ -23,9 +23,9 @@ Feature: Dynamic dependency
       rule touch
         command = touch $out
       rule cp
-        command = echo ok && cp $in $out
+        command = sh -c 'echo ok && cp $in $out'
       rule dd
-        command = echo ninja_dyndep_version = 1 >> $out && echo build foo: dyndep '|' bar >> $out
+        command = sh -c 'echo ninja_dyndep_version = 1 >> $out && echo build foo: dyndep "|" bar >> $out'
 
       build foo: touch || foo.dd
         dyndep = foo.dd
@@ -43,9 +43,9 @@ Feature: Dynamic dependency
       rule cp
         command = cp $in $out
       rule cat
-        command = cat bar > $out
+        command = sh -c 'cat bar > $out'
       rule dd
-        command = printf 'ninja_dyndep_version = 1\nbuild foo: dyndep | bar\n' > $out
+        command = sh -c 'printf "ninja_dyndep_version = 1\nbuild foo: dyndep | bar\n" > $out'
 
       build foo: cat || foo.dd
         dyndep = foo.dd
@@ -66,9 +66,9 @@ Feature: Dynamic dependency
         command = touch $out
         dyndep = $out.dd
       rule cp
-        command = echo ok && cp $in $out
+        command = sh -c 'echo ok && cp $in $out'
       rule dd
-        command = echo ninja_dyndep_version = 1 >> $out && echo build foo: dyndep '|' bar >> $out
+        command = sh -c 'echo ninja_dyndep_version = 1 >> $out && echo build foo: dyndep "|" bar >> $out'
 
       build foo: touch || foo.dd
       build foo.dd: dd
@@ -85,9 +85,9 @@ Feature: Dynamic dependency
       rule touch
         command = touch $out
       rule cp
-        command = echo ok && cp $in $out
+        command = sh -c 'echo ok && cp $in $out'
       rule dd
-        command = echo ninja_dyndep_version = 1 >> $out && echo build baz: dyndep '|' bar >> $out
+        command = sh -c 'echo ninja_dyndep_version = 1 >> $out && echo build baz: dyndep "|" bar >> $out'
 
       build foo | baz: touch || foo.dd
         dyndep = foo.dd
@@ -105,9 +105,9 @@ Feature: Dynamic dependency
       rule touch
         command = touch $out
       rule cp
-        command = echo $out && cp $in $out
+        command = sh -c 'echo $out && cp $in $out'
       rule dd
-        command = printf 'ninja_dyndep_version = 1\nbuild foo: dyndep | baz\nbuild bar: dyndep | qux\n' > $out
+        command = sh -c 'printf "ninja_dyndep_version = 1\nbuild foo: dyndep | baz\nbuild bar: dyndep | qux\n" > $out'
 
       build foo: touch || foo.dd
         dyndep = foo.dd
@@ -129,7 +129,7 @@ Feature: Dynamic dependency
       rule touch
         command = touch $out
       rule dd
-        command = echo ninja_dyndep_version = 1 >> $out && echo build foo: dyndep >> $out
+        command = sh -c 'echo ninja_dyndep_version = 1 >> $out && echo build foo: dyndep >> $out'
 
       build foo: touch
         dyndep = foo.dd
@@ -146,7 +146,7 @@ Feature: Dynamic dependency
       rule touch
         command = touch $out
       rule dd
-        command = echo ninja_dyndep_version = 1 >> $out && echo build baz: dyndep '|' bar >> $out
+        command = sh -c 'echo ninja_dyndep_version = 1 >> $out && echo build baz: dyndep "|" bar >> $out'
 
       build foo: touch || foo.dd
         dyndep = foo.dd

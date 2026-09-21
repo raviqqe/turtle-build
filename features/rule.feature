@@ -225,7 +225,7 @@ Feature: Rule statement
     Given a file named "build.ninja" with:
       """
       rule hello
-        command = echo hello && touch $out
+        command = sh -c 'echo hello && touch $out'
 
       build foo: phony 
       build bar: hello foo

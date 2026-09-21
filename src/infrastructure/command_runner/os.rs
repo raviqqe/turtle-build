@@ -26,8 +26,6 @@ impl OsCommandRunner {
     fn create_command(command: &str) -> Command {
         cfg_select! {
             windows => {
-                // Arguments are passed as they are with no shell like ninja does because
-                // programs parse command lines by themselves on Windows.
                 let (program, arguments) = split_program(command);
                 let mut process = Command::new(program);
 

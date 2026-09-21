@@ -4,7 +4,7 @@ mod global_state;
 mod module_state;
 
 pub use self::error::CompileError;
-use self::{context::Context, global_state::GlobalState, module_state::ModuleState};
+use self::{context::CompileContext, global_state::GlobalState, module_state::ModuleState};
 use crate::{
     ast,
     ir::{Build, Config, DynamicBuild, DynamicConfig, HeaderDependency, Pool, Rule},
@@ -44,7 +44,7 @@ pub fn compile(
     dependencies: &ModuleDependencyMap,
     root_module_path: &Path,
 ) -> Result<Config, CompileError> {
-    let context = Context::new(modules, dependencies);
+    let context = CompileContext::new(modules, dependencies);
 
     let mut global_state = GlobalState {
         outputs: Default::default(),
@@ -87,7 +87,7 @@ pub fn compile(
 }
 
 fn compile_module<'a>(
-    context: &'a Context,
+    context: &'a CompileContext,
     global_state: &mut GlobalState,
     module_state: &mut ModuleState<'a, '_>,
     path: &Path,
@@ -309,7 +309,7 @@ pub fn compile_dynamic(module: &ast::DynamicModule) -> Result<DynamicConfig, Com
 }
 
 fn resolve_dependency<'a>(
-    context: &'a Context,
+    context: &'a CompileContext,
     module_path: &Path,
     submodule_path: &str,
 ) -> Result<&'a Path, CompileError> {

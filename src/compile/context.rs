@@ -2,12 +2,12 @@ use crate::{ast::Module, module_dependency::ModuleDependencyMap};
 use std::{collections::HashMap, path::PathBuf};
 
 #[derive(Debug)]
-pub struct Context<'a> {
+pub struct CompileContext<'a> {
     modules: &'a HashMap<PathBuf, Module>,
     dependencies: &'a ModuleDependencyMap,
 }
 
-impl<'a> Context<'a> {
+impl<'a> CompileContext<'a> {
     pub const fn new(
         modules: &'a HashMap<PathBuf, Module>,
         dependencies: &'a ModuleDependencyMap,

@@ -21,8 +21,6 @@ for name in "$@"; do
 
     ../main.sh
 
-    # Hyperfine reports the peak memory usage of all the processes it has run so far.
-    # So each tool and build kind needs its own run, and the last clean build prepares the no-op ones.
     for tool in ninja turtle; do
       hyperfine -n "$tool ($name, clean build)" --prepare "$clean" --export-json clean_$tool.json $tool
       hyperfine -n "$tool ($name, no-op build)" --export-json no_op_$tool.json $tool

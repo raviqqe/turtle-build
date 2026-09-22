@@ -20,7 +20,7 @@ use tokio::{sync::Mutex, time::sleep};
 use turtle_build::{
     BuildError, Console, Context, FileSystem, Module, ModuleDependencyMap, OsCommandRunner,
     OsConsole, OsFileSystem, PathPool, RedbDatabase, RunOptions, Statement, clean_dead, compile,
-    parse, run, validate_modules,
+    job_limit, parse, run, validate_modules,
 };
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
@@ -94,7 +94,9 @@ async fn execute(arguments: &Arguments, console: &Arc<Mutex<OsConsole>>) -> Resu
 
     increase_nofile_limit(u64::MAX)?;
 
-    let job_limit = arguments.job_limit.unwrap_or_else(num_cpus::get);
+    let job_limit = arguments
+        .job_limit
+        .unwrap_or_else(|| job_limit(num_cpus::get()));
     let file_system = OsFileSystem::new(
         cfg_select! {
             unix => usize::try_from(Resource::NOFILE.get_soft()?).unwrap_or(usize::MAX),

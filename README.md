@@ -99,7 +99,7 @@ Here is how parallel builds work in Turtle:
 3. Those futures are scheduled and run in parallel by an asynchronous runtime in Rust.
 4. Builds complete when all the futures are resolved.
 
-Currently, Turtle uses a topological sort algorithm only to detect dependency cycles but not for scheduling of build jobs.
+When more build jobs are ready than the job limit allows, Turtle runs them in the order of a depth-first traversal of the build graph from the requested targets, which usually follows the order of build statements in build files. Turtle uses a topological sort algorithm only to detect dependency cycles.
 
 ## Similar projects
 

@@ -1,7 +1,6 @@
 use core::fmt::Display;
 use std::io;
 use thiserror::Error;
-use tokio::sync::AcquireError;
 
 #[derive(Clone, Debug, Eq, Error, PartialEq)]
 #[error("{0}")]
@@ -10,12 +9,6 @@ pub struct CommandError(String);
 impl CommandError {
     pub fn new(error: impl Display) -> Self {
         Self(error.to_string())
-    }
-}
-
-impl From<AcquireError> for CommandError {
-    fn from(error: AcquireError) -> Self {
-        Self::new(error)
     }
 }
 

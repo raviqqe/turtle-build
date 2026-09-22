@@ -2,14 +2,17 @@ mod context;
 mod file_cache;
 mod hash;
 mod header_dependency;
+mod job_queue;
 mod log;
 mod options;
+mod sequence;
 
 use self::{
     context::RunContext,
     hash::{calculate_content_hash, calculate_timestamp_hash},
     header_dependency::{exclude_show_includes, read_header_dependencies},
     log::{debug, profile},
+    sequence::calculate_sequences,
 };
 use crate::{
     build_graph::{BuildGraph, BuildGraphError},
@@ -51,11 +54,37 @@ pub async fn run(
         header_dependencies.insert(build.id(), dependencies);
     }
 
+    let builds = if outputs.is_empty() {
+        config
+            .default_outputs()
+            .iter()
+            .map(|output| {
+                config
+                    .outputs()
+                    .get(output.as_ref())
+                    .cloned()
+                    .ok_or_else(|| BuildError::DefaultOutputNotFound(output.clone()))
+            })
+            .collect::<Result<Vec<_>, _>>()?
+    } else {
+        outputs
+            .iter()
+            .map(|output| {
+                config
+                    .outputs()
+                    .get(output.as_str())
+                    .cloned()
+                    .ok_or_else(|| BuildError::OutputNotFound(output.clone()))
+            })
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    let sequences = calculate_sequences(&config, &builds);
     let context = Arc::new(RunContext::new(
         context.clone(),
         config,
         graph,
         header_dependencies,
+        sequences,
         options,
     ));
 
@@ -66,36 +95,7 @@ pub async fn run(
         .validate()
         .map_err(|error| map_build_graph_error(&context, &error))?;
 
-    try_join_all(
-        if outputs.is_empty() {
-            context
-                .config()
-                .default_outputs()
-                .iter()
-                .map(|output| {
-                    context
-                        .config()
-                        .outputs()
-                        .get(output.as_ref())
-                        .ok_or_else(|| BuildError::DefaultOutputNotFound(output.clone()))
-                })
-                .collect::<Result<Vec<_>, _>>()?
-        } else {
-            outputs
-                .iter()
-                .map(|output| {
-                    context
-                        .config()
-                        .outputs()
-                        .get(output.as_str())
-                        .ok_or_else(|| BuildError::OutputNotFound(output.clone()))
-                })
-                .collect::<Result<Vec<_>, _>>()?
-        }
-        .into_iter()
-        .map(|build| run_build(context.clone(), build)),
-    )
-    .await?;
+    try_join_all(builds.iter().map(|build| run_build(context.clone(), build))).await?;
 
     Ok(())
 }
@@ -205,7 +205,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             )
             .await?;
 
-            let output = run_rule(&context, rule).await;
+            let output = run_rule(&context, rule, context.sequence(build.id())).await;
 
             invalidate_outputs(&context, &build).await;
 
@@ -407,12 +407,17 @@ fn classify_inputs<'a>(
     )
 }
 
-async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildError> {
+async fn run_rule(
+    context: &RunContext,
+    rule: &Rule,
+    sequence: usize,
+) -> Result<Output, BuildError> {
     let ((output, duration), mut console) = if rule.pool() == Some(&Pool::Console) {
         let mut console = write_description(context, rule).await?;
 
         console.flush().await?;
 
+        let _job = context.job_queue().acquire(sequence).await;
         let time = Instant::now();
         let status = context
             .build()
@@ -435,9 +440,11 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildErro
         let permit = context.pool(rule.pool()).await?;
         let (output, console) = join!(
             async {
+                let job = context.job_queue().acquire(sequence).await;
                 let time = Instant::now();
                 let output = context.build().command_runner().run(rule.command()).await?;
 
+                drop(job);
                 drop(permit);
 
                 Ok::<_, BuildError>((output, Instant::now() - time))
@@ -536,6 +543,7 @@ mod tests {
     const DEFAULT_OPTIONS: RunOptions = RunOptions {
         debug: false,
         profile: false,
+        job_limit: usize::MAX,
     };
     const POLL_COUNT: usize = 8;
 
@@ -639,6 +647,7 @@ mod tests {
             create_pool_config(vec![], &[], pools),
             BuildGraph::new(&Default::default()),
             Default::default(),
+            Default::default(),
             DEFAULT_OPTIONS,
         )
     }
@@ -652,6 +661,7 @@ mod tests {
             create_context(command_runner, &Default::default(), file_system),
             create_simple_config(builds, &[]),
             BuildGraph::new(&Default::default()),
+            Default::default(),
             Default::default(),
             DEFAULT_OPTIONS,
         )
@@ -1797,6 +1807,7 @@ mod tests {
                 RunOptions {
                     debug: true,
                     profile: false,
+                    job_limit: usize::MAX,
                 },
             )
             .await,
@@ -1826,6 +1837,7 @@ mod tests {
             RunOptions {
                 debug: false,
                 profile: true,
+                job_limit: usize::MAX,
             },
         )
         .await
@@ -2349,6 +2361,7 @@ mod tests {
             config.clone(),
             BuildGraph::new(config.outputs()),
             Default::default(),
+            Default::default(),
             DEFAULT_OPTIONS,
         );
 
@@ -2480,6 +2493,67 @@ mod tests {
         .unwrap();
 
         assert_eq!(command_runner.max_concurrency(), 3);
+    }
+
+    #[tokio::test]
+    async fn limit_concurrency_of_builds() {
+        let command_runner = FakeCommandRunner::default();
+
+        run(
+            &create_context(&command_runner, &Default::default(), &Default::default()),
+            create_simple_config(
+                vec![
+                    pool_build("foo", None),
+                    pool_build("bar", None),
+                    pool_build("baz", None),
+                ],
+                &["foo", "bar", "baz"],
+            ),
+            &[],
+            RunOptions {
+                job_limit: 2,
+                ..DEFAULT_OPTIONS
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(command_runner.commands().len(), 3);
+        assert_eq!(command_runner.max_concurrency(), 2);
+    }
+
+    #[tokio::test]
+    async fn run_builds_in_order_of_traversal() {
+        let command_runner = FakeCommandRunner::default();
+
+        run(
+            &create_context(&command_runner, &Default::default(), &Default::default()),
+            create_simple_config(
+                vec![
+                    pool_build("foo", None),
+                    explicit_build(
+                        vec!["bar".into()],
+                        Rule::new("touch bar".into(), None),
+                        vec!["baz".into()],
+                    ),
+                    pool_build("baz", None),
+                    pool_build("qux", None),
+                ],
+                &[],
+            ),
+            &["foo".into(), "bar".into(), "qux".into()],
+            RunOptions {
+                job_limit: 1,
+                ..DEFAULT_OPTIONS
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            command_runner.commands(),
+            ["touch foo", "touch baz", "touch qux", "touch bar"]
+        );
     }
 
     #[tokio::test]
@@ -2660,6 +2734,7 @@ mod tests {
                 RunOptions {
                     debug: true,
                     profile: false,
+                    job_limit: usize::MAX,
                 },
             )
             .await,
@@ -2677,7 +2752,7 @@ mod tests {
         let command_runner = FakeCommandRunner::default();
         let context = create_run_context(&command_runner, &Default::default(), &[]);
         let rule = Rule::new("foo".into(), None).with_pool(Some(Pool::Console));
-        let mut future = pin!(run_rule(&context, &rule));
+        let mut future = pin!(run_rule(&context, &rule, 0));
 
         assert!(poll!(&mut future).is_pending());
         assert_eq!(command_runner.console_commands(), ["foo"]);
@@ -2694,7 +2769,7 @@ mod tests {
         let console = FakeConsole::default();
         let context = create_run_context(&command_runner, &console, &[]);
         let rule = Rule::new("foo".into(), Some("bar".into())).with_pool(Some(Pool::Console));
-        let mut future = pin!(run_rule(&context, &rule));
+        let mut future = pin!(run_rule(&context, &rule, 0));
 
         assert!(poll!(&mut future).is_pending());
         assert_eq!(command_runner.console_commands(), ["foo"]);
@@ -2709,7 +2784,7 @@ mod tests {
         let context = create_run_context(&command_runner, &Default::default(), &[]);
         let rule = Rule::new("foo".into(), None).with_pool(Some(Pool::Console));
         let console = context.build().console().lock().await;
-        let mut future = pin!(run_rule(&context, &rule));
+        let mut future = pin!(run_rule(&context, &rule, 0));
 
         for _ in 0..POLL_COUNT {
             assert!(poll!(&mut future).is_pending());
@@ -2729,8 +2804,8 @@ mod tests {
         let context = create_run_context(&command_runner, &Default::default(), &[]);
         let foo = Rule::new("foo".into(), None).with_pool(Some(Pool::Console));
         let bar = Rule::new("bar".into(), None);
-        let mut foo_future = pin!(run_rule(&context, &foo));
-        let mut bar_future = pin!(run_rule(&context, &bar));
+        let mut foo_future = pin!(run_rule(&context, &foo, 0));
+        let mut bar_future = pin!(run_rule(&context, &bar, 0));
 
         assert!(poll!(&mut foo_future).is_pending());
         assert!(poll!(&mut bar_future).is_pending());
@@ -2742,14 +2817,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn run_waiting_commands_in_order_of_sequence() {
+        let command_runner = FakeCommandRunner::default();
+        let context = RunContext::new(
+            create_context(&command_runner, &Default::default(), &Default::default()),
+            create_pool_config(vec![], &[], &[]),
+            BuildGraph::new(&Default::default()),
+            Default::default(),
+            Default::default(),
+            RunOptions {
+                job_limit: 1,
+                ..DEFAULT_OPTIONS
+            },
+        );
+        let foo = Rule::new("foo".into(), None);
+        let bar = Rule::new("bar".into(), None);
+        let baz = Rule::new("baz".into(), None);
+        let mut foo_future = pin!(run_rule(&context, &foo, 0));
+        let mut bar_future = pin!(run_rule(&context, &bar, 2));
+        let mut baz_future = pin!(run_rule(&context, &baz, 1));
+
+        assert!(poll!(&mut foo_future).is_pending());
+        assert!(poll!(&mut bar_future).is_pending());
+        assert!(poll!(&mut baz_future).is_pending());
+        assert_eq!(command_runner.commands(), ["foo"]);
+
+        foo_future.await.unwrap();
+
+        assert!(poll!(&mut bar_future).is_pending());
+        assert!(poll!(&mut baz_future).is_pending());
+        assert_eq!(command_runner.commands(), ["foo", "baz"]);
+
+        baz_future.await.unwrap();
+        bar_future.await.unwrap();
+
+        assert_eq!(command_runner.commands(), ["foo", "baz", "bar"]);
+    }
+
+    #[tokio::test]
     async fn release_pool_before_waiting_for_console() {
         let command_runner = FakeCommandRunner::default();
         let context = create_run_context(&command_runner, &Default::default(), &[("baz", 1)]);
         let foo = Rule::new("foo".into(), None).with_pool(limited_pool("baz"));
         let bar = Rule::new("bar".into(), None).with_pool(limited_pool("baz"));
         let console = context.build().console().lock().await;
-        let mut foo_future = pin!(run_rule(&context, &foo));
-        let mut bar_future = pin!(run_rule(&context, &bar));
+        let mut foo_future = pin!(run_rule(&context, &foo, 0));
+        let mut bar_future = pin!(run_rule(&context, &bar, 0));
 
         for _ in 0..POLL_COUNT {
             assert!(poll!(&mut foo_future).is_pending());
@@ -2773,7 +2886,7 @@ mod tests {
         let context = create_run_context(&command_runner, &console, &[("bar", 1)]);
         let rule = Rule::new("foo".into(), Some("foo".into())).with_pool(limited_pool("bar"));
         let permit = context.pool(rule.pool()).await.unwrap();
-        let mut future = pin!(run_rule(&context, &rule));
+        let mut future = pin!(run_rule(&context, &rule, 0));
 
         for _ in 0..POLL_COUNT {
             assert!(poll!(&mut future).is_pending());
@@ -2796,8 +2909,8 @@ mod tests {
         let context = create_run_context(&command_runner, &FakeConsole::failing(), &[("baz", 1)]);
         let foo = Rule::new("foo".into(), Some("foo".into())).with_pool(limited_pool("baz"));
         let bar = Rule::new("bar".into(), None).with_pool(limited_pool("baz"));
-        let mut foo_future = pin!(run_rule(&context, &foo));
-        let mut bar_future = pin!(run_rule(&context, &bar));
+        let mut foo_future = pin!(run_rule(&context, &foo, 0));
+        let mut bar_future = pin!(run_rule(&context, &bar, 0));
 
         assert!(poll!(&mut foo_future).is_pending());
         assert!(poll!(&mut bar_future).is_pending());
@@ -2827,6 +2940,7 @@ mod tests {
                 &[],
             ),
             BuildGraph::new(&Default::default()),
+            Default::default(),
             Default::default(),
             DEFAULT_OPTIONS,
         );

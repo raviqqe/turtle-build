@@ -126,7 +126,7 @@ async fn execute(arguments: &Arguments, console: &Arc<Mutex<OsConsole>>) -> Resu
         &path_pool,
     )?);
     let context = Arc::new(Context::new(
-        OsCommandRunner::new(job_limit),
+        OsCommandRunner::new(),
         console.clone(),
         RedbDatabase::new(
             &config
@@ -154,6 +154,7 @@ async fn execute(arguments: &Arguments, console: &Arc<Mutex<OsConsole>>) -> Resu
             RunOptions {
                 debug: arguments.debug,
                 profile: arguments.profile,
+                job_limit,
             },
         )
         .await?;

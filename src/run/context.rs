@@ -1,4 +1,4 @@
-use super::{file_cache::FileCache, options::RunOptions};
+use super::{file_cache::FileCache, job_queue::JobQueue, options::RunOptions};
 use crate::{
     BuildError,
     build_graph::BuildGraph,
@@ -21,7 +21,9 @@ pub struct RunContext {
     dynamic_configs: std::collections::HashMap<Arc<str>, OnceCell<DynamicConfig>>,
     file_cache: FileCache,
     header_dependencies: std::collections::HashMap<BuildId, Vec<Arc<str>>>,
+    job_queue: JobQueue,
     pools: std::collections::HashMap<Arc<str>, Semaphore>,
+    sequences: std::collections::HashMap<BuildId, usize>,
     options: RunOptions,
 }
 
@@ -31,6 +33,7 @@ impl RunContext {
         config: Arc<Config>,
         build_graph: BuildGraph,
         header_dependencies: std::collections::HashMap<BuildId, Vec<Arc<str>>>,
+        sequences: std::collections::HashMap<BuildId, usize>,
         options: RunOptions,
     ) -> Self {
         Self {
@@ -43,6 +46,8 @@ impl RunContext {
                 .filter_map(|build| Some((build.dynamic_module()?.clone(), Default::default())))
                 .collect(),
             header_dependencies,
+            job_queue: JobQueue::new(options.job_limit),
+            sequences,
             pools: config
                 .pools()
                 .iter()
@@ -87,6 +92,14 @@ impl RunContext {
         self.header_dependencies
             .get(&id)
             .map_or_default(Vec::as_slice)
+    }
+
+    pub const fn job_queue(&self) -> &JobQueue {
+        &self.job_queue
+    }
+
+    pub fn sequence(&self, id: BuildId) -> usize {
+        self.sequences.get(&id).copied().unwrap_or_default()
     }
 
     pub async fn pool(

@@ -4,23 +4,19 @@ use std::{
     io,
     process::{ExitStatus, Output, Stdio},
 };
-use tokio::{process::Command, sync::Semaphore};
+use tokio::process::Command;
 
 #[cfg(any(windows, test))]
 const BLANK_CHARACTERS: [char; 2] = [' ', '\t'];
 
 /// A command runner backed by an operating system.
-#[derive(Debug)]
-pub struct OsCommandRunner {
-    semaphore: Semaphore,
-}
+#[derive(Debug, Default)]
+pub struct OsCommandRunner;
 
 impl OsCommandRunner {
     /// Creates a command runner.
-    pub fn new(job_limit: usize) -> Self {
-        Self {
-            semaphore: Semaphore::new(job_limit),
-        }
+    pub const fn new() -> Self {
+        Self
     }
 
     fn create_command(command: &str) -> Command {
@@ -53,7 +49,6 @@ impl OsCommandRunner {
 #[async_trait]
 impl CommandRunner for OsCommandRunner {
     async fn run(&self, command: &str) -> Result<Output, CommandError> {
-        let _permit = self.semaphore.acquire().await?;
         let mut process = Self::create_command(command);
 
         process
@@ -64,7 +59,6 @@ impl CommandRunner for OsCommandRunner {
     }
 
     async fn run_with_console(&self, command: &str) -> Result<ExitStatus, CommandError> {
-        let _permit = self.semaphore.acquire().await?;
         let mut process = Self::create_command(command);
 
         // Inherit standard input, output, and error.
@@ -106,7 +100,7 @@ mod tests {
 
         #[tokio::test]
         async fn run_command() {
-            let output = OsCommandRunner::new(1)
+            let output = OsCommandRunner::new()
                 .run(cfg_select! {
                     windows => "cmd /c echo foo",
                     _ => "echo foo",
@@ -120,7 +114,7 @@ mod tests {
 
         #[tokio::test]
         async fn run_command_with_quoted_argument() {
-            let output = OsCommandRunner::new(1)
+            let output = OsCommandRunner::new()
                 .run(cfg_select! {
                     windows => "cmd /c \"echo foo  bar\"",
                     _ => "echo 'foo  bar'",
@@ -138,7 +132,7 @@ mod tests {
         #[tokio::test]
         async fn run_failing_command() {
             assert_eq!(
-                OsCommandRunner::new(1)
+                OsCommandRunner::new()
                     .run(cfg_select! {
                         windows => "cmd /c exit 42",
                         _ => "exit 42",
@@ -155,7 +149,7 @@ mod tests {
         #[tokio::test]
         async fn fail_to_run_missing_program() {
             assert!(
-                OsCommandRunner::new(1)
+                OsCommandRunner::new()
                     .run("missing-program foo")
                     .await
                     .unwrap_err()
@@ -172,7 +166,7 @@ mod tests {
         #[tokio::test]
         async fn run_command() {
             assert!(
-                OsCommandRunner::new(1)
+                OsCommandRunner::new()
                     .run_with_console(cfg_select! {
                         windows => "cmd /c exit 0",
                         _ => "exit 0",
@@ -186,7 +180,7 @@ mod tests {
         #[tokio::test]
         async fn run_failing_command() {
             assert_eq!(
-                OsCommandRunner::new(1)
+                OsCommandRunner::new()
                     .run_with_console(cfg_select! {
                         windows => "cmd /c exit 42",
                         _ => "exit 42",
@@ -202,7 +196,7 @@ mod tests {
         #[tokio::test]
         async fn fail_to_run_missing_program() {
             assert!(
-                OsCommandRunner::new(1)
+                OsCommandRunner::new()
                     .run_with_console("missing-program foo")
                     .await
                     .unwrap_err()

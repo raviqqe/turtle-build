@@ -5,4 +5,6 @@ pub struct RunOptions {
     pub debug: bool,
     /// Shows profile timings.
     pub profile: bool,
+    /// A job limit.
+    pub job_limit: usize,
 }

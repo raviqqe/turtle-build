@@ -11,6 +11,7 @@ mod file;
 mod hash_type;
 mod infrastructure;
 mod ir;
+mod job_limit;
 mod module_dependency;
 mod parse;
 mod path_pool;
@@ -26,6 +27,7 @@ pub use self::{
         Console, DatabaseError, FileSystem, FjallDatabase, OsCommandRunner, OsConsole,
         OsFileSystem, RedbDatabase,
     },
+    job_limit::job_limit,
     module_dependency::{ModuleDependencyMap, validate_modules},
     parse::parse,
     path_pool::PathPool,

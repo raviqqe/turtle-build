@@ -2,8 +2,7 @@ use alloc::collections::BTreeMap;
 use std::sync::Mutex;
 use tokio::sync::oneshot::{self, Receiver, Sender};
 
-// A job queue limits concurrent jobs and admits waiting ones in order of their
-// sequences.
+// A job queue.
 #[derive(Debug)]
 pub struct JobQueue {
     state: Mutex<State>,
@@ -12,7 +11,6 @@ pub struct JobQueue {
 #[derive(Debug)]
 struct State {
     free_slots: usize,
-    // Waiters of the same sequence are admitted in order of arrival.
     waiters: BTreeMap<(usize, usize), Sender<()>>,
     arrival: usize,
 }

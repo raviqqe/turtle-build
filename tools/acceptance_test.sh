@@ -6,6 +6,9 @@ cd $(dirname $0)/..
 
 export PATH=$PWD/target/release:$PATH
 
+tool=$1
+shift
+
 if [ $# -eq 0 ]; then
   set -- $(ls tools/acceptance)
 fi
@@ -18,7 +21,8 @@ for name in "$@"; do
 
     ../../tools/acceptance/$name/main.sh
 
-    turtle -C build
-    [ -z "$(turtle -C build 2>&1 | tee /dev/stderr)" ]
+    time $tool -C build
+    [ -z "$($tool --quiet -C build 2>&1 | tee /dev/stderr)" ]
+    time $tool -C build
   )
 done

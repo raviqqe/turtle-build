@@ -477,6 +477,7 @@ async fn write_description<'a>(
     context: &'a RunContext,
     rule: &Rule,
 ) -> Result<MutexGuard<'a, dyn Console + Send + Sync>, BuildError> {
+    // TODO Make console lock free.
     let mut console = context.build().console().lock().await;
 
     if let Some(description) = rule.description() {

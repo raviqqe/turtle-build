@@ -2,8 +2,6 @@ use crate::ir::{Build, BuildId, Config};
 use alloc::sync::Arc;
 use std::collections::HashMap;
 
-// Builds are ordered by a depth-first traversal from requested outputs, which
-// usually follows the order of build statements in build files.
 pub fn calculate_sequences(config: &Config, outputs: &[Arc<Build>]) -> HashMap<BuildId, usize> {
     let mut sequences = HashMap::new();
     let mut stack = outputs.iter().rev().collect::<Vec<_>>();

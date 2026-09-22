@@ -80,8 +80,6 @@ impl JobQueue {
     }
 }
 
-// A waiter gives back a slot handed over to it if it is dropped before taking
-// the slot.
 struct Waiter<'a> {
     queue: &'a JobQueue,
     receiver: Option<Receiver<()>>,

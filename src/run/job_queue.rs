@@ -9,7 +9,7 @@ use tokio::sync::oneshot::{self, Receiver, Sender, error::RecvError};
 // A job queue.
 #[derive(Debug)]
 pub struct JobQueue {
-    state: Mutex<Inner>,
+    inner: Mutex<Inner>,
 }
 
 #[derive(Debug)]
@@ -21,7 +21,7 @@ struct Inner {
 impl JobQueue {
     pub const fn new(limit: usize) -> Self {
         Self {
-            state: Mutex::new(Inner {
+            inner: Mutex::new(Inner {
                 free: limit,
                 waiters: BTreeMap::new(),
             }),
@@ -41,7 +41,7 @@ impl JobQueue {
     }
 
     fn wait(&self, order: usize) -> Option<Receiver<()>> {
-        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut state = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
 
         if state.free > 0 {
             state.free -= 1;
@@ -57,7 +57,7 @@ impl JobQueue {
     }
 
     fn release(&self) {
-        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut state = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
 
         while let Some((_, sender)) = state.waiters.pop_first() {
             if sender.send(()).is_ok() {

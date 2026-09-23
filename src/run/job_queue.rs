@@ -1,6 +1,6 @@
 use alloc::collections::BTreeMap;
 use std::sync::{Mutex, PoisonError};
-use tokio::sync::oneshot::{self, Receiver, Sender, error::RecvError};
+use tokio::sync::oneshot::{Receiver, Sender, channel, error::RecvError};
 
 // A job queue.
 #[derive(Debug)]
@@ -40,7 +40,7 @@ impl JobQueue {
 
             None
         } else {
-            let (sender, receiver) = oneshot::channel();
+            let (sender, receiver) = channel();
 
             state.waiters.insert(priority, sender);
 

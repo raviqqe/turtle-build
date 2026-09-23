@@ -27,7 +27,7 @@ use futures::future::{FutureExt, try_join_all};
 use itertools::Itertools;
 pub use options::RunOptions;
 use std::{collections::HashMap, path::Path, process::Output};
-use tokio::{join, spawn, sync::MutexGuard, time::Instant, try_join};
+use tokio::{spawn, sync::MutexGuard, time::Instant, try_join};
 
 /// Runs builds.
 pub async fn run(
@@ -433,19 +433,13 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildErro
         )
     } else {
         let permit = context.pool(rule.pool()).await?;
-        let (output, console) = join!(
-            async {
-                let time = Instant::now();
-                let output = context.build().command_runner().run(rule.command()).await?;
+        let time = Instant::now();
+        let output = context.build().command_runner().run(rule.command()).await?;
+        let duration = Instant::now() - time;
 
-                drop(permit);
+        drop(permit);
 
-                Ok::<_, BuildError>((output, Instant::now() - time))
-            },
-            write_description(context, rule)
-        );
-
-        (output?, console?)
+        ((output, duration), write_description(context, rule).await?)
     };
 
     profile!(context, console, "duration: {} ms", duration.as_millis());
@@ -477,7 +471,6 @@ async fn write_description<'a>(
     context: &'a RunContext,
     rule: &Rule,
 ) -> Result<MutexGuard<'a, dyn Console + Send + Sync>, BuildError> {
-    // TODO Reduce console lock contentions.
     let mut console = context.build().console().lock().await;
 
     if let Some(description) = rule.description() {
@@ -2740,6 +2733,45 @@ mod tests {
 
         foo_future.await.unwrap();
         bar_future.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn run_command_without_locking_console() {
+        let command_runner = FakeCommandRunner::default();
+        let console = FakeConsole::default();
+        let context = create_run_context(&command_runner, &console, &[]);
+        let rule = Rule::new("foo".into(), Some("bar".into()));
+        let mut future = pin!(run_rule(&context, &rule));
+
+        assert!(poll!(&mut future).is_pending());
+        assert_eq!(command_runner.commands(), ["foo"]);
+        assert!(context.build().console().try_lock().is_ok());
+        assert_eq!(console.stderr(), "");
+
+        future.await.unwrap();
+
+        assert_eq!(console.stderr(), "bar\n");
+    }
+
+    #[tokio::test]
+    async fn write_output_while_another_command_runs() {
+        let command_runner = FakeCommandRunner::default();
+        let console = FakeConsole::default();
+        let context = create_run_context(&command_runner, &console, &[]);
+        let foo = Rule::new("foo".into(), Some("foo".into()));
+        let bar = Rule::new("bar".into(), Some("bar".into()));
+        let mut foo_future = pin!(run_rule(&context, &foo));
+
+        assert!(poll!(&mut foo_future).is_pending());
+
+        run_rule(&context, &bar).await.unwrap();
+
+        assert_eq!(command_runner.commands(), ["foo", "bar"]);
+        assert_eq!(console.stderr(), "bar\n");
+
+        foo_future.await.unwrap();
+
+        assert_eq!(console.stderr(), "bar\nfoo\n");
     }
 
     #[tokio::test]

@@ -28,8 +28,8 @@ impl JobQueue {
         }
     }
 
-    pub async fn acquire(&self, order: usize) -> Result<JobPermit<'_>, RecvError> {
-        if let Some(receiver) = self.wait(order) {
+    pub async fn acquire(&self, priority: usize) -> Result<JobPermit<'_>, RecvError> {
+        if let Some(receiver) = self.wait(priority) {
             Waiter {
                 queue: self,
                 receiver,
@@ -40,7 +40,7 @@ impl JobQueue {
         Ok(JobPermit { queue: self })
     }
 
-    fn wait(&self, order: usize) -> Option<Receiver<()>> {
+    fn wait(&self, priority: usize) -> Option<Receiver<()>> {
         let mut state = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
 
         if state.free > 0 {
@@ -50,7 +50,7 @@ impl JobQueue {
         } else {
             let (sender, receiver) = oneshot::channel();
 
-            state.waiters.insert(order, sender);
+            state.waiters.insert(priority, sender);
 
             Some(receiver)
         }
@@ -128,7 +128,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn admit_waiters_in_order() {
+    async fn admit_waiters_by_priority() {
         let queue = JobQueue::new(1);
         let permit = queue.acquire(0).await.unwrap();
         let mut second = pin!(queue.acquire(2));

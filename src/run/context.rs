@@ -26,8 +26,8 @@ pub struct RunContext {
     header_dependencies: std::collections::HashMap<BuildId, Vec<Arc<str>>>,
     job_queue: JobQueue,
     pools: std::collections::HashMap<Arc<str>, Semaphore>,
-    orders: std::collections::HashMap<BuildId, usize>,
-    dynamic_order: AtomicUsize,
+    priorities: std::collections::HashMap<BuildId, usize>,
+    dynamic_priority: AtomicUsize,
     options: RunOptions,
 }
 
@@ -37,7 +37,7 @@ impl RunContext {
         config: Arc<Config>,
         build_graph: BuildGraph,
         header_dependencies: std::collections::HashMap<BuildId, Vec<Arc<str>>>,
-        orders: std::collections::HashMap<BuildId, usize>,
+        priorities: std::collections::HashMap<BuildId, usize>,
         options: RunOptions,
     ) -> Self {
         Self {
@@ -51,8 +51,8 @@ impl RunContext {
                 .collect(),
             header_dependencies,
             job_queue: JobQueue::new(options.job_limit),
-            dynamic_order: AtomicUsize::new(orders.len()),
-            orders,
+            dynamic_priority: AtomicUsize::new(priorities.len()),
+            priorities,
             pools: config
                 .pools()
                 .iter()
@@ -103,11 +103,11 @@ impl RunContext {
         &self.job_queue
     }
 
-    pub fn order(&self, id: BuildId) -> usize {
-        self.orders
+    pub fn priority(&self, id: BuildId) -> usize {
+        self.priorities
             .get(&id)
             .copied()
-            .unwrap_or_else(|| self.dynamic_order.fetch_add(1, Ordering::Relaxed))
+            .unwrap_or_else(|| self.dynamic_priority.fetch_add(1, Ordering::Relaxed))
     }
 
     pub async fn pool(

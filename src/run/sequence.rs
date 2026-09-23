@@ -29,6 +29,7 @@ pub fn calculate_sequences(config: &Config, outputs: &[Arc<Build>]) -> HashMap<B
 mod tests {
     use super::*;
     use crate::ir::Rule;
+    use core::slice::from_ref;
     use pretty_assertions::assert_eq;
 
     fn create_build(output: &str, inputs: &[&str], order_only_inputs: &[&str]) -> Arc<Build> {
@@ -94,7 +95,7 @@ mod tests {
         let baz = create_build("baz", &[], &[]);
 
         assert_eq!(
-            calculate_sequences(&create_config(&[&foo, &bar, &baz]), &[foo.clone()]),
+            calculate_sequences(&create_config(&[&foo, &bar, &baz]), from_ref(&foo)),
             [(foo.id(), 0), (bar.id(), 1), (baz.id(), 2)]
                 .into_iter()
                 .collect()
@@ -108,7 +109,7 @@ mod tests {
         let baz = create_build("baz", &[], &[]);
 
         assert_eq!(
-            calculate_sequences(&create_config(&[&foo, &bar, &baz]), &[foo.clone()]),
+            calculate_sequences(&create_config(&[&foo, &bar, &baz]), from_ref(&foo)),
             [(foo.id(), 0), (baz.id(), 1), (bar.id(), 2)]
                 .into_iter()
                 .collect()
@@ -137,7 +138,7 @@ mod tests {
         let foo = create_build("foo", &["foo.c"], &[]);
 
         assert_eq!(
-            calculate_sequences(&create_config(&[&foo]), &[foo.clone()]),
+            calculate_sequences(&create_config(&[&foo]), from_ref(&foo)),
             [(foo.id(), 0)].into_iter().collect()
         );
     }

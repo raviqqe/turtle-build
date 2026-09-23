@@ -185,7 +185,7 @@ mod tests {
     async fn skip_dropped_waiter() {
         let queue = JobQueue::new(1);
         let permit = queue.acquire(0).await;
-        let mut first = pin!(queue.acquire(1));
+        let mut first = Box::pin(queue.acquire(1));
         let mut second = pin!(queue.acquire(2));
 
         assert!(poll!(&mut first).is_pending());
@@ -201,7 +201,7 @@ mod tests {
     async fn release_slot_handed_over_to_dropped_waiter() {
         let queue = JobQueue::new(1);
         let permit = queue.acquire(0).await;
-        let mut first = pin!(queue.acquire(1));
+        let mut first = Box::pin(queue.acquire(1));
 
         assert!(poll!(&mut first).is_pending());
 

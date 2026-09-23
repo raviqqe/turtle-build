@@ -440,11 +440,10 @@ async fn run_rule(
         let permit = context.pool(rule.pool()).await?;
         let (output, console) = join!(
             async {
-                let job = context.job_queue().acquire(priority).await?;
+                let _job = context.job_queue().acquire(priority).await?;
                 let time = Instant::now();
                 let output = context.build().command_runner().run(rule.command()).await?;
 
-                drop(job);
                 drop(permit);
 
                 Ok::<_, BuildError>((output, Instant::now() - time))

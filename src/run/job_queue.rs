@@ -15,8 +15,7 @@ pub struct JobQueue {
 #[derive(Debug)]
 struct State {
     free_slots: usize,
-    waiters: BTreeMap<(usize, usize), Sender<()>>,
-    arrival: usize,
+    waiters: BTreeMap<usize, Sender<()>>,
 }
 
 impl JobQueue {
@@ -25,7 +24,6 @@ impl JobQueue {
             state: Mutex::new(State {
                 free_slots: limit,
                 waiters: BTreeMap::new(),
-                arrival: 0,
             }),
         }
     }
@@ -52,9 +50,7 @@ impl JobQueue {
         } else {
             let (sender, receiver) = oneshot::channel();
 
-            state.arrival += 1;
-            let arrival = state.arrival;
-            state.waiters.insert((order, arrival), sender);
+            state.waiters.insert(order, sender);
 
             Some(receiver)
         }
@@ -140,31 +136,6 @@ mod tests {
 
         assert!(poll!(&mut second).is_pending());
         assert!(poll!(&mut first).is_pending());
-
-        drop(permit);
-
-        assert!(poll!(&mut second).is_pending());
-
-        let Poll::Ready(Ok(permit)) = poll!(&mut first) else {
-            panic!("slot not handed over");
-        };
-
-        assert!(poll!(&mut second).is_pending());
-
-        drop(permit);
-
-        assert!(poll!(&mut second).is_ready());
-    }
-
-    #[tokio::test]
-    async fn admit_waiters_of_same_order_by_arrival() {
-        let queue = JobQueue::new(1);
-        let permit = queue.acquire(0).await.unwrap();
-        let mut first = pin!(queue.acquire(1));
-        let mut second = pin!(queue.acquire(1));
-
-        assert!(poll!(&mut first).is_pending());
-        assert!(poll!(&mut second).is_pending());
 
         drop(permit);
 

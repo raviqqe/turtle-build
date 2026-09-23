@@ -6,7 +6,10 @@ use crate::{
     ir::{BuildId, Config, DynamicConfig, Pool},
 };
 use alloc::sync::Arc;
-use core::pin::Pin;
+use core::{
+    pin::Pin,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 use futures::future::Shared;
 use scc::HashMap;
 use tokio::sync::{Mutex, OnceCell, Semaphore, SemaphorePermit};
@@ -24,6 +27,7 @@ pub struct RunContext {
     job_queue: JobQueue,
     pools: std::collections::HashMap<Arc<str>, Semaphore>,
     orders: std::collections::HashMap<BuildId, usize>,
+    dynamic_order: AtomicUsize,
     options: RunOptions,
 }
 
@@ -47,6 +51,7 @@ impl RunContext {
                 .collect(),
             header_dependencies,
             job_queue: JobQueue::new(options.job_limit),
+            dynamic_order: AtomicUsize::new(orders.len()),
             orders,
             pools: config
                 .pools()
@@ -99,7 +104,10 @@ impl RunContext {
     }
 
     pub fn order(&self, id: BuildId) -> usize {
-        self.orders.get(&id).copied().unwrap_or_default()
+        self.orders
+            .get(&id)
+            .copied()
+            .unwrap_or_else(|| self.dynamic_order.fetch_add(1, Ordering::Relaxed))
     }
 
     pub async fn pool(

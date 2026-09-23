@@ -2816,6 +2816,26 @@ mod tests {
         bar_future.await.unwrap();
     }
 
+    #[test]
+    fn assign_orders_to_unknown_builds() {
+        let context = RunContext::new(
+            create_context(
+                &Default::default(),
+                &Default::default(),
+                &Default::default(),
+            ),
+            create_pool_config(vec![], &[], &[]),
+            BuildGraph::new(&Default::default()),
+            Default::default(),
+            [(pool_build("foo", None).id(), 0)].into_iter().collect(),
+            DEFAULT_OPTIONS,
+        );
+
+        assert_eq!(context.order(pool_build("foo", None).id()), 0);
+        assert_eq!(context.order(pool_build("bar", None).id()), 1);
+        assert_eq!(context.order(pool_build("baz", None).id()), 2);
+    }
+
     #[tokio::test]
     async fn run_waiting_commands_in_order() {
         let command_runner = FakeCommandRunner::default();

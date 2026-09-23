@@ -9,11 +9,11 @@ use tokio::sync::oneshot::{self, Receiver, Sender, error::RecvError};
 // A job queue.
 #[derive(Debug)]
 pub struct JobQueue {
-    state: Mutex<State>,
+    state: Mutex<Inner>,
 }
 
 #[derive(Debug)]
-struct State {
+struct Inner {
     free: usize,
     waiters: BTreeMap<usize, Sender<()>>,
 }
@@ -21,7 +21,7 @@ struct State {
 impl JobQueue {
     pub const fn new(limit: usize) -> Self {
         Self {
-            state: Mutex::new(State {
+            state: Mutex::new(Inner {
                 free: limit,
                 waiters: BTreeMap::new(),
             }),

@@ -11,12 +11,12 @@ const BLANK_CHARACTERS: [char; 2] = [' ', '\t'];
 
 /// A command runner backed by an operating system.
 #[derive(Debug, Default)]
-pub struct OsCommandRunner;
+pub struct OsCommandRunner {}
 
 impl OsCommandRunner {
     /// Creates a command runner.
     pub const fn new() -> Self {
-        Self
+        Self {}
     }
 
     fn create_command(command: &str) -> Command {

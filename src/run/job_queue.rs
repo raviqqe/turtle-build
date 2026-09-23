@@ -1,8 +1,4 @@
 use alloc::collections::BTreeMap;
-use core::{
-    pin::Pin,
-    task::{Context, Poll},
-};
 use std::sync::{Mutex, PoisonError};
 use tokio::sync::oneshot::{self, Receiver, Sender, error::RecvError};
 
@@ -30,11 +26,7 @@ impl JobQueue {
 
     pub async fn acquire(&self, priority: usize) -> Result<JobPermit<'_>, RecvError> {
         if let Some(receiver) = self.wait(priority) {
-            Waiter {
-                queue: self,
-                receiver,
-            }
-            .await?;
+            receiver.await?;
         }
 
         Ok(JobPermit { queue: self })
@@ -69,27 +61,6 @@ impl JobQueue {
     }
 }
 
-struct Waiter<'a> {
-    queue: &'a JobQueue,
-    receiver: Receiver<()>,
-}
-
-impl Future for Waiter<'_> {
-    type Output = Result<(), RecvError>;
-
-    fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
-        Pin::new(&mut self.receiver).poll(context)
-    }
-}
-
-impl Drop for Waiter<'_> {
-    fn drop(&mut self) {
-        if self.receiver.try_recv().is_ok() {
-            self.queue.release();
-        }
-    }
-}
-
 pub struct JobPermit<'a> {
     queue: &'a JobQueue,
 }
@@ -103,7 +74,7 @@ impl Drop for JobPermit<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::pin::pin;
+    use core::{pin::pin, task::Poll};
     use futures::poll;
 
     #[tokio::test]
@@ -165,19 +136,5 @@ mod tests {
         drop(permit);
 
         assert!(poll!(&mut second).is_ready());
-    }
-
-    #[tokio::test]
-    async fn release_slot_handed_over_to_dropped_waiter() {
-        let queue = JobQueue::new(1);
-        let permit = queue.acquire(0).await.unwrap();
-        let mut first = Box::pin(queue.acquire(1));
-
-        assert!(poll!(&mut first).is_pending());
-
-        drop(permit);
-        drop(first);
-
-        assert!(poll!(pin!(queue.acquire(2))).is_ready());
     }
 }

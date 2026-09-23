@@ -23,7 +23,7 @@ pub struct RunContext {
     header_dependencies: std::collections::HashMap<BuildId, Vec<Arc<str>>>,
     job_queue: JobQueue,
     pools: std::collections::HashMap<Arc<str>, Semaphore>,
-    sequences: std::collections::HashMap<BuildId, usize>,
+    orders: std::collections::HashMap<BuildId, usize>,
     options: RunOptions,
 }
 
@@ -33,7 +33,7 @@ impl RunContext {
         config: Arc<Config>,
         build_graph: BuildGraph,
         header_dependencies: std::collections::HashMap<BuildId, Vec<Arc<str>>>,
-        sequences: std::collections::HashMap<BuildId, usize>,
+        orders: std::collections::HashMap<BuildId, usize>,
         options: RunOptions,
     ) -> Self {
         Self {
@@ -47,7 +47,7 @@ impl RunContext {
                 .collect(),
             header_dependencies,
             job_queue: JobQueue::new(options.job_limit),
-            sequences,
+            orders,
             pools: config
                 .pools()
                 .iter()
@@ -98,8 +98,8 @@ impl RunContext {
         &self.job_queue
     }
 
-    pub fn sequence(&self, id: BuildId) -> usize {
-        self.sequences.get(&id).copied().unwrap_or_default()
+    pub fn order(&self, id: BuildId) -> usize {
+        self.orders.get(&id).copied().unwrap_or_default()
     }
 
     pub async fn pool(

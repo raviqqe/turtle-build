@@ -30,8 +30,8 @@ impl JobQueue {
         }
     }
 
-    pub async fn acquire(&self, sequence: usize) -> Result<JobPermit<'_>, RecvError> {
-        if let Some(receiver) = self.wait(sequence) {
+    pub async fn acquire(&self, order: usize) -> Result<JobPermit<'_>, RecvError> {
+        if let Some(receiver) = self.wait(order) {
             Waiter {
                 queue: self,
                 receiver,
@@ -42,7 +42,7 @@ impl JobQueue {
         Ok(JobPermit { queue: self })
     }
 
-    fn wait(&self, sequence: usize) -> Option<Receiver<()>> {
+    fn wait(&self, order: usize) -> Option<Receiver<()>> {
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
 
         if state.free_slots > 0 {
@@ -54,7 +54,7 @@ impl JobQueue {
 
             state.arrival += 1;
             let arrival = state.arrival;
-            state.waiters.insert((sequence, arrival), sender);
+            state.waiters.insert((order, arrival), sender);
 
             Some(receiver)
         }
@@ -132,7 +132,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn admit_waiters_in_sequence_order() {
+    async fn admit_waiters_in_order() {
         let queue = JobQueue::new(1);
         let permit = queue.acquire(0).await.unwrap();
         let mut second = pin!(queue.acquire(2));
@@ -157,7 +157,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn admit_waiters_of_same_sequence_in_arrival_order() {
+    async fn admit_waiters_of_same_order_by_arrival() {
         let queue = JobQueue::new(1);
         let permit = queue.acquire(0).await.unwrap();
         let mut first = pin!(queue.acquire(1));

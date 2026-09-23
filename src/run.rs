@@ -78,13 +78,13 @@ pub async fn run(
             })
             .collect::<Result<Vec<_>, _>>()?
     };
-    let sequences = sort_builds(&config, &builds);
+    let orders = sort_builds(&config, &builds);
     let context = Arc::new(RunContext::new(
         context.clone(),
         config,
         graph,
         header_dependencies,
-        sequences,
+        orders,
         options,
     ));
 
@@ -205,7 +205,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             )
             .await?;
 
-            let output = run_rule(&context, rule, context.sequence(build.id())).await;
+            let output = run_rule(&context, rule, context.order(build.id())).await;
 
             invalidate_outputs(&context, &build).await;
 
@@ -407,17 +407,13 @@ fn classify_inputs<'a>(
     )
 }
 
-async fn run_rule(
-    context: &RunContext,
-    rule: &Rule,
-    sequence: usize,
-) -> Result<Output, BuildError> {
+async fn run_rule(context: &RunContext, rule: &Rule, order: usize) -> Result<Output, BuildError> {
     let ((output, duration), mut console) = if rule.pool() == Some(&Pool::Console) {
         let mut console = write_description(context, rule).await?;
 
         console.flush().await?;
 
-        let _job = context.job_queue().acquire(sequence).await?;
+        let _job = context.job_queue().acquire(order).await?;
         let time = Instant::now();
         let status = context
             .build()
@@ -440,7 +436,7 @@ async fn run_rule(
         let permit = context.pool(rule.pool()).await?;
         let (output, console) = join!(
             async {
-                let job = context.job_queue().acquire(sequence).await?;
+                let job = context.job_queue().acquire(order).await?;
                 let time = Instant::now();
                 let output = context.build().command_runner().run(rule.command()).await?;
 
@@ -2821,7 +2817,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn run_waiting_commands_in_order_of_sequence() {
+    async fn run_waiting_commands_in_order() {
         let command_runner = FakeCommandRunner::default();
         let context = RunContext::new(
             create_context(&command_runner, &Default::default(), &Default::default()),

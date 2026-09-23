@@ -33,31 +33,31 @@ impl JobQueue {
     }
 
     fn wait(&self, priority: usize) -> Option<Receiver<()>> {
-        let mut state = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
 
-        if state.free > 0 {
-            state.free -= 1;
+        if inner.free > 0 {
+            inner.free -= 1;
 
             None
         } else {
             let (sender, receiver) = channel();
 
-            state.waiters.insert(priority, sender);
+            inner.waiters.insert(priority, sender);
 
             Some(receiver)
         }
     }
 
     fn release(&self) {
-        let mut state = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
 
-        while let Some((_, sender)) = state.waiters.pop_first() {
+        while let Some((_, sender)) = inner.waiters.pop_first() {
             if sender.send(()).is_ok() {
                 return;
             }
         }
 
-        state.free += 1;
+        inner.free += 1;
     }
 }
 

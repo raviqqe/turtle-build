@@ -44,21 +44,17 @@ impl JobQueue {
 
     fn wait(&self, sequence: usize) -> Option<Receiver<()>> {
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
-        let State {
-            free_slots,
-            waiters,
-            arrival,
-        } = &mut *state;
 
-        if *free_slots > 0 {
-            *free_slots -= 1;
+        if state.free_slots > 0 {
+            state.free_slots -= 1;
 
             None
         } else {
             let (sender, receiver) = oneshot::channel();
 
-            *arrival += 1;
-            waiters.insert((sequence, *arrival), sender);
+            state.arrival += 1;
+            let arrival = state.arrival;
+            state.waiters.insert((sequence, arrival), sender);
 
             Some(receiver)
         }

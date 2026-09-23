@@ -3,15 +3,15 @@ use alloc::sync::Arc;
 use std::collections::HashMap;
 
 pub fn sort_builds(config: &Config, outputs: &[Arc<Build>]) -> HashMap<BuildId, usize> {
-    let mut sequences = HashMap::new();
+    let mut orders = HashMap::new();
     let mut stack = outputs.iter().rev().collect::<Vec<_>>();
 
     while let Some(build) = stack.pop() {
-        if sequences.contains_key(&build.id()) {
+        if orders.contains_key(&build.id()) {
             continue;
         }
 
-        sequences.insert(build.id(), sequences.len());
+        orders.insert(build.id(), orders.len());
         stack.extend(
             build
                 .inputs()
@@ -22,7 +22,7 @@ pub fn sort_builds(config: &Config, outputs: &[Arc<Build>]) -> HashMap<BuildId, 
         );
     }
 
-    sequences
+    orders
 }
 
 #[cfg(test)]

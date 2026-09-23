@@ -16,9 +16,6 @@ jobs:
           - harfbuzz
           - llvm
           - ninja
-        tool:
-          - ninja
-          - turtle
         exclude:
           - project: ${{ github.ref != 'refs/heads/main' && 'llvm' || '' }}
     runs-on: ubuntu-latest
@@ -28,7 +25,8 @@ jobs:
       - uses: raviqqe/enable-homebrew@6bd383659a321c332bd0c0ed445c32d54e04efe8 # v1.0.5
       - run: brew install meson ninja
       - run: tools/build.sh
-      - run: tools/acceptance_test.sh ${{ matrix.tool }} ${{ matrix.project }}
+      - run: tools/acceptance_test.sh ninja ${{ matrix.project }}
+      - run: tools/acceptance_test.sh turtle ${{ matrix.project }}
   acceptance:
     needs:
       - build

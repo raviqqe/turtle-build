@@ -14,7 +14,7 @@ pub struct JobQueue {
 
 #[derive(Debug)]
 struct State {
-    free_slots: usize,
+    free: usize,
     waiters: BTreeMap<usize, Sender<()>>,
 }
 
@@ -22,7 +22,7 @@ impl JobQueue {
     pub const fn new(limit: usize) -> Self {
         Self {
             state: Mutex::new(State {
-                free_slots: limit,
+                free: limit,
                 waiters: BTreeMap::new(),
             }),
         }
@@ -43,8 +43,8 @@ impl JobQueue {
     fn wait(&self, order: usize) -> Option<Receiver<()>> {
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
 
-        if state.free_slots > 0 {
-            state.free_slots -= 1;
+        if state.free > 0 {
+            state.free -= 1;
 
             None
         } else {
@@ -65,7 +65,7 @@ impl JobQueue {
             }
         }
 
-        state.free_slots += 1;
+        state.free += 1;
     }
 }
 

@@ -61,7 +61,7 @@ mod tests {
     }
 
     #[test]
-    fn order_outputs() {
+    fn sort_outputs() {
         let foo = create_build("foo", &[], &[]);
         let bar = create_build("bar", &[], &[]);
 
@@ -72,7 +72,7 @@ mod tests {
     }
 
     #[test]
-    fn order_inputs_before_next_output() {
+    fn sort_inputs_before_next_output() {
         let foo = create_build("foo", &["baz"], &[]);
         let bar = create_build("bar", &[], &[]);
         let baz = create_build("baz", &[], &[]);
@@ -89,7 +89,7 @@ mod tests {
     }
 
     #[test]
-    fn order_inputs() {
+    fn sort_inputs() {
         let foo = create_build("foo", &["bar", "baz"], &[]);
         let bar = create_build("bar", &[], &[]);
         let baz = create_build("baz", &[], &[]);
@@ -103,7 +103,7 @@ mod tests {
     }
 
     #[test]
-    fn order_order_only_inputs_after_inputs() {
+    fn sort_order_only_inputs_after_inputs() {
         let foo = create_build("foo", &["baz"], &["bar"]);
         let bar = create_build("bar", &[], &[]);
         let baz = create_build("baz", &[], &[]);
@@ -117,7 +117,7 @@ mod tests {
     }
 
     #[test]
-    fn order_shared_input_once() {
+    fn sort_shared_input_once() {
         let foo = create_build("foo", &["baz"], &[]);
         let bar = create_build("bar", &["baz"], &[]);
         let baz = create_build("baz", &[], &[]);

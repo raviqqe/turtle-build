@@ -2526,9 +2526,12 @@ mod tests {
     #[tokio::test]
     async fn run_builds_in_order_of_traversal() {
         let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+
+        file_system.write_file("baz", "");
 
         run(
-            &create_context(&command_runner, &Default::default(), &Default::default()),
+            &create_context(&command_runner, &Default::default(), &file_system),
             create_simple_config(
                 vec![
                     pool_build("foo", None),
@@ -2849,9 +2852,12 @@ mod tests {
         assert!(poll!(&mut baz_future).is_pending());
         assert_eq!(command_runner.commands(), ["foo", "baz"]);
 
-        baz_future.await.unwrap();
-        bar_future.await.unwrap();
+        // Poll both futures because one waits for the console holding a job
+        // slot and the other waits for a job slot holding the console.
+        let (bar_output, baz_output) = join!(bar_future, baz_future);
 
+        bar_output.unwrap();
+        baz_output.unwrap();
         assert_eq!(command_runner.commands(), ["foo", "baz", "bar"]);
     }
 

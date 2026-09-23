@@ -82,7 +82,6 @@ impl Future for Waiter<'_> {
     }
 }
 
-// A slot handed over to a waiter dropped before taking it is given back.
 impl Drop for Waiter<'_> {
     fn drop(&mut self) {
         if self.receiver.try_recv().is_ok() {

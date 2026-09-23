@@ -5,14 +5,14 @@ mod header_dependency;
 mod job_queue;
 mod log;
 mod options;
-mod sequence;
+mod sort;
 
 use self::{
     context::RunContext,
     hash::{calculate_content_hash, calculate_timestamp_hash},
     header_dependency::{exclude_show_includes, read_header_dependencies},
     log::{debug, profile},
-    sequence::calculate_sequences,
+    sort::sort_builds,
 };
 use crate::{
     build_graph::{BuildGraph, BuildGraphError},
@@ -78,7 +78,7 @@ pub async fn run(
             })
             .collect::<Result<Vec<_>, _>>()?
     };
-    let sequences = calculate_sequences(&config, &builds);
+    let sequences = sort_builds(&config, &builds);
     let context = Arc::new(RunContext::new(
         context.clone(),
         config,

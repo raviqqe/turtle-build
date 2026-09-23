@@ -2,7 +2,7 @@ use crate::ir::{Build, BuildId, Config};
 use alloc::sync::Arc;
 use std::collections::HashMap;
 
-pub fn calculate_sequences(config: &Config, outputs: &[Arc<Build>]) -> HashMap<BuildId, usize> {
+pub fn sort_builds(config: &Config, outputs: &[Arc<Build>]) -> HashMap<BuildId, usize> {
     let mut sequences = HashMap::new();
     let mut stack = outputs.iter().rev().collect::<Vec<_>>();
 
@@ -66,7 +66,7 @@ mod tests {
         let bar = create_build("bar", &[], &[]);
 
         assert_eq!(
-            calculate_sequences(&create_config(&[&foo, &bar]), &[foo.clone(), bar.clone()]),
+            sort_builds(&create_config(&[&foo, &bar]), &[foo.clone(), bar.clone()]),
             [(foo.id(), 0), (bar.id(), 1)].into_iter().collect()
         );
     }
@@ -78,7 +78,7 @@ mod tests {
         let baz = create_build("baz", &[], &[]);
 
         assert_eq!(
-            calculate_sequences(
+            sort_builds(
                 &create_config(&[&foo, &bar, &baz]),
                 &[foo.clone(), bar.clone()]
             ),
@@ -95,7 +95,7 @@ mod tests {
         let baz = create_build("baz", &[], &[]);
 
         assert_eq!(
-            calculate_sequences(&create_config(&[&foo, &bar, &baz]), from_ref(&foo)),
+            sort_builds(&create_config(&[&foo, &bar, &baz]), from_ref(&foo)),
             [(foo.id(), 0), (bar.id(), 1), (baz.id(), 2)]
                 .into_iter()
                 .collect()
@@ -109,7 +109,7 @@ mod tests {
         let baz = create_build("baz", &[], &[]);
 
         assert_eq!(
-            calculate_sequences(&create_config(&[&foo, &bar, &baz]), from_ref(&foo)),
+            sort_builds(&create_config(&[&foo, &bar, &baz]), from_ref(&foo)),
             [(foo.id(), 0), (baz.id(), 1), (bar.id(), 2)]
                 .into_iter()
                 .collect()
@@ -123,7 +123,7 @@ mod tests {
         let baz = create_build("baz", &[], &[]);
 
         assert_eq!(
-            calculate_sequences(
+            sort_builds(
                 &create_config(&[&foo, &bar, &baz]),
                 &[foo.clone(), bar.clone()]
             ),
@@ -138,7 +138,7 @@ mod tests {
         let foo = create_build("foo", &["foo.c"], &[]);
 
         assert_eq!(
-            calculate_sequences(&create_config(&[&foo]), from_ref(&foo)),
+            sort_builds(&create_config(&[&foo]), from_ref(&foo)),
             [(foo.id(), 0)].into_iter().collect()
         );
     }

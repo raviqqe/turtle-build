@@ -1,6 +1,10 @@
 use alloc::collections::BTreeMap;
-use std::sync::Mutex;
-use tokio::sync::oneshot::{self, Receiver, Sender};
+use core::{
+    pin::Pin,
+    task::{Context, Poll},
+};
+use std::sync::{Mutex, PoisonError};
+use tokio::sync::oneshot::{self, Receiver, Sender, error::RecvError};
 
 // A job queue.
 #[derive(Debug)]
@@ -26,27 +30,20 @@ impl JobQueue {
         }
     }
 
-    pub async fn acquire(&self, sequence: usize) -> JobPermit<'_> {
+    pub async fn acquire(&self, sequence: usize) -> Result<JobPermit<'_>, RecvError> {
         if let Some(receiver) = self.wait(sequence) {
-            let mut waiter = Waiter {
+            Waiter {
                 queue: self,
-                receiver: Some(receiver),
-            };
-
-            waiter
-                .receiver
-                .as_mut()
-                .unwrap()
-                .await
-                .expect("job queue alive");
-            waiter.receiver = None;
+                receiver,
+            }
+            .await?;
         }
 
-        JobPermit { queue: self }
+        Ok(JobPermit { queue: self })
     }
 
     fn wait(&self, sequence: usize) -> Option<Receiver<()>> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         let State {
             free_slots,
             waiters,
@@ -68,7 +65,7 @@ impl JobQueue {
     }
 
     fn release(&self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
 
         while let Some((_, sender)) = state.waiters.pop_first() {
             if sender.send(()).is_ok() {
@@ -82,14 +79,21 @@ impl JobQueue {
 
 struct Waiter<'a> {
     queue: &'a JobQueue,
-    receiver: Option<Receiver<()>>,
+    receiver: Receiver<()>,
 }
 
+impl Future for Waiter<'_> {
+    type Output = Result<(), RecvError>;
+
+    fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
+        Pin::new(&mut self.receiver).poll(context)
+    }
+}
+
+// A slot handed over to a waiter dropped before taking it is given back.
 impl Drop for Waiter<'_> {
     fn drop(&mut self) {
-        if let Some(mut receiver) = self.receiver.take()
-            && receiver.try_recv().is_ok()
-        {
+        if self.receiver.try_recv().is_ok() {
             self.queue.release();
         }
     }
@@ -108,20 +112,20 @@ impl Drop for JobPermit<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::{pin::pin, task::Poll};
+    use core::pin::pin;
     use futures::poll;
 
     #[tokio::test]
     async fn acquire_slots_within_limit() {
         let queue = JobQueue::new(2);
-        let _foo = queue.acquire(0).await;
-        let _bar = queue.acquire(1).await;
+        let _foo = queue.acquire(0).await.unwrap();
+        let _bar = queue.acquire(1).await.unwrap();
     }
 
     #[tokio::test]
     async fn wait_for_slot() {
         let queue = JobQueue::new(1);
-        let permit = queue.acquire(0).await;
+        let permit = queue.acquire(0).await.unwrap();
         let mut future = pin!(queue.acquire(1));
 
         assert!(poll!(&mut future).is_pending());
@@ -134,7 +138,7 @@ mod tests {
     #[tokio::test]
     async fn admit_waiters_in_sequence_order() {
         let queue = JobQueue::new(1);
-        let permit = queue.acquire(0).await;
+        let permit = queue.acquire(0).await.unwrap();
         let mut second = pin!(queue.acquire(2));
         let mut first = pin!(queue.acquire(1));
 
@@ -145,7 +149,7 @@ mod tests {
 
         assert!(poll!(&mut second).is_pending());
 
-        let Poll::Ready(permit) = poll!(&mut first) else {
+        let Poll::Ready(Ok(permit)) = poll!(&mut first) else {
             panic!("slot not handed over");
         };
 
@@ -159,7 +163,7 @@ mod tests {
     #[tokio::test]
     async fn admit_waiters_of_same_sequence_in_arrival_order() {
         let queue = JobQueue::new(1);
-        let permit = queue.acquire(0).await;
+        let permit = queue.acquire(0).await.unwrap();
         let mut first = pin!(queue.acquire(1));
         let mut second = pin!(queue.acquire(1));
 
@@ -170,7 +174,7 @@ mod tests {
 
         assert!(poll!(&mut second).is_pending());
 
-        let Poll::Ready(permit) = poll!(&mut first) else {
+        let Poll::Ready(Ok(permit)) = poll!(&mut first) else {
             panic!("slot not handed over");
         };
 
@@ -184,7 +188,7 @@ mod tests {
     #[tokio::test]
     async fn skip_dropped_waiter() {
         let queue = JobQueue::new(1);
-        let permit = queue.acquire(0).await;
+        let permit = queue.acquire(0).await.unwrap();
         let mut first = Box::pin(queue.acquire(1));
         let mut second = pin!(queue.acquire(2));
 
@@ -200,7 +204,7 @@ mod tests {
     #[tokio::test]
     async fn release_slot_handed_over_to_dropped_waiter() {
         let queue = JobQueue::new(1);
-        let permit = queue.acquire(0).await;
+        let permit = queue.acquire(0).await.unwrap();
         let mut first = Box::pin(queue.acquire(1));
 
         assert!(poll!(&mut first).is_pending());

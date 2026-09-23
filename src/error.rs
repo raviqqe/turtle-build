@@ -8,12 +8,16 @@ use crate::{
 };
 use alloc::sync::Arc;
 use thiserror::Error;
-use tokio::{io, sync::AcquireError, task::JoinError};
+use tokio::{
+    io,
+    sync::{AcquireError, oneshot::error::RecvError},
+    task::JoinError,
+};
 
 /// A build error.
 #[derive(Clone, Debug, Eq, Error, PartialEq)]
 pub enum BuildError {
-    /// A semaphore acquisition error.
+    /// A permit acquisition error.
     #[error("{0}")]
     Acquire(String),
     /// A build failure.
@@ -88,6 +92,12 @@ impl From<io::Error> for BuildError {
 impl From<JoinError> for BuildError {
     fn from(error: JoinError) -> Self {
         Self::Join(error.to_string())
+    }
+}
+
+impl From<RecvError> for BuildError {
+    fn from(error: RecvError) -> Self {
+        Self::Acquire(error.to_string())
     }
 }
 

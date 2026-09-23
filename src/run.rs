@@ -417,7 +417,7 @@ async fn run_rule(
 
         console.flush().await?;
 
-        let _job = context.job_queue().acquire(sequence).await;
+        let _job = context.job_queue().acquire(sequence).await?;
         let time = Instant::now();
         let status = context
             .build()
@@ -440,7 +440,7 @@ async fn run_rule(
         let permit = context.pool(rule.pool()).await?;
         let (output, console) = join!(
             async {
-                let job = context.job_queue().acquire(sequence).await;
+                let job = context.job_queue().acquire(sequence).await?;
                 let time = Instant::now();
                 let output = context.build().command_runner().run(rule.command()).await?;
 

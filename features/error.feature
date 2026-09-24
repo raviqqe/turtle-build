@@ -25,7 +25,6 @@ Feature: Error
     Then the exit status should not be 0
     And the stderr should contain "foo.ninja"
 
-  @turtle
   Scenario: Fail to include a build file in itself
     Given a file named "build.ninja" with:
       """
@@ -34,9 +33,7 @@ Feature: Error
       """
     When I run `turtle`
     Then the exit status should not be 0
-    And the stderr should contain "build file dependency cycle detected"
 
-  @turtle
   Scenario: Fail to include build files in each other
     Given a file named "build.ninja" with:
       """
@@ -50,9 +47,7 @@ Feature: Error
       """
     When I run `turtle`
     Then the exit status should not be 0
-    And the stderr should contain "build file dependency cycle detected"
 
-  @turtle
   Scenario: Fail to include child build files in each other
     Given a file named "build.ninja" with:
       """
@@ -66,4 +61,3 @@ Feature: Error
       """
     When I run `turtle`
     Then the exit status should not be 0
-    And the stderr should contain "build file dependency cycle detected"

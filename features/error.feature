@@ -51,7 +51,6 @@ Feature: Error
     When I run `turtle`
     Then the exit status should not be 0
     And the stderr should contain "build file dependency cycle detected"
-    And the stderr should contain "foo.ninja"
 
   @turtle
   Scenario: Fail to include child build files in each other

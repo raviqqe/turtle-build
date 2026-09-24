@@ -169,10 +169,8 @@ async fn parse_modules(
     let mut dependencies = HashMap::new();
 
     while let Some((path, mut ancestors)) = paths.pop() {
-        if let Some(index) = ancestors.iter().position(|ancestor| ancestor == &path) {
-            return Err(BuildError::CircularModuleDependency(
-                ancestors[index..].to_vec(),
-            ));
+        if ancestors.contains(&path) {
+            return Err(BuildError::CircularModuleDependency);
         } else if modules.contains_key(&path) {
             continue;
         }

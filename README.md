@@ -70,6 +70,7 @@ Turtle aims to support full syntax of the Ninja build files. It also supports ba
 - [x] `-f` custom build file option
 - [x] `-j` job limit option
 - [ ] `-k` keep-going option
+- [ ] `-n` dry-run option
 - [x] `-C` change-directory option
 
 #### Others

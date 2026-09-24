@@ -59,3 +59,33 @@ Feature: Include statement
       """
     When I successfully run `turtle`
     Then the stdout should contain exactly "hello"
+
+  Scenario: Include a build file from two build files
+    Given a file named "build.ninja" with:
+      """
+      include foo.ninja
+      include bar.ninja
+
+      rule echo
+        command = echo $x
+
+      build foo: echo
+
+      """
+    And a file named "foo.ninja" with:
+      """
+      include baz.ninja
+
+      """
+    And a file named "bar.ninja" with:
+      """
+      include baz.ninja
+
+      """
+    And a file named "baz.ninja" with:
+      """
+      x = hello
+
+      """
+    When I successfully run `turtle`
+    Then the stdout should contain exactly "hello"

@@ -38,7 +38,7 @@ impl Context {
     }
 
     /// Returns a console.
-    pub fn console(&self) -> &Mutex<dyn Console + Send + Sync> {
+    pub fn console(&self) -> &Arc<Mutex<dyn Console + Send + Sync>> {
         &self.console
     }
 

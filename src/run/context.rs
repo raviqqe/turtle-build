@@ -3,6 +3,7 @@ use crate::{
     BuildError,
     build_graph::BuildGraph,
     context::Context,
+    infrastructure::MultiplexedConsole,
     ir::{BuildId, Config, DynamicConfig, Pool},
 };
 use alloc::sync::Arc;
@@ -18,6 +19,7 @@ pub struct RunContext {
     config: Arc<Config>,
     build_futures: HashMap<BuildId, BuildFuture>,
     build_graph: Mutex<BuildGraph>,
+    console: MultiplexedConsole,
     dynamic_configs: std::collections::HashMap<Arc<str>, OnceCell<DynamicConfig>>,
     file_cache: FileCache,
     header_dependencies: std::collections::HashMap<BuildId, Vec<Arc<str>>>,
@@ -34,6 +36,7 @@ impl RunContext {
         options: RunOptions,
     ) -> Self {
         Self {
+            console: MultiplexedConsole::new(build.console().clone()),
             file_cache: FileCache::new(build.file_system().clone()),
             build,
             build_graph: build_graph.into(),
@@ -73,6 +76,10 @@ impl RunContext {
 
     pub const fn build_graph(&self) -> &Mutex<BuildGraph> {
         &self.build_graph
+    }
+
+    pub const fn console(&self) -> &MultiplexedConsole {
+        &self.console
     }
 
     pub fn dynamic_config(&self, path: &str) -> &OnceCell<DynamicConfig> {

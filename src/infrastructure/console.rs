@@ -1,11 +1,17 @@
+mod buffer;
 mod error;
 #[cfg(test)]
 mod fake;
+mod multiplexed;
 mod os;
 
 #[cfg(test)]
 pub use self::fake::FakeConsole;
-pub use self::{error::ConsoleError, os::OsConsole};
+pub use self::{
+    error::ConsoleError,
+    multiplexed::{ConsolePermit, MultiplexedConsole},
+    os::OsConsole,
+};
 use async_trait::async_trait;
 
 /// A console.

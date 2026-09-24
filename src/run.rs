@@ -1,3 +1,4 @@
+mod console_queue;
 mod context;
 mod file_cache;
 mod hash;
@@ -17,7 +18,7 @@ use crate::{
     context::Context,
     error::BuildError,
     hash_type::HashType,
-    infrastructure::{Console, Metadata},
+    infrastructure::{ConsoleBuffer, Metadata},
     ir::{Build, Config, DynamicConfig, Pool, Rule},
     parse::parse_dynamic,
 };
@@ -27,7 +28,7 @@ use futures::future::{FutureExt, try_join_all};
 use itertools::Itertools;
 pub use options::RunOptions;
 use std::{collections::HashMap, path::Path, process::Output};
-use tokio::{join, spawn, sync::MutexGuard, time::Instant, try_join};
+use tokio::{spawn, time::Instant, try_join};
 
 /// Runs builds.
 pub async fn run(
@@ -408,9 +409,10 @@ fn classify_inputs<'a>(
 }
 
 async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildError> {
-    let ((output, duration), mut console) = if rule.pool() == Some(&Pool::Console) {
-        let mut console = write_description(context, rule).await?;
+    let (output, duration) = if rule.pool() == Some(&Pool::Console) {
+        let console = context.console().lock().await?;
 
+        console.write(describe_rule(context, rule)).await?;
         console.flush().await?;
 
         let time = Instant::now();
@@ -421,44 +423,43 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildErro
             .await?;
 
         (
-            (
-                Output {
-                    status,
-                    stdout: vec![],
-                    stderr: vec![],
-                },
-                Instant::now() - time,
-            ),
-            console,
+            Output {
+                status,
+                stdout: vec![],
+                stderr: vec![],
+            },
+            Instant::now() - time,
         )
     } else {
         let permit = context.pool(rule.pool()).await?;
-        let (output, console) = join!(
-            async {
-                let time = Instant::now();
-                let output = context.build().command_runner().run(rule.command()).await?;
 
-                drop(permit);
+        context
+            .console()
+            .write(describe_rule(context, rule))
+            .await?;
 
-                Ok::<_, BuildError>((output, Instant::now() - time))
-            },
-            write_description(context, rule)
-        );
+        let time = Instant::now();
+        let output = context.build().command_runner().run(rule.command()).await?;
 
-        (output?, console?)
+        drop(permit);
+
+        (output, Instant::now() - time)
     };
+    let mut buffer = ConsoleBuffer::default();
 
-    profile!(context, console, "duration: {} ms", duration.as_millis());
+    profile!(context, buffer, "duration: {} ms", duration.as_millis());
 
-    console
-        .write_stdout(&exclude_show_includes(rule, &output.stdout))
-        .await?;
-    console.write_stderr(&output.stderr).await?;
+    buffer.write_stdout(&exclude_show_includes(rule, &output.stdout));
+    buffer.write_stderr(&output.stderr);
 
-    if !output.status.success() {
+    if output.status.success() {
+        context.console().write(buffer).await?;
+
+        Ok(output)
+    } else {
         debug!(
             context,
-            console,
+            buffer,
             "exit status: {}",
             output
                 .status
@@ -467,27 +468,24 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildErro
                 .unwrap_or_else(|| "-".into())
         );
 
-        return Err(BuildError::Build);
-    }
+        // Wait for the console to report the failure before the process exits.
+        context.console().lock().await?.write(buffer).await?;
 
-    Ok(output)
+        Err(BuildError::Build)
+    }
 }
 
-async fn write_description<'a>(
-    context: &'a RunContext,
-    rule: &Rule,
-) -> Result<MutexGuard<'a, dyn Console + Send + Sync>, BuildError> {
-    // TODO Reduce console lock contentions.
-    let mut console = context.build().console().lock().await;
+fn describe_rule(context: &RunContext, rule: &Rule) -> ConsoleBuffer {
+    let mut buffer = ConsoleBuffer::default();
 
     if let Some(description) = rule.description() {
-        console.write_stderr(description.as_bytes()).await?;
-        console.write_stderr(b"\n").await?;
+        buffer.write_stderr(description.as_bytes());
+        buffer.write_stderr(b"\n");
     }
 
-    debug!(context, console, "command: {}", rule.command());
+    debug!(context, buffer, "command: {}", rule.command());
 
-    Ok(console)
+    buffer
 }
 
 fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> BuildError {
@@ -2674,22 +2672,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn lock_console_during_command_in_console_pool() {
-        let command_runner = FakeCommandRunner::default();
-        let context = create_run_context(&command_runner, &Default::default(), &[]);
-        let rule = Rule::new("foo".into(), None).with_pool(Some(Pool::Console));
-        let mut future = pin!(run_rule(&context, &rule));
-
-        assert!(poll!(&mut future).is_pending());
-        assert_eq!(command_runner.console_commands(), ["foo"]);
-        assert!(context.build().console().try_lock().is_err());
-
-        future.await.unwrap();
-
-        assert!(context.build().console().try_lock().is_ok());
-    }
-
-    #[tokio::test]
     async fn flush_console_before_command_in_console_pool() {
         let command_runner = FakeCommandRunner::default();
         let console = FakeConsole::default();
@@ -2709,7 +2691,7 @@ mod tests {
         let command_runner = FakeCommandRunner::default();
         let context = create_run_context(&command_runner, &Default::default(), &[]);
         let rule = Rule::new("foo".into(), None).with_pool(Some(Pool::Console));
-        let console = context.build().console().lock().await;
+        let console = context.console().lock().await.unwrap();
         let mut future = pin!(run_rule(&context, &rule));
 
         for _ in 0..POLL_COUNT {
@@ -2743,32 +2725,100 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn release_pool_before_waiting_for_console() {
-        let command_runner = FakeCommandRunner::default();
-        let context = create_run_context(&command_runner, &Default::default(), &[("baz", 1)]);
-        let foo = Rule::new("foo".into(), None).with_pool(limited_pool("baz"));
-        let bar = Rule::new("bar".into(), None).with_pool(limited_pool("baz"));
-        let console = context.build().console().lock().await;
+    async fn queue_outputs_of_other_builds_during_command_in_console_pool() {
+        let command_runner = FakeCommandRunner::new(
+            [(
+                "bar".into(),
+                Output {
+                    status: ExitStatus::default(),
+                    stdout: b"baz\n".into(),
+                    stderr: vec![],
+                },
+            )]
+            .into_iter()
+            .collect(),
+        );
+        let console = FakeConsole::default();
+        let context = create_run_context(&command_runner, &console, &[]);
+        let foo = Rule::new("foo".into(), Some("foo".into())).with_pool(Some(Pool::Console));
+        let bar = Rule::new("bar".into(), Some("bar".into()));
+        let mut foo_future = pin!(run_rule(&context, &foo));
+
+        assert!(poll!(&mut foo_future).is_pending());
+        assert_eq!(command_runner.console_commands(), ["foo"]);
+
+        run_rule(&context, &bar).await.unwrap();
+
+        assert_eq!(command_runner.commands(), ["bar"]);
+        assert_eq!(console.stdout(), "");
+        assert_eq!(console.stderr(), "foo\n");
+
+        foo_future.await.unwrap();
+
+        assert_eq!(console.stdout(), "baz\n");
+        assert_eq!(console.stderr(), "foo\nbar\n");
+    }
+
+    #[tokio::test]
+    async fn write_failure_of_other_build_after_command_in_console_pool() {
+        let command_runner = FakeCommandRunner::new(
+            [(
+                "bar".into(),
+                Output {
+                    stderr: b"baz\n".into(),
+                    ..failed_output()
+                },
+            )]
+            .into_iter()
+            .collect(),
+        );
+        let console = FakeConsole::default();
+        let context = create_run_context(&command_runner, &console, &[]);
+        let foo = Rule::new("foo".into(), Some("foo".into())).with_pool(Some(Pool::Console));
+        let bar = Rule::new("bar".into(), Some("bar".into()));
         let mut foo_future = pin!(run_rule(&context, &foo));
         let mut bar_future = pin!(run_rule(&context, &bar));
 
-        for _ in 0..POLL_COUNT {
-            assert!(poll!(&mut foo_future).is_pending());
-        }
+        assert!(poll!(&mut foo_future).is_pending());
 
         for _ in 0..POLL_COUNT {
             assert!(poll!(&mut bar_future).is_pending());
         }
 
-        assert_eq!(command_runner.commands(), ["foo", "bar"]);
+        assert_eq!(command_runner.commands(), ["bar"]);
+        assert_eq!(console.stderr(), "foo\n");
 
-        drop(console);
         foo_future.await.unwrap();
-        bar_future.await.unwrap();
+
+        assert_eq!(bar_future.await, Err(BuildError::Build));
+        assert_eq!(console.stderr(), "foo\nbar\nbaz\n");
     }
 
     #[tokio::test]
-    async fn wait_for_pool_before_locking_console() {
+    async fn release_pool_before_waiting_for_console() {
+        let command_runner =
+            FakeCommandRunner::new([("foo".into(), failed_output())].into_iter().collect());
+        let context = create_run_context(&command_runner, &Default::default(), &[("baz", 1)]);
+        let foo = Rule::new("foo".into(), None).with_pool(limited_pool("baz"));
+        let bar = Rule::new("bar".into(), None).with_pool(limited_pool("baz"));
+        let console = context.console().lock().await.unwrap();
+        let mut foo_future = pin!(run_rule(&context, &foo));
+
+        for _ in 0..POLL_COUNT {
+            assert!(poll!(&mut foo_future).is_pending());
+        }
+
+        run_rule(&context, &bar).await.unwrap();
+
+        assert_eq!(command_runner.commands(), ["foo", "bar"]);
+
+        drop(console);
+
+        assert_eq!(foo_future.await, Err(BuildError::Build));
+    }
+
+    #[tokio::test]
+    async fn wait_for_pool_before_writing_description() {
         let command_runner = FakeCommandRunner::default();
         let console = FakeConsole::default();
         let context = create_run_context(&command_runner, &console, &[("bar", 1)]);
@@ -2782,7 +2832,6 @@ mod tests {
 
         assert_eq!(command_runner.commands(), Vec::<String>::new());
         assert_eq!(console.stderr(), "");
-        assert!(context.build().console().try_lock().is_ok());
 
         drop(permit);
         future.await.unwrap();
@@ -2792,18 +2841,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn keep_pool_until_command_finishes_on_console_error() {
+    async fn fail_to_write_description() {
         let command_runner = FakeCommandRunner::default();
-        let context = create_run_context(&command_runner, &FakeConsole::failing(), &[("baz", 1)]);
-        let foo = Rule::new("foo".into(), Some("foo".into())).with_pool(limited_pool("baz"));
-        let bar = Rule::new("bar".into(), None).with_pool(limited_pool("baz"));
-        let mut foo_future = pin!(run_rule(&context, &foo));
-        let mut bar_future = pin!(run_rule(&context, &bar));
+        let context = create_run_context(&command_runner, &FakeConsole::failing(), &[]);
 
-        assert!(poll!(&mut foo_future).is_pending());
-        assert!(poll!(&mut bar_future).is_pending());
-        assert_eq!(command_runner.commands(), ["foo"]);
-        assert!(foo_future.await.is_err());
+        assert!(matches!(
+            run_rule(&context, &Rule::new("foo".into(), Some("foo".into()))).await,
+            Err(BuildError::Console(_))
+        ));
+        assert_eq!(command_runner.commands(), Vec::<String>::new());
     }
 
     #[test]

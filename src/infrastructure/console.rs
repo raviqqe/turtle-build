@@ -1,3 +1,4 @@
+mod buffer;
 mod error;
 #[cfg(test)]
 mod fake;
@@ -5,7 +6,7 @@ mod os;
 
 #[cfg(test)]
 pub use self::fake::FakeConsole;
-pub use self::{error::ConsoleError, os::OsConsole};
+pub use self::{buffer::ConsoleBuffer, error::ConsoleError, os::OsConsole};
 use async_trait::async_trait;
 
 /// A console.

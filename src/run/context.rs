@@ -1,4 +1,4 @@
-use super::{file_cache::FileCache, options::RunOptions};
+use super::{console_queue::ConsoleQueue, file_cache::FileCache, options::RunOptions};
 use crate::{
     BuildError,
     build_graph::BuildGraph,
@@ -18,6 +18,7 @@ pub struct RunContext {
     config: Arc<Config>,
     build_futures: HashMap<BuildId, BuildFuture>,
     build_graph: Mutex<BuildGraph>,
+    console: ConsoleQueue,
     dynamic_configs: std::collections::HashMap<Arc<str>, OnceCell<DynamicConfig>>,
     file_cache: FileCache,
     header_dependencies: std::collections::HashMap<BuildId, Vec<Arc<str>>>,
@@ -34,6 +35,7 @@ impl RunContext {
         options: RunOptions,
     ) -> Self {
         Self {
+            console: ConsoleQueue::new(build.console().clone()),
             file_cache: FileCache::new(build.file_system().clone()),
             build,
             build_graph: build_graph.into(),
@@ -73,6 +75,10 @@ impl RunContext {
 
     pub const fn build_graph(&self) -> &Mutex<BuildGraph> {
         &self.build_graph
+    }
+
+    pub const fn console(&self) -> &ConsoleQueue {
+        &self.console
     }
 
     pub fn dynamic_config(&self, path: &str) -> &OnceCell<DynamicConfig> {

@@ -20,7 +20,7 @@ use tokio::{sync::Mutex, time::sleep};
 use turtle_build::{
     BuildError, Console, Context, FileSystem, Module, ModuleDependencyMap, OsCommandRunner,
     OsConsole, OsFileSystem, PathPool, RedbDatabase, RunOptions, Statement, clean_dead, compile,
-    job_limit, parse, run, validate_modules,
+    job_limit, parse, run,
 };
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
@@ -116,8 +116,6 @@ async fn execute(arguments: &Arguments, console: &Arc<Mutex<OsConsole>>) -> Resu
         .await?;
     let (modules, dependencies) = parse_modules(&file_system, &root_module_path).await?;
 
-    validate_modules(&dependencies)?;
-
     let path_pool = Arc::new(PathPool::new());
     let config = Arc::new(compile(
         &modules,
@@ -166,11 +164,19 @@ async fn parse_modules(
     file_system: &OsFileSystem,
     path: &Path,
 ) -> Result<(HashMap<PathBuf, Module>, ModuleDependencyMap), BuildError> {
-    let mut paths = vec![file_system.canonicalize_path(path).await?];
+    let mut paths = vec![(file_system.canonicalize_path(path).await?, vec![])];
     let mut modules = HashMap::new();
     let mut dependencies = HashMap::new();
 
-    while let Some(path) = paths.pop() {
+    while let Some((path, mut ancestors)) = paths.pop() {
+        if let Some(index) = ancestors.iter().position(|ancestor| ancestor == &path) {
+            return Err(BuildError::CircularModuleDependency(
+                ancestors[index..].to_vec(),
+            ));
+        } else if modules.contains_key(&path) {
+            continue;
+        }
+
         let module = parse(&file_system.read_file_to_string(&path).await?)?;
 
         let submodule_paths = try_join_all(
@@ -189,7 +195,12 @@ async fn parse_modules(
         .into_iter()
         .collect::<HashMap<_, _>>();
 
-        paths.extend(submodule_paths.values().cloned());
+        ancestors.push(path.clone());
+        paths.extend(
+            submodule_paths
+                .values()
+                .map(|path| (path.clone(), ancestors.clone())),
+        );
 
         modules.insert(path.clone(), module);
         dependencies.insert(path, submodule_paths);

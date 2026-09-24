@@ -3,10 +3,11 @@ use crate::{
     compile::CompileError,
     infrastructure::{CommandError, ConsoleError, DatabaseError, FileError},
     ir::Build,
-    module_dependency::ModuleDependencyError,
     parse::ParseError,
 };
 use alloc::sync::Arc;
+use itertools::Itertools;
+use std::path::PathBuf;
 use thiserror::Error;
 use tokio::{io, sync::AcquireError, task::JoinError};
 
@@ -22,6 +23,12 @@ pub enum BuildError {
     /// A build graph error.
     #[error(transparent)]
     BuildGraph(#[from] BuildGraphError),
+    /// A circular module dependency.
+    #[error(
+        "build file dependency cycle detected: {}",
+        .0.iter().chain(.0.first()).dedup().map(|path| path.display()).join(" -> ")
+    )]
+    CircularModuleDependency(Vec<PathBuf>),
     /// A command error.
     #[error(transparent)]
     Command(#[from] CommandError),
@@ -62,9 +69,6 @@ pub enum BuildError {
     /// A task join error.
     #[error("{0}")]
     Join(String),
-    /// A module dependency error.
-    #[error(transparent)]
-    ModuleDependency(#[from] ModuleDependencyError),
     /// An output not found.
     #[error("output \"{0}\" not found")]
     OutputNotFound(String),
@@ -100,6 +104,22 @@ mod tests {
         assert_eq!(
             BuildError::Acquire("semaphore closed".into()).to_string(),
             "semaphore closed"
+        );
+    }
+
+    #[test]
+    fn display_circular_module_dependency() {
+        assert_eq!(
+            BuildError::CircularModuleDependency(vec!["foo".into(), "bar".into()]).to_string(),
+            "build file dependency cycle detected: foo -> bar -> foo"
+        );
+    }
+
+    #[test]
+    fn display_circular_module_dependency_on_itself() {
+        assert_eq!(
+            BuildError::CircularModuleDependency(vec!["foo".into()]).to_string(),
+            "build file dependency cycle detected: foo"
         );
     }
 

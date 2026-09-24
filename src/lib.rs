@@ -28,7 +28,7 @@ pub use self::{
         OsFileSystem, RedbDatabase,
     },
     job_limit::job_limit,
-    module_dependency::{ModuleDependencyMap, validate_modules},
+    module_dependency::ModuleDependencyMap,
     parse::parse,
     path_pool::PathPool,
     run::{RunOptions, run},

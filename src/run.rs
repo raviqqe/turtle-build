@@ -389,7 +389,7 @@ fn classify_inputs<'a>(
     context: &'a RunContext,
     build: &'a Build,
     dynamic_inputs: &'a [Arc<str>],
-    header_dependencies: &'a [&'a Arc<str>],
+    header_inputs: &'a [&'a Arc<str>],
 ) -> (Vec<&'a Arc<str>>, Vec<&'a Arc<str>>) {
     let (phony_inputs, file_inputs) = build
         .inputs()
@@ -408,7 +408,7 @@ fn classify_inputs<'a>(
         phony_inputs,
         file_inputs
             .into_iter()
-            .chain(header_dependencies.iter().copied())
+            .chain(header_inputs.iter().copied())
             .unique()
             .collect(),
     )

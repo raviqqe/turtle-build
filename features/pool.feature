@@ -246,7 +246,7 @@ Feature: Pool statement
       build foo: echo
 
       """
-    When I successfully run `sh -c 'turtle 2>&1'`
+    When I successfully run `turtle`
     Then the stdout should contain exactly:
       """
       foo

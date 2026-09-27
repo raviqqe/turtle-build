@@ -2748,11 +2748,11 @@ mod tests {
         assert!(poll!(&mut future).is_pending());
         assert_eq!(command_runner.commands(), ["foo"]);
         assert!(context.build().console().try_lock().is_ok());
-        assert_eq!(console.stderr(), "");
+        assert_eq!(console.stdout(), "");
 
         future.await.unwrap();
 
-        assert_eq!(console.stderr(), "bar\n");
+        assert_eq!(console.stdout(), "bar\n");
     }
 
     #[tokio::test]
@@ -2769,11 +2769,11 @@ mod tests {
         run_rule(&context, &bar).await.unwrap();
 
         assert_eq!(command_runner.commands(), ["foo", "bar"]);
-        assert_eq!(console.stderr(), "bar\n");
+        assert_eq!(console.stdout(), "bar\n");
 
         foo_future.await.unwrap();
 
-        assert_eq!(console.stderr(), "bar\nfoo\n");
+        assert_eq!(console.stdout(), "bar\nfoo\n");
     }
 
     #[tokio::test]

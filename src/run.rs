@@ -120,7 +120,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
         let (inputs_stale, _, output_metadata) = try_join!(
             build_inputs(&context, build.inputs()),
             build_inputs(&context, build.order_only_inputs()),
-            get_output_metadata(&context, &build),
+            read_output_metadata(&context, &build),
         )?;
 
         let dynamic_inputs = if let Some(path) = build.dynamic_module() {
@@ -310,7 +310,7 @@ async fn load_dynamic_config<'a>(
         .await
 }
 
-async fn get_output_metadata(
+async fn read_output_metadata(
     context: &RunContext,
     build: &Build,
 ) -> Result<Option<Vec<Metadata>>, BuildError> {

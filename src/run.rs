@@ -37,7 +37,7 @@ pub async fn run(
     options: RunOptions,
 ) -> Result<(), BuildError> {
     let mut graph = BuildGraph::new(config.outputs());
-    let mut header_dependencies = HashMap::new();
+    let mut header_inputs = HashMap::new();
 
     for build in config
         .outputs()
@@ -45,17 +45,17 @@ pub async fn run(
         .filter(|build| build.rule().is_some())
         .unique_by(|build| build.id())
     {
-        let dependencies = context.database().get_header_dependencies(build.id())?;
+        let inputs = context.database().get_header_inputs(build.id())?;
 
-        graph.add_header_dependencies(&build.outputs()[0], &dependencies);
-        header_dependencies.insert(build.id(), dependencies);
+        graph.add_inputs(&build.outputs()[0], &inputs);
+        header_inputs.insert(build.id(), inputs);
     }
 
     let context = Arc::new(RunContext::new(
         context.clone(),
         config,
         graph,
-        header_dependencies,
+        header_inputs,
         options,
     ));
 
@@ -155,11 +155,10 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
             return skip_build(&context, &build).await;
         }
 
-        let header_dependencies =
-            filter_existing_header_dependencies(&context, header_inputs).await?;
+        let header_inputs = filter_existing_header_inputs(&context, header_inputs).await?;
 
         let (phony_inputs, file_inputs) =
-            classify_inputs(&context, &build, dynamic_inputs, &header_dependencies);
+            classify_inputs(&context, &build, dynamic_inputs, &header_inputs);
         let mut timestamp_hash =
             calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
@@ -202,13 +201,12 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
 
             invalidate_outputs(&context, &build).await;
 
-            let new_header_dependencies =
-                read_header_dependencies(&context, rule, &output?).await?;
+            let new_header_inputs = read_header_dependencies(&context, rule, &output?).await?;
 
             context
                 .build()
                 .database()
-                .set_header_dependencies(build.id(), &new_header_dependencies)?;
+                .set_header_inputs(build.id(), &new_header_inputs)?;
 
             for output in build.outputs() {
                 context.build().database().set_output(output)?;
@@ -218,15 +216,11 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
                 }
             }
 
-            if header_dependencies
-                .iter()
-                .copied()
-                .ne(&new_header_dependencies)
-            {
-                let header_dependencies =
-                    filter_existing_header_dependencies(&context, &new_header_dependencies).await?;
+            if header_inputs.iter().copied().ne(&new_header_inputs) {
+                let header_inputs =
+                    filter_existing_header_inputs(&context, &new_header_inputs).await?;
                 let (phony_inputs, file_inputs) =
-                    classify_inputs(&context, &build, dynamic_inputs, &header_dependencies);
+                    classify_inputs(&context, &build, dynamic_inputs, &header_inputs);
 
                 timestamp_hash =
                     calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
@@ -336,7 +330,7 @@ async fn cache_output_metadata(context: &RunContext, build: &Build, metadata: &[
     }
 }
 
-async fn filter_existing_header_dependencies<'a>(
+async fn filter_existing_header_inputs<'a>(
     context: &RunContext,
     dependencies: &'a [Arc<str>],
 ) -> Result<Vec<&'a Arc<str>>, BuildError> {
@@ -1955,10 +1949,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            context
-                .database()
-                .get_header_dependencies(build.id())
-                .unwrap(),
+            context.database().get_header_inputs(build.id()).unwrap(),
             ["foo.h".into()]
         );
         assert!(
@@ -2013,10 +2004,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            context
-                .database()
-                .get_header_dependencies(build.id())
-                .unwrap(),
+            context.database().get_header_inputs(build.id()).unwrap(),
             ["foo.h".into()]
         );
         assert_eq!(console.stdout(), "foo.c\n");
@@ -2050,10 +2038,7 @@ mod tests {
         .unwrap();
 
         assert!(Arc::ptr_eq(
-            &context
-                .database()
-                .get_header_dependencies(build.id())
-                .unwrap()[0],
+            &context.database().get_header_inputs(build.id()).unwrap()[0],
             &context.path_pool().intern("foo.h")
         ));
     }
@@ -2071,7 +2056,7 @@ mod tests {
 
         context
             .database()
-            .set_header_dependencies(build.id(), &["foo.h".into()])
+            .set_header_inputs(build.id(), &["foo.h".into()])
             .unwrap();
         file_system.write_file("foo.c", "");
         file_system.write_file("foo.h", "");
@@ -2110,7 +2095,7 @@ mod tests {
 
         context
             .database()
-            .set_header_dependencies(build.id(), &["foo.h".into()])
+            .set_header_inputs(build.id(), &["foo.h".into()])
             .unwrap();
         file_system.write_file("foo.c", "");
 
@@ -2143,7 +2128,7 @@ mod tests {
 
         context
             .database()
-            .set_header_dependencies(build.id(), &["foo.h".into()])
+            .set_header_inputs(build.id(), &["foo.h".into()])
             .unwrap();
         file_system.write_file("foo.c", "");
         file_system.write_file("foo.h", "");
@@ -2175,7 +2160,7 @@ mod tests {
 
         context
             .database()
-            .set_header_dependencies(build.id(), &["foo".into()])
+            .set_header_inputs(build.id(), &["foo".into()])
             .unwrap();
 
         assert_eq!(

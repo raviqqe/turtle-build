@@ -148,23 +148,16 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
             invalidate_outputs(&context, &build).await;
         }
 
-        let dependencies = context.header_dependencies(build.id());
+        let header_inputs = context.header_dependencies(build.id());
 
-        let dependencies_stale = try_join_all(
-            dependencies
-                .iter()
-                .filter_map(|dependency| context.config().outputs().get(dependency))
-                .map(|build| run_build(context.clone(), build)),
-        )
-        .await?
-        .contains(&true);
+        let dependencies_stale = build_inputs(&context, &header_inputs).await?;
 
         if inputs_stale || dynamic_inputs_stale || dependencies_stale {
             return skip_build(&context, &build).await;
         }
 
         let header_dependencies =
-            filter_existing_header_dependencies(&context, dependencies).await?;
+            filter_existing_header_dependencies(&context, header_inputs).await?;
 
         let (phony_inputs, file_inputs) =
             classify_inputs(&context, &build, dynamic_inputs, &header_dependencies);

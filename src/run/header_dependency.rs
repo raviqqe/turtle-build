@@ -8,7 +8,7 @@ use crate::{
 use alloc::{borrow::Cow, sync::Arc};
 use std::process::Output;
 
-pub async fn read_header_dependencies(
+pub async fn read_header_inputs(
     context: &RunContext,
     rule: &Rule,
     output: &Output,

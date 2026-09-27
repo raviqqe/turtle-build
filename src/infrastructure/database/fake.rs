@@ -40,7 +40,7 @@ impl Database for FakeDatabase {
         Ok(())
     }
 
-    fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError> {
+    fn get_header_inputs(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError> {
         self.header_dependency_requests.lock().unwrap().push(id);
 
         Ok(self
@@ -52,7 +52,7 @@ impl Database for FakeDatabase {
             .unwrap_or_default())
     }
 
-    fn set_header_dependencies(
+    fn set_header_inputs(
         &self,
         id: BuildId,
         dependencies: &[Arc<str>],

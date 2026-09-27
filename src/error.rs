@@ -3,7 +3,6 @@ use crate::{
     compile::CompileError,
     infrastructure::{CommandError, ConsoleError, DatabaseError, FileError},
     ir::Build,
-    module_dependency::ModuleDependencyError,
     parse::ParseError,
 };
 use alloc::sync::Arc;
@@ -22,6 +21,9 @@ pub enum BuildError {
     /// A build graph error.
     #[error(transparent)]
     BuildGraph(#[from] BuildGraphError),
+    /// A circular module dependency.
+    #[error("build file dependency cycle detected")]
+    CircularModuleDependency,
     /// A command error.
     #[error(transparent)]
     Command(#[from] CommandError),
@@ -62,9 +64,6 @@ pub enum BuildError {
     /// A task join error.
     #[error("{0}")]
     Join(String),
-    /// A module dependency error.
-    #[error(transparent)]
-    ModuleDependency(#[from] ModuleDependencyError),
     /// An output not found.
     #[error("output \"{0}\" not found")]
     OutputNotFound(String),

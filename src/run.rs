@@ -100,7 +100,6 @@ pub async fn run(
     Ok(())
 }
 
-// Returns true if a dry run leaves outputs of a build stale.
 #[async_recursion]
 async fn run_build(context: Arc<RunContext>, build: &Arc<Build>) -> Result<bool, BuildError> {
     // Do not inline this to avoid holding a lock of build futures across an await point.
@@ -190,11 +189,11 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
         // Dependents of phony builds compare their recorded hashes, which dry runs
         // never update.
         if (output_metadata.is_some() || context.options().dry_run && build.rule().is_none())
-            && Some(content_hash)
-                == context
-                    .build()
-                    .database()
-                    .get_hash(HashType::Content, build.id())?
+            && context
+                .build()
+                .database()
+                .get_hash(HashType::Content, build.id())?
+                == Some(content_hash)
         {
             return Ok(false);
         } else if context.options().dry_run {

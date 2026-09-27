@@ -117,7 +117,7 @@ async fn run_build(context: Arc<RunContext>, build: &Arc<Build>) -> Result<bool,
 
 async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool, BuildError> {
     spawn(async move {
-        let (stale_inputs, _, output_metadata) = try_join!(
+        let (inputs_stale, _, output_metadata) = try_join!(
             build_inputs(&context, build.inputs()),
             build_inputs(&context, build.order_only_inputs()),
             get_output_metadata(&context, &build),
@@ -141,7 +141,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
             &[]
         };
 
-        let stale_dynamic_inputs = build_inputs(&context, dynamic_inputs).await?;
+        let dynamic_inputs_stale = build_inputs(&context, dynamic_inputs).await?;
 
         if build.rule().is_none() {
             // TODO Consider dropping this case by assuming that outputs of phony
@@ -151,7 +151,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
 
         let dependencies = context.header_dependencies(build.id());
 
-        let stale_dependencies = try_join_all(
+        let dependencies_stale = try_join_all(
             dependencies
                 .iter()
                 .filter_map(|dependency| context.config().outputs().get(dependency))
@@ -160,7 +160,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
         .await?
         .contains(&true);
 
-        if stale_inputs || stale_dynamic_inputs || stale_dependencies {
+        if inputs_stale || dynamic_inputs_stale || dependencies_stale {
             return skip_build(&context, &build).await;
         }
 
@@ -425,7 +425,7 @@ fn classify_inputs<'a>(
 
 async fn skip_build(context: &RunContext, build: &Build) -> Result<bool, BuildError> {
     if let Some(rule) = build.rule() {
-        let _ = write_description(context, rule).await?;
+        let _guard = write_description(context, rule).await?;
     }
 
     Ok(true)

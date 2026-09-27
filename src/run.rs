@@ -481,8 +481,8 @@ async fn write_description<'a>(
     let mut console = context.build().console().lock().await;
 
     if let Some(description) = rule.description() {
-        console.write_stderr(description.as_bytes()).await?;
-        console.write_stderr(b"\n").await?;
+        console.write_stdout(description.as_bytes()).await?;
+        console.write_stdout(b"\n").await?;
     }
 
     debug!(context, console, "command: {}", rule.command());
@@ -1769,8 +1769,8 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(console.stdout(), "bar\n");
-        assert_eq!(console.stderr(), "build foo\nbaz\n");
+        assert_eq!(console.stdout(), "build foo\nbar\n");
+        assert_eq!(console.stderr(), "baz\n");
     }
 
     #[tokio::test]
@@ -2612,8 +2612,8 @@ mod tests {
 
         assert_eq!(command_runner.commands(), Vec::<String>::new());
         assert_eq!(command_runner.console_commands(), ["touch foo"]);
-        assert_eq!(console.stdout(), "");
-        assert_eq!(console.stderr(), "build foo\n");
+        assert_eq!(console.stdout(), "build foo\n");
+        assert_eq!(console.stderr(), "");
     }
 
     #[tokio::test]
@@ -2699,7 +2699,7 @@ mod tests {
 
         assert!(poll!(&mut future).is_pending());
         assert_eq!(command_runner.console_commands(), ["foo"]);
-        assert_eq!(console.flushed_stderr(), "bar\n");
+        assert_eq!(console.flushed_stdout(), "bar\n");
 
         future.await.unwrap();
     }
@@ -2781,14 +2781,14 @@ mod tests {
         }
 
         assert_eq!(command_runner.commands(), Vec::<String>::new());
-        assert_eq!(console.stderr(), "");
+        assert_eq!(console.stdout(), "");
         assert!(context.build().console().try_lock().is_ok());
 
         drop(permit);
         future.await.unwrap();
 
         assert_eq!(command_runner.commands(), ["foo"]);
-        assert_eq!(console.stderr(), "foo\n");
+        assert_eq!(console.stdout(), "foo\n");
     }
 
     #[tokio::test]

@@ -7,7 +7,7 @@ use std::sync::Mutex;
 pub struct FakeConsole {
     stdout: Arc<Mutex<Vec<u8>>>,
     stderr: Arc<Mutex<Vec<u8>>>,
-    flushed_stderr: Arc<Mutex<Vec<u8>>>,
+    flushed_stdout: Arc<Mutex<Vec<u8>>>,
     failing: bool,
 }
 
@@ -27,8 +27,8 @@ impl FakeConsole {
         String::from_utf8(self.stderr.lock().unwrap().clone()).unwrap()
     }
 
-    pub fn flushed_stderr(&self) -> String {
-        String::from_utf8(self.flushed_stderr.lock().unwrap().clone()).unwrap()
+    pub fn flushed_stdout(&self) -> String {
+        String::from_utf8(self.flushed_stdout.lock().unwrap().clone()).unwrap()
     }
 
     fn check_failure(&self) -> Result<(), ConsoleError> {
@@ -57,7 +57,7 @@ impl Console for FakeConsole {
     }
 
     async fn flush(&mut self) -> Result<(), ConsoleError> {
-        *self.flushed_stderr.lock().unwrap() = self.stderr.lock().unwrap().clone();
+        *self.flushed_stdout.lock().unwrap() = self.stdout.lock().unwrap().clone();
 
         Ok(())
     }

@@ -101,7 +101,7 @@ pub async fn run(
 }
 
 #[async_recursion]
-async fn run_build(context: Arc<RunContext>, build: &Arc<Build>) -> Result<(), BuildError> {
+async fn run_build(context: Arc<RunContext>, build: &Arc<Build>) -> Result<bool, BuildError> {
     // Do not inline this to avoid holding a lock of build futures across an await point.
     let future = context
         .build_futures()
@@ -114,20 +114,19 @@ async fn run_build(context: Arc<RunContext>, build: &Arc<Build>) -> Result<(), B
     future.await
 }
 
-async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), BuildError> {
+async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool, BuildError> {
     spawn(async move {
-        let (_, output_metadata) = try_join!(
-            try_join_all(
-                build
-                    .inputs()
-                    .iter()
-                    .chain(build.order_only_inputs())
-                    .map(|input| build_input(context.clone(), input)),
-            ),
-            get_output_metadata(&context, &build),
+        let (inputs_stale, _, output_metadata) = try_join!(
+            build_inputs(&context, build.inputs()),
+            build_inputs(&context, build.order_only_inputs()),
+            read_output_metadata(&context, &build),
         )?;
 
         let dynamic_inputs = if let Some(path) = build.dynamic_module() {
+            if build_input(context.clone(), path).await? {
+                return skip_build(&context, &build).await;
+            }
+
             let config = load_dynamic_config(&context, path).await?;
 
             build
@@ -141,12 +140,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             &[]
         };
 
-        try_join_all(
-            dynamic_inputs
-                .iter()
-                .map(|input| build_input(context.clone(), input)),
-        )
-        .await?;
+        let dynamic_inputs_stale = build_inputs(&context, dynamic_inputs).await?;
 
         if build.rule().is_none() {
             // TODO Consider dropping this case by assuming that outputs of phony
@@ -156,13 +150,18 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
 
         let dependencies = context.header_dependencies(build.id());
 
-        try_join_all(
+        let dependencies_stale = try_join_all(
             dependencies
                 .iter()
                 .filter_map(|dependency| context.config().outputs().get(dependency))
                 .map(|build| run_build(context.clone(), build)),
         )
-        .await?;
+        .await?
+        .contains(&true);
+
+        if inputs_stale || dynamic_inputs_stale || dependencies_stale {
+            return skip_build(&context, &build).await;
+        }
 
         let header_dependencies =
             filter_existing_header_dependencies(&context, dependencies).await?;
@@ -181,20 +180,22 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
         {
             cache_output_metadata(&context, &build, metadata).await;
 
-            return Ok(());
+            return Ok(false);
         }
 
         let mut content_hash =
             calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
-        if output_metadata.is_some()
-            && Some(content_hash)
-                == context
-                    .build()
-                    .database()
-                    .get_hash(HashType::Content, build.id())?
+        if (output_metadata.is_some() || build.rule().is_none())
+            && context
+                .build()
+                .database()
+                .get_hash(HashType::Content, build.id())?
+                == Some(content_hash)
         {
-            return Ok(());
+            return Ok(false);
+        } else if context.options().dry_run {
+            return skip_build(&context, &build).await;
         } else if let Some(rule) = build.rule() {
             try_join_all(
                 build
@@ -251,16 +252,28 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<(), 
             .database()
             .set_hash(HashType::Content, build.id(), content_hash)?;
 
-        Ok(())
+        Ok(false)
     })
     .await?
 }
 
-async fn build_input(context: Arc<RunContext>, input: &Arc<str>) -> Result<(), BuildError> {
+async fn build_inputs(context: &Arc<RunContext>, inputs: &[Arc<str>]) -> Result<bool, BuildError> {
+    Ok(try_join_all(
+        inputs
+            .iter()
+            .map(|input| build_input(context.clone(), input)),
+    )
+    .await?
+    .contains(&true))
+}
+
+async fn build_input(context: Arc<RunContext>, input: &Arc<str>) -> Result<bool, BuildError> {
     if let Some(build) = context.config().outputs().get(input) {
         run_build(context.clone(), build).await
     } else {
-        check_file_existence(&context, input).await
+        check_file_existence(&context, input).await?;
+
+        Ok(false)
     }
 }
 
@@ -294,7 +307,7 @@ async fn load_dynamic_config<'a>(
         .await
 }
 
-async fn get_output_metadata(
+async fn read_output_metadata(
     context: &RunContext,
     build: &Build,
 ) -> Result<Option<Vec<Metadata>>, BuildError> {
@@ -405,6 +418,14 @@ fn classify_inputs<'a>(
             .unique()
             .collect(),
     )
+}
+
+async fn skip_build(context: &RunContext, build: &Build) -> Result<bool, BuildError> {
+    if let Some(rule) = build.rule() {
+        let _guard = write_description(context, rule).await?;
+    }
+
+    Ok(true)
 }
 
 async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildError> {
@@ -531,6 +552,7 @@ mod tests {
 
     const DEFAULT_OPTIONS: RunOptions = RunOptions {
         debug: false,
+        dry_run: false,
         profile: false,
     };
     const POLL_COUNT: usize = 8;
@@ -1702,6 +1724,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_no_input_on_timestamp_update_of_input_of_phony_input() {
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&Default::default(), &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![
+                explicit_build(
+                    vec!["foo".into()],
+                    Rule::new("cp bar foo".into(), None),
+                    vec!["bar".into(), "qux".into()],
+                ),
+                Build::new(
+                    vec!["bar".into()],
+                    vec![],
+                    None,
+                    vec!["baz".into()],
+                    vec![],
+                    None,
+                ),
+            ],
+            &["foo"],
+        );
+
+        file_system.write_file("foo", "");
+        file_system.write_file("baz", "");
+        file_system.write_file("qux", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        file_system.write_file("baz", "");
+
+        let count = file_system.read_requests().len();
+
+        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+        assert_eq!(file_system.read_requests()[count..], [Path::new("baz")]);
+    }
+
+    #[tokio::test]
     async fn fail_with_output_metadata_error() {
         let command_runner = FakeCommandRunner::default();
         let file_system = FakeFileSystem::default();
@@ -1792,6 +1854,7 @@ mod tests {
                 &[],
                 RunOptions {
                     debug: true,
+                    dry_run: false,
                     profile: false,
                 },
             )
@@ -1821,6 +1884,7 @@ mod tests {
             &[],
             RunOptions {
                 debug: false,
+                dry_run: false,
                 profile: true,
             },
         )
@@ -2655,6 +2719,7 @@ mod tests {
                 &[],
                 RunOptions {
                     debug: true,
+                    dry_run: false,
                     profile: false,
                 },
             )
@@ -2883,5 +2948,681 @@ mod tests {
                 ]
             )
         );
+    }
+
+    mod dry_run {
+        use super::*;
+        use pretty_assertions::assert_eq;
+        use std::path::PathBuf;
+
+        const OPTIONS: RunOptions = RunOptions {
+            dry_run: true,
+            ..DEFAULT_OPTIONS
+        };
+
+        fn create_database_context(
+            console: &FakeConsole,
+            database: &FakeDatabase,
+            file_system: &FakeFileSystem,
+        ) -> Arc<Context> {
+            Context::new(
+                FakeCommandRunner::default(),
+                Mutex::new(console.clone()).into(),
+                database.clone(),
+                file_system.clone(),
+                Default::default(),
+            )
+            .into()
+        }
+
+        fn described_rule(output: &str) -> Rule {
+            Rule::new(format!("touch {output}"), Some(format!("build {output}")))
+        }
+
+        fn described_build(output: &str, inputs: &[&str]) -> Build {
+            explicit_build(
+                vec![output.into()],
+                described_rule(output),
+                inputs.iter().map(|&input| input.into()).collect(),
+            )
+        }
+
+        fn phony_build(output: &str, inputs: &[&str]) -> Build {
+            Build::new(
+                vec![output.into()],
+                vec![],
+                None,
+                inputs.iter().map(|&input| input.into()).collect(),
+                vec![],
+                None,
+            )
+        }
+
+        #[tokio::test]
+        async fn run_no_command() {
+            let command_runner = FakeCommandRunner::default();
+
+            run(
+                &create_context(&command_runner, &Default::default(), &Default::default()),
+                create_simple_config(vec![described_build("foo", &[])], &["foo"]),
+                &[],
+                OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(command_runner.commands(), Vec::<String>::new());
+        }
+
+        #[tokio::test]
+        async fn write_description() {
+            let console = FakeConsole::default();
+
+            run(
+                &create_context(&Default::default(), &console, &Default::default()),
+                create_simple_config(vec![described_build("foo", &[])], &["foo"]),
+                &[],
+                OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(console.stdout(), "build foo\n");
+            assert_eq!(console.stderr(), "");
+        }
+
+        #[tokio::test]
+        async fn write_debug_log() {
+            let console = FakeConsole::default();
+
+            run(
+                &create_context(&Default::default(), &console, &Default::default()),
+                create_simple_config(vec![described_build("foo", &[])], &["foo"]),
+                &[],
+                RunOptions {
+                    debug: true,
+                    ..OPTIONS
+                },
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(console.stdout(), "build foo\n");
+            assert_eq!(console.stderr(), "turtle: command: touch foo\n");
+        }
+
+        #[tokio::test]
+        async fn prepare_no_output_directory() {
+            let context = create_context(
+                &Default::default(),
+                &Default::default(),
+                &Default::default(),
+            );
+
+            run(
+                &context,
+                create_simple_config(vec![described_build("foo/bar", &[])], &["foo/bar"]),
+                &[],
+                OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert!(!context.file_system().exists("foo".as_ref()).await.unwrap());
+        }
+
+        #[tokio::test]
+        async fn record_no_output() {
+            let file_system = FakeFileSystem::default();
+            let context = create_context(&Default::default(), &Default::default(), &file_system);
+
+            file_system.write_file("foo.c", "");
+
+            run(
+                &context,
+                Config::new(
+                    create_outputs(vec![described_build("foo.o", &["foo.c"])]),
+                    ["foo.o".into()].into_iter().collect(),
+                    [("foo.o".into(), "foo.c".into())].into_iter().collect(),
+                    Default::default(),
+                    None,
+                )
+                .into(),
+                &[],
+                OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(
+                context.database().get_outputs().unwrap(),
+                Vec::<String>::new()
+            );
+            assert_eq!(context.database().get_source("foo.o").unwrap(), None);
+        }
+
+        #[tokio::test]
+        async fn run_command_after_dry_run() {
+            let command_runner = FakeCommandRunner::default();
+            let file_system = FakeFileSystem::default();
+            let context = create_context(&command_runner, &Default::default(), &file_system);
+            let config = create_simple_config(
+                vec![
+                    described_build("foo", &["bar"]),
+                    phony_build("bar", &["baz"]),
+                ],
+                &["foo"],
+            );
+
+            file_system.write_file("foo", "");
+            file_system.write_file("baz", "");
+
+            run(&context, config.clone(), &[], OPTIONS).await.unwrap();
+            run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+            assert_eq!(command_runner.commands(), ["touch foo"]);
+        }
+
+        #[tokio::test]
+        async fn write_no_description_of_up_to_date_build() {
+            let console = FakeConsole::default();
+            let database = FakeDatabase::default();
+            let file_system = FakeFileSystem::default();
+            let config = create_simple_config(vec![described_build("foo", &["bar"])], &["foo"]);
+
+            file_system.write_file("foo", "");
+            file_system.write_file("bar", "");
+
+            run(
+                &create_database_context(&Default::default(), &database, &file_system),
+                config.clone(),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await
+            .unwrap();
+            run(
+                &create_database_context(&console, &database, &file_system),
+                config,
+                &[],
+                OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(console.stdout(), "");
+        }
+
+        #[tokio::test]
+        async fn write_description_on_content_update_of_input() {
+            let console = FakeConsole::default();
+            let database = FakeDatabase::default();
+            let file_system = FakeFileSystem::default();
+            let config = create_simple_config(vec![described_build("foo", &["bar"])], &["foo"]);
+
+            file_system.write_file("foo", "");
+            file_system.write_file("bar", "");
+
+            run(
+                &create_database_context(&Default::default(), &database, &file_system),
+                config.clone(),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            file_system.write_file("bar", "bar");
+
+            run(
+                &create_database_context(&console, &database, &file_system),
+                config,
+                &[],
+                OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(console.stdout(), "build foo\n");
+        }
+
+        #[tokio::test]
+        async fn write_description_of_missing_output() {
+            let console = FakeConsole::default();
+            let database = FakeDatabase::default();
+            let file_system = FakeFileSystem::default();
+            let config = create_simple_config(vec![described_build("foo", &["bar"])], &["foo"]);
+
+            file_system.write_file("bar", "");
+
+            run(
+                &create_database_context(&Default::default(), &database, &file_system),
+                config.clone(),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await
+            .unwrap();
+            run(
+                &create_database_context(&console, &database, &file_system),
+                config,
+                &[],
+                OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(console.stdout(), "build foo\n");
+        }
+
+        #[tokio::test]
+        async fn write_description_of_dependent_of_missing_output() {
+            let console = FakeConsole::default();
+            let file_system = FakeFileSystem::default();
+
+            file_system.write_file("baz", "");
+
+            run(
+                &create_context(&Default::default(), &console, &file_system),
+                create_simple_config(
+                    vec![
+                        described_build("foo", &["bar"]),
+                        described_build("bar", &["baz"]),
+                    ],
+                    &["foo"],
+                ),
+                &[],
+                OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(console.stdout(), "build bar\nbuild foo\n");
+        }
+
+        #[tokio::test]
+        async fn write_description_of_dependent_of_stale_build() {
+            let console = FakeConsole::default();
+            let database = FakeDatabase::default();
+            let file_system = FakeFileSystem::default();
+            let config = create_simple_config(
+                vec![
+                    described_build("foo", &["bar"]),
+                    described_build("bar", &["baz"]),
+                ],
+                &["foo"],
+            );
+
+            file_system.write_file("foo", "");
+            file_system.write_file("bar", "");
+            file_system.write_file("baz", "");
+
+            run(
+                &create_database_context(&Default::default(), &database, &file_system),
+                config.clone(),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            file_system.write_file("baz", "baz");
+
+            run(
+                &create_database_context(&console, &database, &file_system),
+                config,
+                &[],
+                OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(console.stdout(), "build bar\nbuild foo\n");
+        }
+
+        #[tokio::test]
+        async fn write_no_description_of_dependent_of_stale_order_only_input() {
+            let console = FakeConsole::default();
+            let database = FakeDatabase::default();
+            let file_system = FakeFileSystem::default();
+            let config = create_simple_config(
+                vec![
+                    Build::new(
+                        vec!["foo".into()],
+                        vec![],
+                        described_rule("foo").into(),
+                        vec![],
+                        vec!["bar".into()],
+                        None,
+                    ),
+                    described_build("bar", &["baz"]),
+                ],
+                &["foo"],
+            );
+
+            file_system.write_file("foo", "");
+            file_system.write_file("bar", "");
+            file_system.write_file("baz", "");
+
+            run(
+                &create_database_context(&Default::default(), &database, &file_system),
+                config.clone(),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            file_system.write_file("baz", "baz");
+
+            run(
+                &create_database_context(&console, &database, &file_system),
+                config,
+                &[],
+                OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(console.stdout(), "build bar\n");
+        }
+
+        #[tokio::test]
+        async fn write_no_description_of_dependent_of_up_to_date_phony_input() {
+            let console = FakeConsole::default();
+            let database = FakeDatabase::default();
+            let file_system = FakeFileSystem::default();
+            let config = create_simple_config(
+                vec![
+                    described_build("foo", &["bar"]),
+                    phony_build("bar", &["baz"]),
+                ],
+                &["foo"],
+            );
+
+            file_system.write_file("foo", "");
+            file_system.write_file("baz", "");
+
+            run(
+                &create_database_context(&Default::default(), &database, &file_system),
+                config.clone(),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await
+            .unwrap();
+            run(
+                &create_database_context(&console, &database, &file_system),
+                config,
+                &[],
+                OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(console.stdout(), "");
+        }
+
+        #[tokio::test]
+        async fn write_description_on_update_of_phony_input() {
+            let console = FakeConsole::default();
+            let database = FakeDatabase::default();
+            let file_system = FakeFileSystem::default();
+            let config = create_simple_config(
+                vec![
+                    described_build("foo", &["bar"]),
+                    phony_build("bar", &["baz"]),
+                ],
+                &["foo"],
+            );
+
+            file_system.write_file("foo", "");
+            file_system.write_file("baz", "");
+
+            run(
+                &create_database_context(&Default::default(), &database, &file_system),
+                config.clone(),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            file_system.write_file("baz", "baz");
+
+            run(
+                &create_database_context(&console, &database, &file_system),
+                config,
+                &[],
+                OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(console.stdout(), "build foo\n");
+        }
+
+        #[tokio::test]
+        async fn write_description_of_dependent_of_phony_input_without_input() {
+            let console = FakeConsole::default();
+            let database = FakeDatabase::default();
+            let file_system = FakeFileSystem::default();
+            let config = create_simple_config(
+                vec![described_build("foo", &["bar"]), phony_build("bar", &[])],
+                &["foo"],
+            );
+
+            file_system.write_file("foo", "");
+
+            run(
+                &create_database_context(&Default::default(), &database, &file_system),
+                config.clone(),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await
+            .unwrap();
+            run(
+                &create_database_context(&console, &database, &file_system),
+                config,
+                &[],
+                OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(console.stdout(), "build foo\n");
+        }
+
+        #[tokio::test]
+        async fn write_description_of_dependent_of_phony_input_with_stale_input() {
+            let console = FakeConsole::default();
+            let database = FakeDatabase::default();
+            let file_system = FakeFileSystem::default();
+            let config = create_simple_config(
+                vec![
+                    described_build("foo", &["bar"]),
+                    phony_build("bar", &["baz"]),
+                    described_build("baz", &["qux"]),
+                ],
+                &["foo"],
+            );
+
+            file_system.write_file("foo", "");
+            file_system.write_file("baz", "");
+            file_system.write_file("qux", "");
+
+            run(
+                &create_database_context(&Default::default(), &database, &file_system),
+                config.clone(),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            file_system.write_file("qux", "qux");
+
+            run(
+                &create_database_context(&console, &database, &file_system),
+                config,
+                &[],
+                OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(console.stdout(), "build baz\nbuild foo\n");
+        }
+
+        #[tokio::test]
+        async fn write_description_of_dependent_of_stale_header_dependency() {
+            let console = FakeConsole::default();
+            let database = FakeDatabase::default();
+            let file_system = FakeFileSystem::default();
+            let config = create_simple_config(
+                vec![
+                    explicit_build(
+                        vec!["foo.o".into()],
+                        described_rule("foo.o").with_header_dependency(Some(
+                            HeaderDependency::Make {
+                                path: "foo.d".into(),
+                            },
+                        )),
+                        vec!["foo.c".into()],
+                    ),
+                    described_build("foo.h", &["foo.h.in"]),
+                ],
+                &["foo.o", "foo.h"],
+            );
+
+            file_system.write_file("foo.o", "");
+            file_system.write_file("foo.c", "");
+            file_system.write_file("foo.d", "foo.o: foo.h\n");
+            file_system.write_file("foo.h", "");
+            file_system.write_file("foo.h.in", "");
+
+            run(
+                &create_database_context(&Default::default(), &database, &file_system),
+                config.clone(),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            file_system.write_file("foo.h.in", "foo");
+
+            run(
+                &create_database_context(&console, &database, &file_system),
+                config,
+                &[],
+                OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(console.stdout(), "build foo.h\nbuild foo.o\n");
+        }
+
+        #[tokio::test]
+        async fn write_description_of_dependent_of_stale_dynamic_input() {
+            let console = FakeConsole::default();
+            let database = FakeDatabase::default();
+            let file_system = FakeFileSystem::default();
+            let config = create_simple_config(
+                vec![
+                    Build::new(
+                        vec!["foo".into()],
+                        vec![],
+                        described_rule("foo").into(),
+                        vec![],
+                        vec!["foo.dd".into()],
+                        Some("foo.dd".into()),
+                    ),
+                    described_build("bar", &["baz"]),
+                ],
+                &["foo"],
+            );
+
+            file_system.write_file(
+                "foo.dd",
+                "ninja_dyndep_version = 1\nbuild foo: dyndep | bar\n",
+            );
+            file_system.write_file("foo", "");
+            file_system.write_file("bar", "");
+            file_system.write_file("baz", "");
+
+            run(
+                &create_database_context(&Default::default(), &database, &file_system),
+                config.clone(),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            file_system.write_file("baz", "baz");
+
+            run(
+                &create_database_context(&console, &database, &file_system),
+                config,
+                &[],
+                OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(console.stdout(), "build bar\nbuild foo\n");
+        }
+
+        #[tokio::test]
+        async fn write_description_of_dependent_of_stale_dynamic_module() {
+            let console = FakeConsole::default();
+            let file_system = FakeFileSystem::default();
+
+            run(
+                &create_context(&Default::default(), &console, &file_system),
+                create_simple_config(
+                    vec![
+                        Build::new(
+                            vec!["foo".into()],
+                            vec![],
+                            described_rule("foo").into(),
+                            vec![],
+                            vec!["foo.dd".into()],
+                            Some("foo.dd".into()),
+                        ),
+                        described_build("foo.dd", &[]),
+                    ],
+                    &["foo"],
+                ),
+                &[],
+                OPTIONS,
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(console.stdout(), "build foo.dd\nbuild foo\n");
+            assert_eq!(file_system.read_requests(), Vec::<PathBuf>::new());
+        }
+
+        #[tokio::test]
+        async fn fail_with_missing_input() {
+            assert_eq!(
+                run(
+                    &create_context(
+                        &Default::default(),
+                        &Default::default(),
+                        &Default::default()
+                    ),
+                    create_simple_config(vec![described_build("foo", &["bar"])], &["foo"]),
+                    &[],
+                    OPTIONS,
+                )
+                .await,
+                Err(BuildError::FileNotFound("bar".into()))
+            );
+        }
     }
 }

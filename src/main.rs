@@ -39,6 +39,12 @@ struct Arguments {
     directory: Option<String>,
     #[clap(short, help = "Set a job limit")]
     job_limit: Option<usize>,
+    #[clap(
+        short = 'n',
+        help = "Run builds without running commands",
+        conflicts_with = "tool"
+    )]
+    dry_run: bool,
     #[clap(long, help = "Set a log prefix")]
     log_prefix: Option<String>,
     #[clap(long, help = "Show no message on failure of build jobs")]
@@ -151,6 +157,7 @@ async fn execute(arguments: &Arguments, console: &Arc<Mutex<OsConsole>>) -> Resu
             &arguments.outputs,
             RunOptions {
                 debug: arguments.debug,
+                dry_run: arguments.dry_run,
                 profile: arguments.profile,
             },
         )

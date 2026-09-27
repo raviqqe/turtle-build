@@ -11,7 +11,7 @@ use futures::future::Shared;
 use scc::HashMap;
 use tokio::sync::{Mutex, OnceCell, Semaphore, SemaphorePermit};
 
-type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<(), BuildError>> + Send>>>;
+type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<bool, BuildError>> + Send>>>;
 
 pub struct RunContext {
     build: Arc<Context>,

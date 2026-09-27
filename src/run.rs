@@ -2990,8 +2990,8 @@ mod tests {
             .await
             .unwrap();
 
-            assert_eq!(console.stdout(), "");
-            assert_eq!(console.stderr(), "build foo\n");
+            assert_eq!(console.stdout(), "build foo\n");
+            assert_eq!(console.stderr(), "");
         }
 
         #[tokio::test]
@@ -3010,7 +3010,8 @@ mod tests {
             .await
             .unwrap();
 
-            assert_eq!(console.stderr(), "build foo\nturtle: command: touch foo\n");
+            assert_eq!(console.stdout(), "build foo\n");
+            assert_eq!(console.stderr(), "turtle: command: touch foo\n");
         }
 
         #[tokio::test]
@@ -3112,7 +3113,7 @@ mod tests {
             .await
             .unwrap();
 
-            assert_eq!(console.stderr(), "");
+            assert_eq!(console.stdout(), "");
         }
 
         #[tokio::test]
@@ -3145,7 +3146,7 @@ mod tests {
             .await
             .unwrap();
 
-            assert_eq!(console.stderr(), "build foo\n");
+            assert_eq!(console.stdout(), "build foo\n");
         }
 
         #[tokio::test]
@@ -3174,7 +3175,7 @@ mod tests {
             .await
             .unwrap();
 
-            assert_eq!(console.stderr(), "build foo\n");
+            assert_eq!(console.stdout(), "build foo\n");
         }
 
         #[tokio::test]
@@ -3199,7 +3200,7 @@ mod tests {
             .await
             .unwrap();
 
-            assert_eq!(console.stderr(), "build bar\nbuild foo\n");
+            assert_eq!(console.stdout(), "build bar\nbuild foo\n");
         }
 
         #[tokio::test]
@@ -3239,7 +3240,7 @@ mod tests {
             .await
             .unwrap();
 
-            assert_eq!(console.stderr(), "build bar\nbuild foo\n");
+            assert_eq!(console.stdout(), "build bar\nbuild foo\n");
         }
 
         #[tokio::test]
@@ -3286,7 +3287,7 @@ mod tests {
             .await
             .unwrap();
 
-            assert_eq!(console.stderr(), "build bar\n");
+            assert_eq!(console.stdout(), "build bar\n");
         }
 
         #[tokio::test]
@@ -3322,7 +3323,7 @@ mod tests {
             .await
             .unwrap();
 
-            assert_eq!(console.stderr(), "");
+            assert_eq!(console.stdout(), "");
         }
 
         #[tokio::test]
@@ -3361,7 +3362,7 @@ mod tests {
             .await
             .unwrap();
 
-            assert_eq!(console.stderr(), "build foo\n");
+            assert_eq!(console.stdout(), "build foo\n");
         }
 
         #[tokio::test]
@@ -3393,7 +3394,7 @@ mod tests {
             .await
             .unwrap();
 
-            assert_eq!(console.stderr(), "build foo\n");
+            assert_eq!(console.stdout(), "build foo\n");
         }
 
         #[tokio::test]
@@ -3434,7 +3435,7 @@ mod tests {
             .await
             .unwrap();
 
-            assert_eq!(console.stderr(), "build baz\nbuild foo\n");
+            assert_eq!(console.stdout(), "build baz\nbuild foo\n");
         }
 
         #[tokio::test]
@@ -3484,7 +3485,7 @@ mod tests {
             .await
             .unwrap();
 
-            assert_eq!(console.stderr(), "build foo.h\nbuild foo.o\n");
+            assert_eq!(console.stdout(), "build foo.h\nbuild foo.o\n");
         }
 
         #[tokio::test]
@@ -3535,7 +3536,7 @@ mod tests {
             .await
             .unwrap();
 
-            assert_eq!(console.stderr(), "build bar\nbuild foo\n");
+            assert_eq!(console.stdout(), "build bar\nbuild foo\n");
         }
 
         #[tokio::test]
@@ -3565,7 +3566,7 @@ mod tests {
             .await
             .unwrap();
 
-            assert_eq!(console.stderr(), "build foo.dd\nbuild foo\n");
+            assert_eq!(console.stdout(), "build foo.dd\nbuild foo\n");
             assert_eq!(file_system.read_requests(), Vec::<PathBuf>::new());
         }
 

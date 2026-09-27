@@ -29,7 +29,7 @@ Feature: Dry run
     Given a file named "build.ninja" with:
       """
       rule cp
-        command = sh -c 'echo hello && cp $in $out'
+        command = cp $in $out
 
       build bar: cp baz
       build foo: cp bar
@@ -39,11 +39,7 @@ Feature: Dry run
     When I successfully run `turtle`
     And a file named "baz" with "baz"
     And I successfully run `turtle -n`
-    Then the stdout should contain exactly:
-      """
-      hello
-      hello
-      """
+    Then the file named "foo" should not contain "baz"
 
   Scenario: Fail with a missing input
     Given a file named "build.ninja" with:
@@ -57,7 +53,6 @@ Feature: Dry run
     When I run `turtle -n`
     Then the exit status should not be 0
 
-  @turtle
   Scenario: Show a description
     Given a file named "build.ninja" with:
       """
@@ -69,22 +64,8 @@ Feature: Dry run
 
       """
     When I successfully run `turtle -n`
-    Then the stderr should contain exactly "touching foo"
+    Then the stdout should contain exactly "touching foo"
 
-  @turtle
-  Scenario: Show a command with a debug option
-    Given a file named "build.ninja" with:
-      """
-      rule touch
-        command = touch $out
-
-      build foo: touch
-
-      """
-    When I successfully run `turtle -n --debug`
-    Then the stderr should contain exactly "turtle: command: touch foo"
-
-  @turtle
   Scenario: Show descriptions of builds never run
     Given a file named "build.ninja" with:
       """
@@ -98,13 +79,12 @@ Feature: Dry run
       """
     And a file named "baz" with ""
     When I successfully run `turtle -n`
-    Then the stderr should contain exactly:
+    Then the stdout should contain exactly:
       """
       copying bar
       copying foo
       """
 
-  @turtle
   Scenario: Show no description of an up-to-date build
     Given a file named "build.ninja" with:
       """
@@ -118,9 +98,8 @@ Feature: Dry run
     And a file named "bar" with ""
     When I successfully run `turtle`
     And I successfully run `turtle -n`
-    Then the stderr from "turtle -n" should contain exactly ""
+    Then the stdout from "turtle -n" should not contain "copying foo"
 
-  @turtle
   Scenario: Show a description of a dependent of a stale build
     Given a file named "build.ninja" with:
       """
@@ -136,13 +115,12 @@ Feature: Dry run
     When I successfully run `turtle`
     And a file named "baz" with "baz"
     And I successfully run `turtle -n`
-    Then the stderr from "turtle -n" should contain exactly:
+    Then the stdout from "turtle -n" should contain exactly:
       """
       copying bar
       copying foo
       """
 
-  @turtle
   Scenario: Show no description of a dependent of a stale order-only input
     Given a file named "build.ninja" with:
       """
@@ -161,9 +139,8 @@ Feature: Dry run
     When I successfully run `turtle`
     And a file named "baz" with "baz"
     And I successfully run `turtle -n`
-    Then the stderr from "turtle -n" should contain exactly "copying bar"
+    Then the stdout from "turtle -n" should contain exactly "copying bar"
 
-  @turtle
   Scenario: Show a description of a dependent of a stale phony input
     Given a file named "build.ninja" with:
       """
@@ -177,9 +154,8 @@ Feature: Dry run
       """
     When I successfully run `turtle`
     And I successfully run `turtle -n`
-    Then the stderr from "turtle -n" should contain exactly "touching foo"
+    Then the stdout from "turtle -n" should contain exactly "touching foo"
 
-  @turtle
   Scenario: Show no description of a dependent of an up-to-date phony input
     Given a file named "build.ninja" with:
       """
@@ -194,7 +170,7 @@ Feature: Dry run
     And a file named "baz" with ""
     When I successfully run `turtle`
     And I successfully run `turtle -n`
-    Then the stderr from "turtle -n" should contain exactly ""
+    Then the stdout from "turtle -n" should not contain "touching foo"
 
   @turtle
   Scenario: Show a description of a build with a dyndep file never built
@@ -213,11 +189,24 @@ Feature: Dry run
 
       """
     When I successfully run `turtle -n`
-    Then the stderr should contain exactly:
+    Then the stdout should contain exactly:
       """
       generating foo.dd
       touching foo
       """
+
+  @turtle
+  Scenario: Show a command with a debug option
+    Given a file named "build.ninja" with:
+      """
+      rule touch
+        command = touch $out
+
+      build foo: touch
+
+      """
+    When I successfully run `turtle -n --debug`
+    Then the stderr should contain exactly "turtle: command: touch foo"
 
   @turtle
   Scenario: Create no output directory

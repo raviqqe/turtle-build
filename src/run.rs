@@ -8,7 +8,7 @@ mod options;
 use self::{
     context::RunContext,
     hash::{calculate_content_hash, calculate_timestamp_hash},
-    header_dependency::{exclude_show_includes, read_header_dependencies},
+    header_dependency::{exclude_show_includes, read_header_inputs},
     log::{debug, profile},
 };
 use crate::{
@@ -201,7 +201,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
 
             invalidate_outputs(&context, &build).await;
 
-            let new_header_inputs = read_header_dependencies(&context, rule, &output?).await?;
+            let new_header_inputs = read_header_inputs(&context, rule, &output?).await?;
 
             context
                 .build()

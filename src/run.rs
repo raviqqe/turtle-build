@@ -329,9 +329,9 @@ async fn cache_output_metadata(context: &RunContext, build: &Build, metadata: &[
     }
 }
 
-async fn filter_existing_header_inputs<'a>(
+async fn filter_existing_header_inputs(
     context: &RunContext,
-    dependencies: &'a [Arc<str>],
+    dependencies: &[Arc<str>],
 ) -> Result<Vec<Arc<str>>, BuildError> {
     let mut existing_dependencies = vec![];
 

@@ -39,8 +39,6 @@ For more information, see `turtle --help`.
   - It changes log prefixes attached to every line of logs from Turtle itself (e.g. `--log-prefix my-build-system` for a log of `my-build-system: build failed`.)
 - `--quiet` option
   - It suppresses error messages from Turtle itself on expected build errors. This is useful when you are spawning Turtle as a child process of some higher-level build system.
-- Console output handling similar to Rust's Cargo
-  - Turtle shows outputs of build jobs running currently at the bottom of logs. So it's easy to track what is going on during builds.
 
 ### Compatibility with [Ninja][ninja]
 

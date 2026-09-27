@@ -148,11 +148,10 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
             invalidate_outputs(&context, &build).await;
         }
 
-        let header_inputs = context.header_dependencies(build.id());
+        let header_inputs = context.header_inputs(build.id());
+        let header_inputs_stale = build_inputs(&context, &header_inputs).await?;
 
-        let dependencies_stale = build_inputs(&context, &header_inputs).await?;
-
-        if inputs_stale || dynamic_inputs_stale || dependencies_stale {
+        if inputs_stale || dynamic_inputs_stale || header_inputs_stale {
             return skip_build(&context, &build).await;
         }
 

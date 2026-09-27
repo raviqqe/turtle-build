@@ -186,9 +186,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
         let mut content_hash =
             calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
-        // Dependents of phony builds compare their recorded hashes, which dry runs
-        // never update.
-        if (output_metadata.is_some() || context.options().dry_run && build.rule().is_none())
+        if (output_metadata.is_some() || build.rule().is_none())
             && context
                 .build()
                 .database()
@@ -1723,6 +1721,46 @@ mod tests {
         run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
 
         assert_eq!(count_metadata_requests(&file_system, "foo.h"), count + 2);
+    }
+
+    #[tokio::test]
+    async fn read_no_input_on_timestamp_update_of_input_of_phony_input() {
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&Default::default(), &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![
+                explicit_build(
+                    vec!["foo".into()],
+                    Rule::new("cp bar foo".into(), None),
+                    vec!["bar".into(), "qux".into()],
+                ),
+                Build::new(
+                    vec!["bar".into()],
+                    vec![],
+                    None,
+                    vec!["baz".into()],
+                    vec![],
+                    None,
+                ),
+            ],
+            &["foo"],
+        );
+
+        file_system.write_file("foo", "");
+        file_system.write_file("baz", "");
+        file_system.write_file("qux", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        file_system.write_file("baz", "");
+
+        let count = file_system.read_requests().len();
+
+        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+        assert_eq!(file_system.read_requests()[count..], [Path::new("baz")]);
     }
 
     #[tokio::test]

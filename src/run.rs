@@ -425,7 +425,7 @@ fn classify_inputs<'a>(
 
 async fn skip_build(context: &RunContext, build: &Build) -> Result<bool, BuildError> {
     if let Some(rule) = build.rule() {
-        drop(write_description(context, rule).await?);
+        let _ = write_description(context, rule).await?;
     }
 
     Ok(true)

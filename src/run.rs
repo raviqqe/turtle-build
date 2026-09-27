@@ -1957,10 +1957,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            context
-                .database()
-                .get_header_inputs(build.id())
-                .unwrap(),
+            context.database().get_header_inputs(build.id()).unwrap(),
             ["foo.h".into()]
         );
         assert!(
@@ -2015,10 +2012,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            context
-                .database()
-                .get_header_inputs(build.id())
-                .unwrap(),
+            context.database().get_header_inputs(build.id()).unwrap(),
             ["foo.h".into()]
         );
         assert_eq!(console.stdout(), "foo.c\n");
@@ -2052,10 +2046,7 @@ mod tests {
         .unwrap();
 
         assert!(Arc::ptr_eq(
-            &context
-                .database()
-                .get_header_inputs(build.id())
-                .unwrap()[0],
+            &context.database().get_header_inputs(build.id()).unwrap()[0],
             &context.path_pool().intern("foo.h")
         ));
     }

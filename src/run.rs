@@ -435,11 +435,13 @@ async fn run_rule(context: &RunContext, rule: &Rule) -> Result<Output, BuildErro
         let permit = context.pool(rule.pool()).await?;
         let time = Instant::now();
         let output = context.build().command_runner().run(rule.command()).await?;
-        let duration = Instant::now() - time;
 
         drop(permit);
 
-        ((output, duration), write_description(context, rule).await?)
+        (
+            (output, Instant::now() - time),
+            write_description(context, rule).await?,
+        )
     };
 
     profile!(context, console, "duration: {} ms", duration.as_millis());

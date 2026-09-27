@@ -146,6 +146,7 @@ mod tests {
             Default::default(),
             RunOptions {
                 debug: false,
+                dry_run: false,
                 profile: false,
             },
         )

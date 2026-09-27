@@ -65,7 +65,7 @@ impl Database for FjallDatabase {
         )
     }
 
-    fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError> {
+    fn get_header_inputs(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError> {
         Ok(self
             .keyspace
             .get(key(HEADER_DEPENDENCY_TAG, &id.to_bytes()))?
@@ -83,7 +83,7 @@ impl Database for FjallDatabase {
             .unwrap_or_default())
     }
 
-    fn set_header_dependencies(
+    fn set_header_inputs(
         &self,
         id: BuildId,
         dependencies: &[Arc<str>],
@@ -218,11 +218,11 @@ mod tests {
         let (database, _fjall) = open(tempdir().unwrap().path());
 
         database
-            .set_header_dependencies(BuildId::new(0), &["foo".into(), "bar".into()])
+            .set_header_inputs(BuildId::new(0), &["foo".into(), "bar".into()])
             .unwrap();
 
         assert_eq!(
-            database.get_header_dependencies(BuildId::new(0)).unwrap(),
+            database.get_header_inputs(BuildId::new(0)).unwrap(),
             vec!["foo".into(), "bar".into()]
         );
     }
@@ -241,11 +241,11 @@ mod tests {
         );
 
         database
-            .set_header_dependencies(BuildId::new(0), &["foo".into()])
+            .set_header_inputs(BuildId::new(0), &["foo".into()])
             .unwrap();
 
         assert!(Arc::ptr_eq(
-            &database.get_header_dependencies(BuildId::new(0)).unwrap()[0],
+            &database.get_header_inputs(BuildId::new(0)).unwrap()[0],
             &path_pool.intern("foo")
         ));
     }
@@ -276,7 +276,7 @@ mod tests {
             .set_hash(HashType::Timestamp, BuildId::new(0), 42)
             .unwrap();
         database
-            .set_header_dependencies(BuildId::new(0), &["foo".into()])
+            .set_header_inputs(BuildId::new(0), &["foo".into()])
             .unwrap();
         database.set_output("foo").unwrap();
         database.set_source("foo", "bar").unwrap();
@@ -293,7 +293,7 @@ mod tests {
             Some(42)
         );
         assert_eq!(
-            database.get_header_dependencies(BuildId::new(0)).unwrap(),
+            database.get_header_inputs(BuildId::new(0)).unwrap(),
             vec!["foo".into()]
         );
         assert_eq!(database.get_outputs().unwrap(), vec!["foo"]);

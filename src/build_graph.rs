@@ -91,11 +91,11 @@ impl BuildGraph {
         Ok(())
     }
 
-    pub fn add_header_dependencies(&mut self, output: &Arc<str>, dependencies: &[Arc<str>]) {
-        for dependency in dependencies {
-            // Header dependencies that are not outputs cannot form cycles.
-            if let Some((dependency, _)) = self.primary_outputs.get_key_value(dependency) {
-                self.add_edge(self.primary_outputs[output].clone(), dependency.clone());
+    pub fn add_inputs(&mut self, output: &Arc<str>, inputs: &[Arc<str>]) {
+        for input in inputs {
+            // Inputs that are not outputs cannot form cycles.
+            if let Some((input, _)) = self.primary_outputs.get_key_value(input) {
+                self.add_edge(self.primary_outputs[output].clone(), input.clone());
             }
         }
     }
@@ -518,7 +518,7 @@ mod tests {
 
         graph.validate().unwrap();
 
-        graph.add_header_dependencies(&"bar".into(), &["foo".into()]);
+        graph.add_inputs(&"bar".into(), &["foo".into()]);
 
         assert_eq!(
             graph.validate(),
@@ -542,7 +542,7 @@ mod tests {
 
         graph.validate().unwrap();
 
-        graph.add_header_dependencies(&"foo".into(), &[]);
+        graph.add_inputs(&"foo".into(), &[]);
 
         assert_eq!(graph.validate(), Ok(()));
     }
@@ -558,7 +558,7 @@ mod tests {
             .collect(),
         );
 
-        graph.add_header_dependencies(&"foo".into(), &["bar.h".into()]);
+        graph.add_inputs(&"foo".into(), &["bar.h".into()]);
 
         assert!(!graph.nodes.contains_key("bar.h"));
         assert_eq!(graph.validate(), Ok(()));

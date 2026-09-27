@@ -14,12 +14,8 @@ pub trait Database {
     fn get_hash(&self, r#type: HashType, id: BuildId) -> Result<Option<u64>, DatabaseError>;
     fn set_hash(&self, r#type: HashType, id: BuildId, hash: u64) -> Result<(), DatabaseError>;
 
-    fn get_header_dependencies(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError>;
-    fn set_header_dependencies(
-        &self,
-        id: BuildId,
-        dependencies: &[Arc<str>],
-    ) -> Result<(), DatabaseError>;
+    fn get_header_inputs(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError>;
+    fn set_header_inputs(&self, id: BuildId, inputs: &[Arc<str>]) -> Result<(), DatabaseError>;
 
     fn get_outputs(&self) -> Result<Vec<String>, DatabaseError>;
     fn set_output(&self, path: &str) -> Result<(), DatabaseError>;

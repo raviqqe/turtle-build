@@ -148,14 +148,13 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
             invalidate_outputs(&context, &build).await;
         }
 
-        let header_inputs = context.header_inputs(build.id());
+        let header_inputs =
+            filter_existing_header_inputs(&context, context.header_inputs(build.id())).await?;
         let header_inputs_stale = build_inputs(&context, &header_inputs).await?;
 
         if inputs_stale || dynamic_inputs_stale || header_inputs_stale {
             return skip_build(&context, &build).await;
         }
-
-        let header_inputs = filter_existing_header_inputs(&context, header_inputs).await?;
 
         let (phony_inputs, file_inputs) =
             classify_inputs(&context, &build, dynamic_inputs, &header_inputs);
@@ -216,7 +215,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
                 }
             }
 
-            if header_inputs.iter().copied().ne(&new_header_inputs) {
+            if header_inputs.iter().ne(&new_header_inputs) {
                 let header_inputs =
                     filter_existing_header_inputs(&context, &new_header_inputs).await?;
                 let (phony_inputs, file_inputs) =
@@ -333,12 +332,12 @@ async fn cache_output_metadata(context: &RunContext, build: &Build, metadata: &[
 async fn filter_existing_header_inputs<'a>(
     context: &RunContext,
     dependencies: &'a [Arc<str>],
-) -> Result<Vec<&'a Arc<str>>, BuildError> {
+) -> Result<Vec<Arc<str>>, BuildError> {
     let mut existing_dependencies = vec![];
 
     for dependency in dependencies {
         if context.file_cache().exists(dependency).await? {
-            existing_dependencies.push(dependency);
+            existing_dependencies.push(dependency.clone());
         }
     }
 
@@ -381,7 +380,7 @@ fn classify_inputs<'a>(
     context: &'a RunContext,
     build: &'a Build,
     dynamic_inputs: &'a [Arc<str>],
-    header_dependencies: &'a [&'a Arc<str>],
+    header_dependencies: &'a [Arc<str>],
 ) -> (Vec<&'a Arc<str>>, Vec<&'a Arc<str>>) {
     let (phony_inputs, file_inputs) = build
         .inputs()
@@ -400,7 +399,7 @@ fn classify_inputs<'a>(
         phony_inputs,
         file_inputs
             .into_iter()
-            .chain(header_dependencies.iter().copied())
+            .chain(header_dependencies)
             .unique()
             .collect(),
     )
@@ -2913,7 +2912,7 @@ mod tests {
                 &context,
                 &build,
                 &["quux".into(), "baz".into()],
-                &[&"qux".into(), &"corge".into()],
+                &["qux".into(), "corge".into()],
             ),
             (
                 vec![&"bar".into()],

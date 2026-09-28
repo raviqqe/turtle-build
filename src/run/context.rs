@@ -8,7 +8,8 @@ use crate::{
 use alloc::sync::Arc;
 use core::pin::Pin;
 use futures::future::Shared;
-use scc::HashMap;
+use scc::HashIndex;
+use std::collections::HashMap;
 use tokio::sync::{Mutex, OnceCell, Semaphore, SemaphorePermit};
 
 type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<bool, BuildError>> + Send>>>;
@@ -16,12 +17,12 @@ type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<bool, BuildError>> 
 pub struct RunContext {
     build: Arc<Context>,
     config: Arc<Config>,
-    build_futures: HashMap<BuildId, BuildFuture>,
+    build_futures: HashIndex<BuildId, BuildFuture>,
     build_graph: Mutex<BuildGraph>,
-    dynamic_configs: std::collections::HashMap<Arc<str>, OnceCell<DynamicConfig>>,
+    dynamic_configs: HashMap<Arc<str>, OnceCell<DynamicConfig>>,
     file_cache: FileCache,
-    header_inputs: std::collections::HashMap<BuildId, Vec<Arc<str>>>,
-    pools: std::collections::HashMap<Arc<str>, Semaphore>,
+    header_inputs: HashMap<BuildId, Vec<Arc<str>>>,
+    pools: HashMap<Arc<str>, Semaphore>,
     options: RunOptions,
 }
 
@@ -30,7 +31,7 @@ impl RunContext {
         build: Arc<Context>,
         config: Arc<Config>,
         build_graph: BuildGraph,
-        header_inputs: std::collections::HashMap<BuildId, Vec<Arc<str>>>,
+        header_inputs: HashMap<BuildId, Vec<Arc<str>>>,
         options: RunOptions,
     ) -> Self {
         Self {
@@ -54,7 +55,7 @@ impl RunContext {
                 })
                 .collect(),
             config,
-            build_futures: HashMap::new(),
+            build_futures: HashIndex::new(),
             options,
         }
     }
@@ -67,7 +68,7 @@ impl RunContext {
         &self.config
     }
 
-    pub const fn build_futures(&self) -> &HashMap<BuildId, BuildFuture> {
+    pub const fn build_futures(&self) -> &HashIndex<BuildId, BuildFuture> {
         &self.build_futures
     }
 

@@ -1,5 +1,6 @@
 use core::{fmt::Display, str::Utf8Error};
 use rkyv::rancor;
+use std::io;
 use thiserror::Error;
 
 /// A database error.
@@ -16,6 +17,12 @@ impl DatabaseError {
 
 impl From<fjall::Error> for DatabaseError {
     fn from(error: fjall::Error) -> Self {
+        Self::new(error)
+    }
+}
+
+impl From<io::Error> for DatabaseError {
+    fn from(error: io::Error) -> Self {
         Self::new(error)
     }
 }

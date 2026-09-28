@@ -2,11 +2,12 @@ mod error;
 #[cfg(test)]
 mod fake;
 mod fjall;
+mod log;
 mod redb;
 
 #[cfg(test)]
 pub use self::fake::FakeDatabase;
-pub use self::{error::DatabaseError, fjall::FjallDatabase, redb::RedbDatabase};
+pub use self::{error::DatabaseError, fjall::FjallDatabase, log::LogDatabase, redb::RedbDatabase};
 use crate::{build_hash::BuildHash, ir::BuildId};
 use alloc::sync::Arc;
 

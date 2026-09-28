@@ -1,5 +1,5 @@
 use crate::{
-    hash_type::HashType,
+    build_hash::BuildHash,
     infrastructure::{Database, DatabaseError},
     ir::BuildId,
 };
@@ -8,8 +8,7 @@ use std::{collections::HashMap, sync::Mutex};
 
 #[derive(Clone, Debug, Default)]
 pub struct FakeDatabase {
-    timestamp_hashes: Arc<Mutex<HashMap<BuildId, u64>>>,
-    content_hashes: Arc<Mutex<HashMap<BuildId, u64>>>,
+    hashes: Arc<Mutex<HashMap<BuildId, BuildHash>>>,
     header_dependencies: Arc<Mutex<HashMap<BuildId, Vec<Arc<str>>>>>,
     header_dependency_requests: Arc<Mutex<Vec<BuildId>>>,
     outputs: Arc<Mutex<BTreeSet<String>>>,
@@ -20,31 +19,15 @@ impl FakeDatabase {
     pub fn header_dependency_requests(&self) -> Vec<BuildId> {
         self.header_dependency_requests.lock().unwrap().clone()
     }
-
-    fn hashes(&self, r#type: HashType) -> &Mutex<HashMap<BuildId, u64>> {
-        match r#type {
-            HashType::Content => &self.content_hashes,
-            HashType::Timestamp => &self.timestamp_hashes,
-        }
-    }
 }
 
 impl Database for FakeDatabase {
-    fn get_hash(&self, r#type: HashType, id: BuildId) -> Result<Option<u64>, DatabaseError> {
-        Ok(self.hashes(r#type).lock().unwrap().get(&id).copied())
+    fn get_hash(&self, id: BuildId) -> Result<Option<BuildHash>, DatabaseError> {
+        Ok(self.hashes.lock().unwrap().get(&id).copied())
     }
 
-    fn set_hashes(
-        &self,
-        id: BuildId,
-        timestamp_hash: u64,
-        content_hash: u64,
-    ) -> Result<(), DatabaseError> {
-        self.timestamp_hashes
-            .lock()
-            .unwrap()
-            .insert(id, timestamp_hash);
-        self.content_hashes.lock().unwrap().insert(id, content_hash);
+    fn set_hash(&self, id: BuildId, hash: BuildHash) -> Result<(), DatabaseError> {
+        self.hashes.lock().unwrap().insert(id, hash);
 
         Ok(())
     }

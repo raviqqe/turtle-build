@@ -1,5 +1,5 @@
 use crate::{
-    hash_type::HashType,
+    build_hash::BuildHash,
     infrastructure::{Database, DatabaseError},
     ir::BuildId,
     path_pool::PathPool,
@@ -7,12 +7,10 @@ use crate::{
 use alloc::sync::Arc;
 use redb::{
     Durability, Key, ReadOnlyTable, ReadableDatabase, ReadableTable, TableDefinition, Value,
-    WriteTransaction,
 };
 use std::{fs::create_dir_all, path::Path};
 
-const TIMESTAMP_HASHES: TableDefinition<[u8; 8], u64> = TableDefinition::new("timestamp_hashes");
-const CONTENT_HASHES: TableDefinition<[u8; 8], u64> = TableDefinition::new("content_hashes");
+const HASHES: TableDefinition<[u8; 8], (u64, u64)> = TableDefinition::new("hashes");
 const HEADER_DEPENDENCIES: TableDefinition<[u8; 8], Vec<&str>> =
     TableDefinition::new("header_dependencies");
 const OUTPUTS: TableDefinition<&str, ()> = TableDefinition::new("outputs");
@@ -42,8 +40,7 @@ impl RedbDatabase {
         let mut transaction = database.begin_write()?;
 
         transaction.set_durability(Durability::None)?;
-        transaction.open_table(TIMESTAMP_HASHES)?;
-        transaction.open_table(CONTENT_HASHES)?;
+        transaction.open_table(HASHES)?;
         transaction.open_table(HEADER_DEPENDENCIES)?;
         transaction.open_table(OUTPUTS)?;
         transaction.open_table(SOURCES)?;
@@ -61,63 +58,34 @@ impl RedbDatabase {
     }
 
     // Writes become durable when the database is closed.
-    fn transact(
-        &self,
-        write: impl FnOnce(&WriteTransaction) -> Result<(), redb::Error>,
-    ) -> Result<(), redb::Error> {
-        let mut transaction = self.database.begin_write()?;
-
-        transaction.set_durability(Durability::None)?;
-        write(&transaction)?;
-        transaction.commit()?;
-
-        Ok(())
-    }
-
     fn write<K: Key + 'static, V: Value + 'static>(
         &self,
         table: TableDefinition<K, V>,
         key: K::SelfType<'_>,
         value: V::SelfType<'_>,
     ) -> Result<(), redb::Error> {
-        self.transact(|transaction| {
-            transaction.open_table(table)?.insert(key, value)?;
+        let mut transaction = self.database.begin_write()?;
 
-            Ok(())
-        })
-    }
-}
+        transaction.set_durability(Durability::None)?;
+        transaction.open_table(table)?.insert(key, value)?;
+        transaction.commit()?;
 
-const fn hash_table(r#type: HashType) -> TableDefinition<'static, [u8; 8], u64> {
-    match r#type {
-        HashType::Content => CONTENT_HASHES,
-        HashType::Timestamp => TIMESTAMP_HASHES,
+        Ok(())
     }
 }
 
 impl Database for RedbDatabase {
-    fn get_hash(&self, r#type: HashType, id: BuildId) -> Result<Option<u64>, DatabaseError> {
-        Ok(self.read(hash_table(r#type), |table| {
-            Ok(table.get(id.to_bytes())?.map(|hash| hash.value()))
+    fn get_hash(&self, id: BuildId) -> Result<Option<BuildHash>, DatabaseError> {
+        Ok(self.read(HASHES, |table| {
+            Ok(table
+                .get(id.to_bytes())?
+                .map(|hash| hash.value())
+                .map(|(timestamp, content)| BuildHash::new(timestamp, content)))
         })?)
     }
 
-    fn set_hashes(
-        &self,
-        id: BuildId,
-        timestamp_hash: u64,
-        content_hash: u64,
-    ) -> Result<(), DatabaseError> {
-        Ok(self.transact(|transaction| {
-            transaction
-                .open_table(TIMESTAMP_HASHES)?
-                .insert(id.to_bytes(), timestamp_hash)?;
-            transaction
-                .open_table(CONTENT_HASHES)?
-                .insert(id.to_bytes(), content_hash)?;
-
-            Ok(())
-        })?)
+    fn set_hash(&self, id: BuildId, hash: BuildHash) -> Result<(), DatabaseError> {
+        Ok(self.write(HASHES, id.to_bytes(), (hash.timestamp(), hash.content()))?)
     }
 
     fn get_header_inputs(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError> {
@@ -204,22 +172,16 @@ mod tests {
     }
 
     #[test]
-    fn hashes() {
+    fn hash() {
         let (database, _directory) = open();
 
-        database.set_hashes(BuildId::new(0), 1, 2).unwrap();
+        database
+            .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+            .unwrap();
 
         assert_eq!(
-            database
-                .get_hash(HashType::Timestamp, BuildId::new(0))
-                .unwrap(),
-            Some(1)
-        );
-        assert_eq!(
-            database
-                .get_hash(HashType::Content, BuildId::new(0))
-                .unwrap(),
-            Some(2)
+            database.get_hash(BuildId::new(0)).unwrap(),
+            Some(BuildHash::new(1, 2))
         );
     }
 
@@ -227,40 +189,27 @@ mod tests {
     fn get_no_hash() {
         let (database, _directory) = open();
 
-        database.set_hashes(BuildId::new(0), 1, 2).unwrap();
+        database
+            .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+            .unwrap();
 
-        assert_eq!(
-            database
-                .get_hash(HashType::Timestamp, BuildId::new(1))
-                .unwrap(),
-            None
-        );
-        assert_eq!(
-            database
-                .get_hash(HashType::Content, BuildId::new(1))
-                .unwrap(),
-            None
-        );
+        assert_eq!(database.get_hash(BuildId::new(1)).unwrap(), None);
     }
 
     #[test]
-    fn update_hashes() {
+    fn update_hash() {
         let (database, _directory) = open();
 
-        database.set_hashes(BuildId::new(0), 1, 2).unwrap();
-        database.set_hashes(BuildId::new(0), 3, 4).unwrap();
+        database
+            .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+            .unwrap();
+        database
+            .set_hash(BuildId::new(0), BuildHash::new(3, 4))
+            .unwrap();
 
         assert_eq!(
-            database
-                .get_hash(HashType::Timestamp, BuildId::new(0))
-                .unwrap(),
-            Some(3)
-        );
-        assert_eq!(
-            database
-                .get_hash(HashType::Content, BuildId::new(0))
-                .unwrap(),
-            Some(4)
+            database.get_hash(BuildId::new(0)).unwrap(),
+            Some(BuildHash::new(3, 4))
         );
     }
 
@@ -365,7 +314,9 @@ mod tests {
     fn reopen() {
         let (database, directory) = open();
 
-        database.set_hashes(BuildId::new(0), 1, 2).unwrap();
+        database
+            .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+            .unwrap();
         database
             .set_header_inputs(BuildId::new(0), &["foo".into()])
             .unwrap();
@@ -378,16 +329,8 @@ mod tests {
             RedbDatabase::new(&directory.path().join(FILENAME), Default::default()).unwrap();
 
         assert_eq!(
-            database
-                .get_hash(HashType::Timestamp, BuildId::new(0))
-                .unwrap(),
-            Some(1)
-        );
-        assert_eq!(
-            database
-                .get_hash(HashType::Content, BuildId::new(0))
-                .unwrap(),
-            Some(2)
+            database.get_hash(BuildId::new(0)).unwrap(),
+            Some(BuildHash::new(1, 2))
         );
         assert_eq!(
             database.get_header_inputs(BuildId::new(0)).unwrap(),

@@ -13,10 +13,10 @@ use self::{
 };
 use crate::{
     build_graph::{BuildGraph, BuildGraphError},
+    build_hash::BuildHash,
     compile::compile_dynamic,
     context::Context,
     error::BuildError,
-    hash_type::HashType,
     infrastructure::{Console, Metadata},
     ir::{Build, Config, DynamicConfig, Pool, Rule},
     parse::parse_dynamic,
@@ -174,15 +174,12 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
 
         let (phony_inputs, file_inputs) =
             classify_inputs(&context, &build, dynamic_inputs, &header_inputs);
+        let hash = context.build().database().get_hash(build.id())?;
         let mut timestamp_hash =
             calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
         if let Some(metadata) = &output_metadata
-            && Some(timestamp_hash)
-                == context
-                    .build()
-                    .database()
-                    .get_hash(HashType::Timestamp, build.id())?
+            && Some(timestamp_hash) == hash.map(|hash| hash.timestamp())
         {
             cache_output_metadata(&context, &build, metadata).await;
 
@@ -193,11 +190,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
             calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
         if (output_metadata.is_some() || build.rule().is_none())
-            && context
-                .build()
-                .database()
-                .get_hash(HashType::Content, build.id())?
-                == Some(content_hash)
+            && hash.map(|hash| hash.content()) == Some(content_hash)
         {
             return Ok(false);
         } else if context.options().dry_run {
@@ -247,7 +240,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
         context
             .build()
             .database()
-            .set_hashes(build.id(), timestamp_hash, content_hash)?;
+            .set_hash(build.id(), BuildHash::new(timestamp_hash, content_hash))?;
 
         Ok(false)
     })

@@ -1,5 +1,5 @@
 use crate::{
-    hash_type::HashType,
+    build_hash::BuildHash,
     infrastructure::{Database, DatabaseError},
     ir::BuildId,
     path_pool::PathPool,
@@ -8,11 +8,10 @@ use alloc::sync::Arc;
 use core::str;
 use fjall::Keyspace;
 
-const TIMESTAMP_HASH_TAG: u8 = 0;
-const CONTENT_HASH_TAG: u8 = 1;
-const HEADER_DEPENDENCY_TAG: u8 = 2;
-const OUTPUT_TAG: u8 = 3;
-const SOURCE_TAG: u8 = 4;
+const HASH_TAG: u8 = 0;
+const HEADER_DEPENDENCY_TAG: u8 = 1;
+const OUTPUT_TAG: u8 = 2;
+const SOURCE_TAG: u8 = 3;
 
 const BINCODE_CONFIG: bincode::config::Configuration = bincode::config::standard();
 
@@ -38,43 +37,27 @@ impl FjallDatabase {
     }
 }
 
-const fn hash_tag(r#type: HashType) -> u8 {
-    match r#type {
-        HashType::Content => CONTENT_HASH_TAG,
-        HashType::Timestamp => TIMESTAMP_HASH_TAG,
-    }
-}
-
 fn key(tag: u8, payload: &[u8]) -> Vec<u8> {
     [[tag].as_slice(), payload].concat()
 }
 
 impl Database for FjallDatabase {
-    fn get_hash(&self, r#type: HashType, id: BuildId) -> Result<Option<u64>, DatabaseError> {
+    fn get_hash(&self, id: BuildId) -> Result<Option<BuildHash>, DatabaseError> {
         Ok(self
             .keyspace
-            .get(key(hash_tag(r#type), &id.to_bytes()))?
-            .map(|value| bincode::decode_from_slice(&value, BINCODE_CONFIG).map(|(value, _)| value))
+            .get(key(HASH_TAG, &id.to_bytes()))?
+            .map(|value| {
+                bincode::decode_from_slice(&value, BINCODE_CONFIG)
+                    .map(|((timestamp, content), _)| BuildHash::new(timestamp, content))
+            })
             .transpose()?)
     }
 
-    fn set_hashes(
-        &self,
-        id: BuildId,
-        timestamp_hash: u64,
-        content_hash: u64,
-    ) -> Result<(), DatabaseError> {
-        for (tag, hash) in [
-            (TIMESTAMP_HASH_TAG, timestamp_hash),
-            (CONTENT_HASH_TAG, content_hash),
-        ] {
-            self.insert(
-                &key(tag, &id.to_bytes()),
-                &bincode::encode_to_vec(hash, BINCODE_CONFIG)?,
-            )?;
-        }
-
-        Ok(())
+    fn set_hash(&self, id: BuildId, hash: BuildHash) -> Result<(), DatabaseError> {
+        self.insert(
+            &key(HASH_TAG, &id.to_bytes()),
+            &bincode::encode_to_vec((hash.timestamp(), hash.content()), BINCODE_CONFIG)?,
+        )
     }
 
     fn get_header_inputs(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError> {
@@ -156,22 +139,16 @@ mod tests {
     }
 
     #[test]
-    fn hashes() {
+    fn hash() {
         let (database, _fjall) = open(tempdir().unwrap().path());
 
-        database.set_hashes(BuildId::new(0), 1, 2).unwrap();
+        database
+            .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+            .unwrap();
 
         assert_eq!(
-            database
-                .get_hash(HashType::Timestamp, BuildId::new(0))
-                .unwrap(),
-            Some(1)
-        );
-        assert_eq!(
-            database
-                .get_hash(HashType::Content, BuildId::new(0))
-                .unwrap(),
-            Some(2)
+            database.get_hash(BuildId::new(0)).unwrap(),
+            Some(BuildHash::new(1, 2))
         );
     }
 
@@ -179,40 +156,27 @@ mod tests {
     fn get_no_hash() {
         let (database, _fjall) = open(tempdir().unwrap().path());
 
-        database.set_hashes(BuildId::new(0), 1, 2).unwrap();
+        database
+            .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+            .unwrap();
 
-        assert_eq!(
-            database
-                .get_hash(HashType::Timestamp, BuildId::new(1))
-                .unwrap(),
-            None
-        );
-        assert_eq!(
-            database
-                .get_hash(HashType::Content, BuildId::new(1))
-                .unwrap(),
-            None
-        );
+        assert_eq!(database.get_hash(BuildId::new(1)).unwrap(), None);
     }
 
     #[test]
-    fn update_hashes() {
+    fn update_hash() {
         let (database, _fjall) = open(tempdir().unwrap().path());
 
-        database.set_hashes(BuildId::new(0), 1, 2).unwrap();
-        database.set_hashes(BuildId::new(0), 3, 4).unwrap();
+        database
+            .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+            .unwrap();
+        database
+            .set_hash(BuildId::new(0), BuildHash::new(3, 4))
+            .unwrap();
 
         assert_eq!(
-            database
-                .get_hash(HashType::Timestamp, BuildId::new(0))
-                .unwrap(),
-            Some(3)
-        );
-        assert_eq!(
-            database
-                .get_hash(HashType::Content, BuildId::new(0))
-                .unwrap(),
-            Some(4)
+            database.get_hash(BuildId::new(0)).unwrap(),
+            Some(BuildHash::new(3, 4))
         );
     }
 
@@ -301,7 +265,9 @@ mod tests {
 
         let (database, fjall) = open(directory.path());
 
-        database.set_hashes(BuildId::new(0), 1, 2).unwrap();
+        database
+            .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+            .unwrap();
         database
             .set_header_inputs(BuildId::new(0), &["foo".into()])
             .unwrap();
@@ -314,16 +280,8 @@ mod tests {
         let (database, _fjall) = open(directory.path());
 
         assert_eq!(
-            database
-                .get_hash(HashType::Timestamp, BuildId::new(0))
-                .unwrap(),
-            Some(1)
-        );
-        assert_eq!(
-            database
-                .get_hash(HashType::Content, BuildId::new(0))
-                .unwrap(),
-            Some(2)
+            database.get_hash(BuildId::new(0)).unwrap(),
+            Some(BuildHash::new(1, 2))
         );
         assert_eq!(
             database.get_header_inputs(BuildId::new(0)).unwrap(),

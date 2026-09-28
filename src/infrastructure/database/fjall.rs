@@ -58,11 +58,23 @@ impl Database for FjallDatabase {
             .transpose()?)
     }
 
-    fn set_hash(&self, r#type: HashType, id: BuildId, hash: u64) -> Result<(), DatabaseError> {
-        self.insert(
-            &key(hash_tag(r#type), &id.to_bytes()),
-            &bincode::encode_to_vec(hash, BINCODE_CONFIG)?,
-        )
+    fn set_hashes(
+        &self,
+        id: BuildId,
+        timestamp_hash: u64,
+        content_hash: u64,
+    ) -> Result<(), DatabaseError> {
+        for (tag, hash) in [
+            (TIMESTAMP_HASH_TAG, timestamp_hash),
+            (CONTENT_HASH_TAG, content_hash),
+        ] {
+            self.insert(
+                &key(tag, &id.to_bytes()),
+                &bincode::encode_to_vec(hash, BINCODE_CONFIG)?,
+            )?;
+        }
+
+        Ok(())
     }
 
     fn get_header_inputs(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError> {
@@ -144,46 +156,63 @@ mod tests {
     }
 
     #[test]
-    fn timestamp_hash() {
+    fn hashes() {
         let (database, _fjall) = open(tempdir().unwrap().path());
 
-        database
-            .set_hash(HashType::Timestamp, BuildId::new(0), 42)
-            .unwrap();
+        database.set_hashes(BuildId::new(0), 1, 2).unwrap();
 
         assert_eq!(
             database
                 .get_hash(HashType::Timestamp, BuildId::new(0))
                 .unwrap(),
-            Some(42)
+            Some(1)
         );
         assert_eq!(
             database
                 .get_hash(HashType::Content, BuildId::new(0))
                 .unwrap(),
-            None,
+            Some(2)
         );
     }
 
     #[test]
-    fn content_hash() {
+    fn get_no_hash() {
         let (database, _fjall) = open(tempdir().unwrap().path());
 
-        database
-            .set_hash(HashType::Content, BuildId::new(0), 42)
-            .unwrap();
+        database.set_hashes(BuildId::new(0), 1, 2).unwrap();
 
         assert_eq!(
             database
-                .get_hash(HashType::Content, BuildId::new(0))
+                .get_hash(HashType::Timestamp, BuildId::new(1))
                 .unwrap(),
-            Some(42)
+            None
         );
+        assert_eq!(
+            database
+                .get_hash(HashType::Content, BuildId::new(1))
+                .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn update_hashes() {
+        let (database, _fjall) = open(tempdir().unwrap().path());
+
+        database.set_hashes(BuildId::new(0), 1, 2).unwrap();
+        database.set_hashes(BuildId::new(0), 3, 4).unwrap();
+
         assert_eq!(
             database
                 .get_hash(HashType::Timestamp, BuildId::new(0))
                 .unwrap(),
-            None,
+            Some(3)
+        );
+        assert_eq!(
+            database
+                .get_hash(HashType::Content, BuildId::new(0))
+                .unwrap(),
+            Some(4)
         );
     }
 
@@ -272,9 +301,7 @@ mod tests {
 
         let (database, fjall) = open(directory.path());
 
-        database
-            .set_hash(HashType::Timestamp, BuildId::new(0), 42)
-            .unwrap();
+        database.set_hashes(BuildId::new(0), 1, 2).unwrap();
         database
             .set_header_inputs(BuildId::new(0), &["foo".into()])
             .unwrap();
@@ -290,7 +317,13 @@ mod tests {
             database
                 .get_hash(HashType::Timestamp, BuildId::new(0))
                 .unwrap(),
-            Some(42)
+            Some(1)
+        );
+        assert_eq!(
+            database
+                .get_hash(HashType::Content, BuildId::new(0))
+                .unwrap(),
+            Some(2)
         );
         assert_eq!(
             database.get_header_inputs(BuildId::new(0)).unwrap(),

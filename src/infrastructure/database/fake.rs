@@ -34,8 +34,17 @@ impl Database for FakeDatabase {
         Ok(self.hashes(r#type).lock().unwrap().get(&id).copied())
     }
 
-    fn set_hash(&self, r#type: HashType, id: BuildId, hash: u64) -> Result<(), DatabaseError> {
-        self.hashes(r#type).lock().unwrap().insert(id, hash);
+    fn set_hashes(
+        &self,
+        id: BuildId,
+        timestamp_hash: u64,
+        content_hash: u64,
+    ) -> Result<(), DatabaseError> {
+        self.timestamp_hashes
+            .lock()
+            .unwrap()
+            .insert(id, timestamp_hash);
+        self.content_hashes.lock().unwrap().insert(id, content_hash);
 
         Ok(())
     }

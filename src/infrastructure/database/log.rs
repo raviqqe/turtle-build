@@ -4,24 +4,32 @@ use crate::{
     ir::BuildId,
 };
 use alloc::sync::Arc;
+use core::str;
 use scc::{Guard, HashIndex, hash_index::Entry};
 use std::{
     fs::File,
     io::{self, ErrorKind, Write},
     path::Path,
 };
-use tokio::fs::{OpenOptions, create_dir_all, read, rename, write};
+use tokio::{
+    fs::{OpenOptions, create_dir_all, read, rename, write},
+    try_join,
+};
 
 const COMPACTION_RATIO: usize = 3;
 const HASH_FILENAME: &str = "hashes";
+const OUTPUT_FILENAME: &str = "outputs";
 const TEMPORARY_EXTENSION: &str = "tmp";
+const LINE_TERMINATOR: u8 = b'\n';
 
 type Record = [[u8; size_of::<u64>()]; 3];
 
 /// A log database.
 pub struct LogDatabase {
-    file: File,
+    hash_file: File,
     hashes: HashIndex<BuildId, BuildHash>,
+    output_file: File,
+    outputs: HashIndex<String, ()>,
     fallback: Box<dyn Database + Send + Sync>,
 }
 
@@ -33,23 +41,23 @@ impl LogDatabase {
     ) -> Result<Self, DatabaseError> {
         create_dir_all(directory).await?;
 
-        let (file, hashes) = Self::open(&directory.join(HASH_FILENAME)).await?;
+        let ((hash_file, hashes), (output_file, outputs)) =
+            try_join!(Self::open_hashes(directory), Self::open_outputs(directory))?;
 
         Ok(Self {
-            file,
+            hash_file,
             hashes,
+            output_file,
+            outputs,
             fallback,
         })
     }
 
-    async fn open(path: &Path) -> Result<(File, HashIndex<BuildId, BuildHash>), io::Error> {
-        let bytes = read(path).await.or_else(|error| {
-            if error.kind() == ErrorKind::NotFound {
-                Ok(vec![])
-            } else {
-                Err(error)
-            }
-        })?;
+    async fn open_hashes(
+        directory: &Path,
+    ) -> Result<(File, HashIndex<BuildId, BuildHash>), DatabaseError> {
+        let path = directory.join(HASH_FILENAME);
+        let bytes = read_file(&path).await?;
         let records = bytes.as_chunks().0.as_chunks().0;
         let hashes = HashIndex::with_capacity(records.len());
 
@@ -62,7 +70,6 @@ impl LogDatabase {
         if !bytes.len().is_multiple_of(size_of::<Record>())
             || bytes.len() > COMPACTION_RATIO * size_of::<Record>() * hashes.len()
         {
-            let temporary_path = path.with_added_extension(TEMPORARY_EXTENSION);
             // Do not inline this to avoid holding a guard across an await point.
             let bytes = hashes
                 .iter(&Guard::new())
@@ -70,21 +77,73 @@ impl LogDatabase {
                 .flatten()
                 .collect::<Vec<_>>();
 
-            write(&temporary_path, bytes).await?;
-            rename(temporary_path, path).await?;
+            compact_file(&path, bytes).await?;
         }
 
-        Ok((
-            OpenOptions::new()
-                .append(true)
-                .create(true)
-                .open(path)
-                .await?
-                .into_std()
-                .await,
-            hashes,
-        ))
+        Ok((open_file(&path).await?, hashes))
     }
+
+    async fn open_outputs(
+        directory: &Path,
+    ) -> Result<(File, HashIndex<String, ()>), DatabaseError> {
+        let path = directory.join(OUTPUT_FILENAME);
+        let bytes = read_file(&path).await?;
+        let lines = bytes
+            .split_inclusive(|&byte| byte == LINE_TERMINATOR)
+            .filter_map(|line| line.strip_suffix(&[LINE_TERMINATOR]))
+            .collect::<Vec<_>>();
+        let outputs = HashIndex::<String, _>::with_capacity(lines.len());
+
+        for line in lines {
+            outputs.insert_sync(str::from_utf8(line)?.into(), ()).ok();
+        }
+
+        if bytes.last().is_some_and(|&byte| byte != LINE_TERMINATOR)
+            || bytes.len()
+                > COMPACTION_RATIO
+                    * outputs
+                        .iter(&Guard::new())
+                        .map(|(path, _)| path.len() + size_of_val(&LINE_TERMINATOR))
+                        .sum::<usize>()
+        {
+            // Do not inline this to avoid holding a guard across an await point.
+            let bytes = outputs
+                .iter(&Guard::new())
+                .flat_map(|(path, _)| serialize_output(path))
+                .collect::<Vec<_>>();
+
+            compact_file(&path, bytes).await?;
+        }
+
+        Ok((open_file(&path).await?, outputs))
+    }
+}
+
+async fn read_file(path: &Path) -> Result<Vec<u8>, io::Error> {
+    read(path).await.or_else(|error| {
+        if error.kind() == ErrorKind::NotFound {
+            Ok(vec![])
+        } else {
+            Err(error)
+        }
+    })
+}
+
+async fn compact_file(path: &Path, bytes: Vec<u8>) -> Result<(), io::Error> {
+    let temporary_path = path.with_added_extension(TEMPORARY_EXTENSION);
+
+    write(&temporary_path, bytes).await?;
+    rename(temporary_path, path).await
+}
+
+async fn open_file(path: &Path) -> Result<File, io::Error> {
+    Ok(OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(path)
+        .await?
+        .into_std()
+        .await)
 }
 
 const fn serialize(id: BuildId, hash: BuildHash) -> Record {
@@ -102,13 +161,17 @@ const fn deserialize([id, timestamp, content]: Record) -> (BuildId, BuildHash) {
     )
 }
 
+fn serialize_output(path: &str) -> Vec<u8> {
+    [path.as_bytes(), &[LINE_TERMINATOR]].concat()
+}
+
 impl Database for LogDatabase {
     fn get_hash(&self, id: BuildId) -> Result<Option<BuildHash>, DatabaseError> {
         Ok(self.hashes.peek_with(&id, |_, hash| *hash))
     }
 
     fn set_hash(&self, id: BuildId, hash: BuildHash) -> Result<(), DatabaseError> {
-        (&self.file).write_all(serialize(id, hash).as_flattened())?;
+        (&self.hash_file).write_all(serialize(id, hash).as_flattened())?;
 
         match self.hashes.entry_sync(id) {
             Entry::Occupied(mut entry) => entry.update(hash),
@@ -129,11 +192,19 @@ impl Database for LogDatabase {
     }
 
     fn get_outputs(&self) -> Result<Vec<String>, DatabaseError> {
-        self.fallback.get_outputs()
+        Ok(self
+            .outputs
+            .iter(&Guard::new())
+            .map(|(path, _)| path.clone())
+            .collect())
     }
 
     fn set_output(&self, path: &str) -> Result<(), DatabaseError> {
-        self.fallback.set_output(path)
+        if self.outputs.insert_sync(path.into(), ()).is_ok() {
+            (&self.output_file).write_all(&serialize_output(path))?;
+        }
+
+        Ok(())
     }
 
     fn get_source(&self, output: &str) -> Result<Option<String>, DatabaseError> {
@@ -344,21 +415,21 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn set_output() {
+        async fn set_no_output() {
             let (database, fallback, _directory) = open_with_fallback().await;
 
             database.set_output("foo").unwrap();
 
-            assert_eq!(fallback.get_outputs().unwrap(), vec!["foo"]);
+            assert_eq!(fallback.get_outputs().unwrap(), Vec::<String>::new());
         }
 
         #[tokio::test]
-        async fn get_outputs() {
+        async fn get_no_output() {
             let (database, fallback, _directory) = open_with_fallback().await;
 
             fallback.set_output("foo").unwrap();
 
-            assert_eq!(database.get_outputs().unwrap(), vec!["foo"]);
+            assert_eq!(database.get_outputs().unwrap(), Vec::<String>::new());
         }
 
         #[tokio::test]
@@ -823,6 +894,438 @@ mod tests {
                 database.get_hash(BuildId::new(3)).unwrap(),
                 Some(BuildHash::new(4, 5))
             );
+        }
+    }
+
+    mod output {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        fn get_outputs(database: &LogDatabase) -> Vec<String> {
+            let mut outputs = database.get_outputs().unwrap();
+
+            outputs.sort();
+
+            outputs
+        }
+
+        fn read_log(directory: &TempDir) -> Vec<u8> {
+            read(directory.path().join(OUTPUT_FILENAME)).unwrap()
+        }
+
+        fn read_lines(directory: &TempDir) -> Vec<String> {
+            let mut lines = String::from_utf8(read_log(directory))
+                .unwrap()
+                .split_inclusive('\n')
+                .map(From::from)
+                .collect::<Vec<_>>();
+
+            lines.sort();
+
+            lines
+        }
+
+        fn write_log(directory: &TempDir, log: impl AsRef<[u8]>) {
+            write(directory.path().join(OUTPUT_FILENAME), log).unwrap();
+        }
+
+        #[tokio::test]
+        async fn new() {
+            let (_database, directory) = open().await;
+
+            assert!(exists(directory.path().join("outputs")).unwrap());
+        }
+
+        #[tokio::test]
+        async fn set_output() {
+            let (database, _directory) = open().await;
+
+            database.set_output("foo").unwrap();
+
+            assert_eq!(database.get_outputs().unwrap(), ["foo"]);
+        }
+
+        #[tokio::test]
+        async fn get_no_output() {
+            let (database, _directory) = open().await;
+
+            assert_eq!(database.get_outputs().unwrap(), Vec::<String>::new());
+        }
+
+        #[tokio::test]
+        async fn set_outputs() {
+            let (database, _directory) = open().await;
+
+            database.set_output("foo").unwrap();
+            database.set_output("bar").unwrap();
+
+            assert_eq!(get_outputs(&database), ["bar", "foo"]);
+        }
+
+        #[tokio::test]
+        async fn set_output_twice() {
+            let (database, _directory) = open().await;
+
+            database.set_output("foo").unwrap();
+            database.set_output("foo").unwrap();
+
+            assert_eq!(database.get_outputs().unwrap(), ["foo"]);
+        }
+
+        #[tokio::test]
+        async fn set_output_in_directory() {
+            let (database, _directory) = open().await;
+
+            database.set_output("foo/bar baz.o").unwrap();
+
+            assert_eq!(database.get_outputs().unwrap(), ["foo/bar baz.o"]);
+        }
+
+        #[tokio::test]
+        async fn set_output_with_source() {
+            let (database, _directory) = open().await;
+
+            database.set_output("foo").unwrap();
+            database.set_source("foo", "bar").unwrap();
+
+            assert_eq!(database.get_outputs().unwrap(), ["foo"]);
+        }
+
+        #[tokio::test]
+        async fn set_outputs_concurrently() {
+            const THREAD_COUNT: usize = 8;
+            const OUTPUT_COUNT: usize = 256;
+
+            let (database, directory) = open().await;
+            let outputs = (0..THREAD_COUNT * OUTPUT_COUNT)
+                .map(|index| format!("{index:04}"))
+                .collect::<Vec<_>>();
+
+            scope(|scope| {
+                for outputs in outputs.chunks(OUTPUT_COUNT) {
+                    let database = &database;
+
+                    scope.spawn(move || {
+                        for output in outputs {
+                            database.set_output(output).unwrap();
+                        }
+                    });
+                }
+            });
+
+            assert_eq!(get_outputs(&database), outputs);
+
+            drop(database);
+
+            assert_eq!(get_outputs(&reopen(&directory).await), outputs);
+        }
+
+        mod log {
+            use super::*;
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn write_line() {
+                let (database, directory) = open().await;
+
+                database.set_output("foo").unwrap();
+
+                assert_eq!(read_log(&directory), b"foo\n");
+            }
+
+            #[tokio::test]
+            async fn write_line_in_utf8() {
+                let (database, directory) = open().await;
+
+                database.set_output("😄").unwrap();
+
+                assert_eq!(read_log(&directory), [0xf0, 0x9f, 0x98, 0x84, b'\n']);
+            }
+
+            #[tokio::test]
+            async fn append_lines() {
+                let (database, directory) = open().await;
+
+                database.set_output("foo").unwrap();
+                database.set_output("bar").unwrap();
+
+                assert_eq!(read_log(&directory), b"foo\nbar\n");
+            }
+
+            #[tokio::test]
+            async fn append_no_line_of_same_output() {
+                let (database, directory) = open().await;
+
+                database.set_output("foo").unwrap();
+                database.set_output("bar").unwrap();
+                database.set_output("foo").unwrap();
+
+                assert_eq!(read_log(&directory), b"foo\nbar\n");
+            }
+
+            #[tokio::test]
+            async fn reopen_log() {
+                let (database, directory) = open().await;
+
+                database.set_output("foo").unwrap();
+                database.set_output("bar").unwrap();
+
+                drop(database);
+
+                assert_eq!(get_outputs(&reopen(&directory).await), ["bar", "foo"]);
+            }
+
+            #[tokio::test]
+            async fn reopen_log_in_utf8() {
+                let (database, directory) = open().await;
+
+                database.set_output("😄").unwrap();
+
+                drop(database);
+
+                assert_eq!(reopen(&directory).await.get_outputs().unwrap(), ["😄"]);
+            }
+
+            #[tokio::test]
+            async fn reopen_log_with_empty_line() {
+                let directory = tempdir().unwrap();
+
+                write_log(&directory, "foo\n\nbar\n");
+
+                assert_eq!(get_outputs(&reopen(&directory).await), ["", "bar", "foo"]);
+            }
+
+            #[tokio::test]
+            async fn append_lines_after_reopen() {
+                let (database, directory) = open().await;
+
+                database.set_output("foo").unwrap();
+
+                drop(database);
+
+                reopen(&directory).await.set_output("bar").unwrap();
+
+                assert_eq!(read_log(&directory), b"foo\nbar\n");
+            }
+
+            #[tokio::test]
+            async fn append_no_line_of_same_output_after_reopen() {
+                let (database, directory) = open().await;
+
+                database.set_output("foo").unwrap();
+
+                drop(database);
+
+                reopen(&directory).await.set_output("foo").unwrap();
+
+                assert_eq!(read_log(&directory), b"foo\n");
+            }
+
+            #[tokio::test]
+            async fn fail_to_open_log_in_invalid_utf8() {
+                let directory = tempdir().unwrap();
+
+                write_log(&directory, [b'f', 0xff, b'\n']);
+
+                assert!(
+                    LogDatabase::new(directory.path(), Box::new(FakeDatabase::default()))
+                        .await
+                        .is_err()
+                );
+            }
+        }
+
+        mod compaction {
+            use super::*;
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn compact() {
+                let directory = tempdir().unwrap();
+
+                write_log(&directory, "foo\nfoo\nfoo\nfoo\n");
+
+                let database = reopen(&directory).await;
+
+                assert_eq!(database.get_outputs().unwrap(), ["foo"]);
+                assert_eq!(read_log(&directory), b"foo\n");
+            }
+
+            #[tokio::test]
+            async fn compact_many_outputs() {
+                let directory = tempdir().unwrap();
+
+                write_log(&directory, "foo\nbar\nfoo\nbar\nfoo\nbar\nfoo\n");
+
+                let database = reopen(&directory).await;
+
+                assert_eq!(get_outputs(&database), ["bar", "foo"]);
+                assert_eq!(read_lines(&directory), ["bar\n", "foo\n"]);
+            }
+
+            #[tokio::test]
+            async fn compact_outputs_of_different_lengths() {
+                let directory = tempdir().unwrap();
+
+                write_log(&directory, "foo\nfoo\nfoo\nfoo\nfoo\nfoo\nbarbaz\n");
+
+                let database = reopen(&directory).await;
+
+                assert_eq!(get_outputs(&database), ["barbaz", "foo"]);
+                assert_eq!(read_lines(&directory), ["barbaz\n", "foo\n"]);
+            }
+
+            #[tokio::test]
+            async fn append_line_after_compaction() {
+                let directory = tempdir().unwrap();
+
+                write_log(&directory, "foo\nfoo\nfoo\nfoo\n");
+
+                reopen(&directory).await.set_output("bar").unwrap();
+
+                assert_eq!(read_log(&directory), b"foo\nbar\n");
+            }
+
+            #[tokio::test]
+            async fn remove_temporary_file() {
+                let directory = tempdir().unwrap();
+
+                write_log(&directory, "foo\nfoo\nfoo\nfoo\n");
+
+                reopen(&directory).await;
+
+                assert_eq!(read_log(&directory), b"foo\n");
+                assert!(
+                    !exists(
+                        directory
+                            .path()
+                            .join(OUTPUT_FILENAME)
+                            .with_added_extension(TEMPORARY_EXTENSION)
+                    )
+                    .unwrap()
+                );
+            }
+
+            #[tokio::test]
+            async fn overwrite_temporary_file() {
+                let directory = tempdir().unwrap();
+
+                write(
+                    directory
+                        .path()
+                        .join(OUTPUT_FILENAME)
+                        .with_added_extension(TEMPORARY_EXTENSION),
+                    [0; 42],
+                )
+                .unwrap();
+                write_log(&directory, "foo\nfoo\nfoo\nfoo\n");
+
+                reopen(&directory).await;
+
+                assert_eq!(read_log(&directory), b"foo\n");
+            }
+
+            #[tokio::test]
+            async fn keep_log_of_optimal_size() {
+                let directory = tempdir().unwrap();
+
+                write_log(&directory, "foo\nbar\n");
+
+                reopen(&directory).await;
+
+                assert_eq!(read_log(&directory), b"foo\nbar\n");
+            }
+
+            #[tokio::test]
+            async fn keep_log_of_compaction_ratio() {
+                let directory = tempdir().unwrap();
+
+                write_log(&directory, "foo\nfoo\nfoo\n");
+
+                let database = reopen(&directory).await;
+
+                assert_eq!(database.get_outputs().unwrap(), ["foo"]);
+                assert_eq!(read_log(&directory), b"foo\nfoo\nfoo\n");
+            }
+
+            #[tokio::test]
+            async fn keep_log_of_compaction_ratio_with_outputs_of_different_lengths() {
+                let directory = tempdir().unwrap();
+
+                write_log(&directory, "foo\nfoo\nfoo\nfoo\nfoo\nbarbaz\n");
+
+                let database = reopen(&directory).await;
+
+                assert_eq!(get_outputs(&database), ["barbaz", "foo"]);
+                assert_eq!(read_log(&directory), b"foo\nfoo\nfoo\nfoo\nfoo\nbarbaz\n");
+            }
+
+            #[tokio::test]
+            async fn keep_empty_log() {
+                let directory = tempdir().unwrap();
+
+                write_log(&directory, "");
+
+                reopen(&directory).await;
+
+                assert_eq!(read_log(&directory), b"");
+            }
+        }
+
+        mod incomplete_line {
+            use super::*;
+            use pretty_assertions::assert_eq;
+
+            #[tokio::test]
+            async fn remove_incomplete_line() {
+                let directory = tempdir().unwrap();
+
+                write_log(&directory, "foo\nba");
+
+                let database = reopen(&directory).await;
+
+                assert_eq!(database.get_outputs().unwrap(), ["foo"]);
+                assert_eq!(read_log(&directory), b"foo\n");
+            }
+
+            #[tokio::test]
+            async fn remove_only_incomplete_line() {
+                let directory = tempdir().unwrap();
+
+                write_log(&directory, "fo");
+
+                let database = reopen(&directory).await;
+
+                assert_eq!(database.get_outputs().unwrap(), Vec::<String>::new());
+                assert_eq!(read_log(&directory), b"");
+            }
+
+            #[tokio::test]
+            async fn remove_incomplete_line_in_incomplete_utf8() {
+                let directory = tempdir().unwrap();
+
+                write_log(
+                    &directory,
+                    [b"foo\n".as_slice(), &"😄".as_bytes()[..2]].concat(),
+                );
+
+                let database = reopen(&directory).await;
+
+                assert_eq!(database.get_outputs().unwrap(), ["foo"]);
+                assert_eq!(read_log(&directory), b"foo\n");
+            }
+
+            #[tokio::test]
+            async fn append_line_after_incomplete_line() {
+                let directory = tempdir().unwrap();
+
+                write_log(&directory, "foo\nba");
+
+                reopen(&directory).await.set_output("bar").unwrap();
+
+                assert_eq!(read_log(&directory), b"foo\nbar\n");
+                assert_eq!(get_outputs(&reopen(&directory).await), ["bar", "foo"]);
+            }
         }
     }
 }

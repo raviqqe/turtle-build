@@ -6,11 +6,12 @@ use crate::{
 use alloc::sync::Arc;
 use scc::{Guard, HashIndex, hash_index::Entry};
 use std::{
-    fs::{File, OpenOptions, create_dir_all, read, rename, write},
+    fs::File,
     io::{self, ErrorKind, Write},
     path::Path,
     sync::Mutex,
 };
+use tokio::fs::{OpenOptions, create_dir_all, read, rename, write};
 
 const COMPACTION_RATIO: usize = 3;
 const HASH_FILENAME: &str = "hashes";
@@ -27,13 +28,13 @@ pub struct LogDatabase {
 
 impl LogDatabase {
     /// Creates a database.
-    pub fn new(
+    pub async fn new(
         directory: &Path,
         fallback: Box<dyn Database + Send + Sync>,
     ) -> Result<Self, DatabaseError> {
-        create_dir_all(directory)?;
+        create_dir_all(directory).await?;
 
-        let (file, hashes) = Self::open(&directory.join(HASH_FILENAME))?;
+        let (file, hashes) = Self::open(&directory.join(HASH_FILENAME)).await?;
 
         Ok(Self {
             file: file.into(),
@@ -42,8 +43,8 @@ impl LogDatabase {
         })
     }
 
-    fn open(path: &Path) -> Result<(File, HashIndex<BuildId, BuildHash>), io::Error> {
-        let bytes = match read(path) {
+    async fn open(path: &Path) -> Result<(File, HashIndex<BuildId, BuildHash>), io::Error> {
+        let bytes = match read(path).await {
             Err(error) if error.kind() == ErrorKind::NotFound => vec![],
             result => result?,
         };
@@ -62,20 +63,25 @@ impl LogDatabase {
             || bytes.len() > COMPACTION_RATIO * size_of::<Record>() * hashes.len()
         {
             let temporary_path = path.with_added_extension(TEMPORARY_EXTENSION);
+            // Do not inline this to avoid holding a guard across an await point.
+            let bytes = hashes
+                .iter(&Guard::new())
+                .flat_map(|(&id, &hash)| serialize(id, hash))
+                .flatten()
+                .collect::<Vec<_>>();
 
-            write(
-                &temporary_path,
-                hashes
-                    .iter(&Guard::new())
-                    .flat_map(|(&id, &hash)| serialize(id, hash))
-                    .flatten()
-                    .collect::<Vec<_>>(),
-            )?;
-            rename(temporary_path, path)?;
+            write(&temporary_path, bytes).await?;
+            rename(temporary_path, path).await?;
         }
 
         Ok((
-            OpenOptions::new().append(true).create(true).open(path)?,
+            OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(path)
+                .await?
+                .into_std()
+                .await,
             hashes,
         ))
     }
@@ -147,25 +153,33 @@ mod tests {
     use super::*;
     use crate::infrastructure::FakeDatabase;
     use pretty_assertions::assert_eq;
-    use std::{fs::exists, sync::PoisonError, thread::scope};
+    use std::{
+        fs::{exists, read, write},
+        sync::PoisonError,
+        thread::scope,
+    };
     use tempfile::{TempDir, tempdir};
 
-    fn open() -> (LogDatabase, TempDir) {
+    async fn open() -> (LogDatabase, TempDir) {
         let directory = tempdir().unwrap();
 
-        (reopen(&directory), directory)
+        (reopen(&directory).await, directory)
     }
 
-    fn reopen(directory: &TempDir) -> LogDatabase {
-        LogDatabase::new(directory.path(), Box::new(FakeDatabase::default())).unwrap()
+    async fn reopen(directory: &TempDir) -> LogDatabase {
+        LogDatabase::new(directory.path(), Box::new(FakeDatabase::default()))
+            .await
+            .unwrap()
     }
 
-    fn open_with_fallback() -> (LogDatabase, FakeDatabase, TempDir) {
+    async fn open_with_fallback() -> (LogDatabase, FakeDatabase, TempDir) {
         let directory = tempdir().unwrap();
         let fallback = FakeDatabase::default();
 
         (
-            LogDatabase::new(directory.path(), Box::new(fallback.clone())).unwrap(),
+            LogDatabase::new(directory.path(), Box::new(fallback.clone()))
+                .await
+                .unwrap(),
             fallback,
             directory,
         )
@@ -183,27 +197,28 @@ mod tests {
         .unwrap();
     }
 
-    #[test]
-    fn new() {
-        let (_database, directory) = open();
+    #[tokio::test]
+    async fn new() {
+        let (_database, directory) = open().await;
 
         assert!(exists(directory.path().join("hashes")).unwrap());
     }
 
-    #[test]
-    fn new_in_missing_directory() {
+    #[tokio::test]
+    async fn new_in_missing_directory() {
         let directory = tempdir().unwrap();
 
         LogDatabase::new(
             &directory.path().join("foo").join("bar"),
             Box::new(FakeDatabase::default()),
         )
+        .await
         .unwrap();
     }
 
-    #[test]
-    fn hash() {
-        let (database, _directory) = open();
+    #[tokio::test]
+    async fn hash() {
+        let (database, _directory) = open().await;
 
         database
             .set_hash(BuildId::new(0), BuildHash::new(1, 2))
@@ -215,9 +230,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn get_no_hash() {
-        let (database, _directory) = open();
+    #[tokio::test]
+    async fn get_no_hash() {
+        let (database, _directory) = open().await;
 
         database
             .set_hash(BuildId::new(0), BuildHash::new(1, 2))
@@ -226,9 +241,9 @@ mod tests {
         assert_eq!(database.get_hash(BuildId::new(1)).unwrap(), None);
     }
 
-    #[test]
-    fn update_hash() {
-        let (database, _directory) = open();
+    #[tokio::test]
+    async fn update_hash() {
+        let (database, _directory) = open().await;
 
         database
             .set_hash(BuildId::new(0), BuildHash::new(1, 2))
@@ -243,12 +258,12 @@ mod tests {
         );
     }
 
-    #[test]
-    fn set_hashes_concurrently() {
+    #[tokio::test]
+    async fn set_hashes_concurrently() {
         const THREAD_COUNT: u64 = 8;
         const BUILD_COUNT: u64 = 256;
 
-        let (database, directory) = open();
+        let (database, directory) = open().await;
 
         scope(|scope| {
             for thread in 0..THREAD_COUNT {
@@ -268,7 +283,7 @@ mod tests {
 
         drop(database);
 
-        let database = reopen(&directory);
+        let database = reopen(&directory).await;
 
         for id in 0..THREAD_COUNT * BUILD_COUNT {
             assert_eq!(
@@ -278,9 +293,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn fail_to_set_hash_with_poisoned_lock() {
-        let (database, directory) = open();
+    #[tokio::test]
+    async fn fail_to_set_hash_with_poisoned_lock() {
+        let (database, directory) = open().await;
 
         scope(|scope| {
             scope
@@ -305,9 +320,9 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
-        fn set_no_hash() {
-            let (database, fallback, _directory) = open_with_fallback();
+        #[tokio::test]
+        async fn set_no_hash() {
+            let (database, fallback, _directory) = open_with_fallback().await;
 
             database
                 .set_hash(BuildId::new(0), BuildHash::new(1, 2))
@@ -316,9 +331,9 @@ mod tests {
             assert_eq!(fallback.get_hash(BuildId::new(0)).unwrap(), None);
         }
 
-        #[test]
-        fn get_no_hash() {
-            let (database, fallback, _directory) = open_with_fallback();
+        #[tokio::test]
+        async fn get_no_hash() {
+            let (database, fallback, _directory) = open_with_fallback().await;
 
             fallback
                 .set_hash(BuildId::new(0), BuildHash::new(1, 2))
@@ -327,9 +342,9 @@ mod tests {
             assert_eq!(database.get_hash(BuildId::new(0)).unwrap(), None);
         }
 
-        #[test]
-        fn set_header_inputs() {
-            let (database, fallback, _directory) = open_with_fallback();
+        #[tokio::test]
+        async fn set_header_inputs() {
+            let (database, fallback, _directory) = open_with_fallback().await;
 
             database
                 .set_header_inputs(BuildId::new(0), &["foo".into(), "bar".into()])
@@ -341,9 +356,9 @@ mod tests {
             );
         }
 
-        #[test]
-        fn get_header_inputs() {
-            let (database, fallback, _directory) = open_with_fallback();
+        #[tokio::test]
+        async fn get_header_inputs() {
+            let (database, fallback, _directory) = open_with_fallback().await;
 
             fallback
                 .set_header_inputs(BuildId::new(0), &["foo".into(), "bar".into()])
@@ -355,36 +370,36 @@ mod tests {
             );
         }
 
-        #[test]
-        fn set_output() {
-            let (database, fallback, _directory) = open_with_fallback();
+        #[tokio::test]
+        async fn set_output() {
+            let (database, fallback, _directory) = open_with_fallback().await;
 
             database.set_output("foo").unwrap();
 
             assert_eq!(fallback.get_outputs().unwrap(), vec!["foo"]);
         }
 
-        #[test]
-        fn get_outputs() {
-            let (database, fallback, _directory) = open_with_fallback();
+        #[tokio::test]
+        async fn get_outputs() {
+            let (database, fallback, _directory) = open_with_fallback().await;
 
             fallback.set_output("foo").unwrap();
 
             assert_eq!(database.get_outputs().unwrap(), vec!["foo"]);
         }
 
-        #[test]
-        fn set_source() {
-            let (database, fallback, _directory) = open_with_fallback();
+        #[tokio::test]
+        async fn set_source() {
+            let (database, fallback, _directory) = open_with_fallback().await;
 
             database.set_source("foo", "bar").unwrap();
 
             assert_eq!(fallback.get_source("foo").unwrap(), Some("bar".into()));
         }
 
-        #[test]
-        fn get_source() {
-            let (database, fallback, _directory) = open_with_fallback();
+        #[tokio::test]
+        async fn get_source() {
+            let (database, fallback, _directory) = open_with_fallback().await;
 
             fallback.set_source("foo", "bar").unwrap();
 
@@ -396,9 +411,9 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
-        fn write_record() {
-            let (database, directory) = open();
+        #[tokio::test]
+        async fn write_record() {
+            let (database, directory) = open().await;
 
             database
                 .set_hash(BuildId::new(1), BuildHash::new(2, 3))
@@ -415,9 +430,9 @@ mod tests {
             );
         }
 
-        #[test]
-        fn write_record_in_little_endian() {
-            let (database, directory) = open();
+        #[tokio::test]
+        async fn write_record_in_little_endian() {
+            let (database, directory) = open().await;
 
             database
                 .set_hash(
@@ -437,9 +452,9 @@ mod tests {
             );
         }
 
-        #[test]
-        fn append_records() {
-            let (database, directory) = open();
+        #[tokio::test]
+        async fn append_records() {
+            let (database, directory) = open().await;
 
             database
                 .set_hash(BuildId::new(0), BuildHash::new(1, 2))
@@ -463,9 +478,9 @@ mod tests {
             );
         }
 
-        #[test]
-        fn reopen_log() {
-            let (database, directory) = open();
+        #[tokio::test]
+        async fn reopen_log() {
+            let (database, directory) = open().await;
 
             database
                 .set_hash(BuildId::new(0), BuildHash::new(1, 2))
@@ -476,7 +491,7 @@ mod tests {
 
             drop(database);
 
-            let database = reopen(&directory);
+            let database = reopen(&directory).await;
 
             assert_eq!(
                 database.get_hash(BuildId::new(0)).unwrap(),
@@ -488,9 +503,9 @@ mod tests {
             );
         }
 
-        #[test]
-        fn reopen_log_with_updated_hash() {
-            let (database, directory) = open();
+        #[tokio::test]
+        async fn reopen_log_with_updated_hash() {
+            let (database, directory) = open().await;
 
             database
                 .set_hash(BuildId::new(0), BuildHash::new(1, 2))
@@ -502,14 +517,14 @@ mod tests {
             drop(database);
 
             assert_eq!(
-                reopen(&directory).get_hash(BuildId::new(0)).unwrap(),
+                reopen(&directory).await.get_hash(BuildId::new(0)).unwrap(),
                 Some(BuildHash::new(3, 4))
             );
         }
 
-        #[test]
-        fn append_records_after_reopen() {
-            let (database, directory) = open();
+        #[tokio::test]
+        async fn append_records_after_reopen() {
+            let (database, directory) = open().await;
 
             database
                 .set_hash(BuildId::new(0), BuildHash::new(1, 2))
@@ -518,6 +533,7 @@ mod tests {
             drop(database);
 
             reopen(&directory)
+                .await
                 .set_hash(BuildId::new(3), BuildHash::new(4, 5))
                 .unwrap();
 
@@ -537,8 +553,8 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
-        fn compact() {
+        #[tokio::test]
+        async fn compact() {
             let directory = tempdir().unwrap();
 
             write_log(
@@ -551,7 +567,7 @@ mod tests {
                 ],
             );
 
-            let database = reopen(&directory);
+            let database = reopen(&directory).await;
 
             assert_eq!(
                 database.get_hash(BuildId::new(0)).unwrap(),
@@ -563,8 +579,8 @@ mod tests {
             );
         }
 
-        #[test]
-        fn compact_many_builds() {
+        #[tokio::test]
+        async fn compact_many_builds() {
             let directory = tempdir().unwrap();
 
             write_log(
@@ -580,7 +596,7 @@ mod tests {
                 ],
             );
 
-            let database = reopen(&directory);
+            let database = reopen(&directory).await;
 
             assert_eq!(
                 database.get_hash(BuildId::new(0)).unwrap(),
@@ -611,9 +627,9 @@ mod tests {
             );
         }
 
-        #[test]
-        fn compact_after_appending_records() {
-            let (database, directory) = open();
+        #[tokio::test]
+        async fn compact_after_appending_records() {
+            let (database, directory) = open().await;
 
             for hash in 0..4 {
                 database
@@ -625,7 +641,7 @@ mod tests {
 
             assert_eq!(read_log(&directory).len(), 4 * size_of::<Record>());
 
-            let database = reopen(&directory);
+            let database = reopen(&directory).await;
 
             assert_eq!(
                 database.get_hash(BuildId::new(0)).unwrap(),
@@ -637,8 +653,8 @@ mod tests {
             );
         }
 
-        #[test]
-        fn append_record_after_compaction() {
+        #[tokio::test]
+        async fn append_record_after_compaction() {
             let directory = tempdir().unwrap();
 
             write_log(
@@ -652,6 +668,7 @@ mod tests {
             );
 
             reopen(&directory)
+                .await
                 .set_hash(BuildId::new(9), BuildHash::new(10, 11))
                 .unwrap();
 
@@ -666,8 +683,8 @@ mod tests {
             );
         }
 
-        #[test]
-        fn remove_temporary_file() {
+        #[tokio::test]
+        async fn remove_temporary_file() {
             let directory = tempdir().unwrap();
 
             write_log(
@@ -675,7 +692,7 @@ mod tests {
                 &[serialize(BuildId::new(0), BuildHash::new(1, 2)); 4],
             );
 
-            reopen(&directory);
+            reopen(&directory).await;
 
             assert_eq!(read_log(&directory).len(), size_of::<Record>());
             assert!(
@@ -689,8 +706,8 @@ mod tests {
             );
         }
 
-        #[test]
-        fn overwrite_temporary_file() {
+        #[tokio::test]
+        async fn overwrite_temporary_file() {
             let directory = tempdir().unwrap();
 
             write(
@@ -706,7 +723,7 @@ mod tests {
                 &[serialize(BuildId::new(0), BuildHash::new(1, 2)); 4],
             );
 
-            reopen(&directory);
+            reopen(&directory).await;
 
             assert_eq!(
                 read_log(&directory),
@@ -714,8 +731,8 @@ mod tests {
             );
         }
 
-        #[test]
-        fn keep_log_of_optimal_size() {
+        #[tokio::test]
+        async fn keep_log_of_optimal_size() {
             let directory = tempdir().unwrap();
             let records = [
                 serialize(BuildId::new(0), BuildHash::new(1, 2)),
@@ -724,13 +741,13 @@ mod tests {
 
             write_log(&directory, &records);
 
-            reopen(&directory);
+            reopen(&directory).await;
 
             assert_eq!(read_log(&directory), records.as_flattened().as_flattened());
         }
 
-        #[test]
-        fn keep_log_of_compaction_ratio() {
+        #[tokio::test]
+        async fn keep_log_of_compaction_ratio() {
             let directory = tempdir().unwrap();
             let records = [
                 serialize(BuildId::new(0), BuildHash::new(1, 2)),
@@ -740,7 +757,7 @@ mod tests {
 
             write_log(&directory, &records);
 
-            let database = reopen(&directory);
+            let database = reopen(&directory).await;
 
             assert_eq!(
                 database.get_hash(BuildId::new(0)).unwrap(),
@@ -749,13 +766,13 @@ mod tests {
             assert_eq!(read_log(&directory), records.as_flattened().as_flattened());
         }
 
-        #[test]
-        fn keep_empty_log() {
+        #[tokio::test]
+        async fn keep_empty_log() {
             let directory = tempdir().unwrap();
 
             write_log(&directory, &[]);
 
-            reopen(&directory);
+            reopen(&directory).await;
 
             assert_eq!(read_log(&directory), [0u8; 0]);
         }
@@ -773,8 +790,8 @@ mod tests {
             .unwrap();
         }
 
-        #[test]
-        fn remove_incomplete_record() {
+        #[tokio::test]
+        async fn remove_incomplete_record() {
             for size in 1..size_of::<Record>() {
                 let directory = tempdir().unwrap();
 
@@ -784,7 +801,7 @@ mod tests {
                     size,
                 );
 
-                let database = reopen(&directory);
+                let database = reopen(&directory).await;
 
                 assert_eq!(
                     database.get_hash(BuildId::new(0)).unwrap(),
@@ -797,19 +814,19 @@ mod tests {
             }
         }
 
-        #[test]
-        fn remove_only_incomplete_record() {
+        #[tokio::test]
+        async fn remove_only_incomplete_record() {
             let directory = tempdir().unwrap();
 
             write_incomplete_log(&directory, &[], 1);
 
-            reopen(&directory);
+            reopen(&directory).await;
 
             assert_eq!(read_log(&directory), [0u8; 0]);
         }
 
-        #[test]
-        fn append_record_after_incomplete_record() {
+        #[tokio::test]
+        async fn append_record_after_incomplete_record() {
             let directory = tempdir().unwrap();
 
             write_incomplete_log(
@@ -819,10 +836,11 @@ mod tests {
             );
 
             reopen(&directory)
+                .await
                 .set_hash(BuildId::new(3), BuildHash::new(4, 5))
                 .unwrap();
 
-            let database = reopen(&directory);
+            let database = reopen(&directory).await;
 
             assert_eq!(
                 database.get_hash(BuildId::new(0)).unwrap(),

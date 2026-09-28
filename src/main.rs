@@ -144,7 +144,8 @@ async fn execute(arguments: &Arguments, console: &Arc<Mutex<OsConsole>>) -> Resu
                 &database_path.with_extension(DATABASE_EXTENSION),
                 path_pool.clone(),
             )?),
-        )?,
+        )
+        .await?,
         file_system,
         path_pool,
     ));

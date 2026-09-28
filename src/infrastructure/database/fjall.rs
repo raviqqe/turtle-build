@@ -7,13 +7,12 @@ use crate::{
 use alloc::sync::Arc;
 use core::str;
 use fjall::Keyspace;
+use rkyv::{Archived, access, from_bytes, rancor, to_bytes};
 
 const HASH_TAG: u8 = 0;
 const HEADER_DEPENDENCY_TAG: u8 = 1;
 const OUTPUT_TAG: u8 = 2;
 const SOURCE_TAG: u8 = 3;
-
-const BINCODE_CONFIG: bincode::config::Configuration = bincode::config::standard();
 
 /// A Fjall database.
 pub struct FjallDatabase {
@@ -47,8 +46,8 @@ impl Database for FjallDatabase {
             .keyspace
             .get(key(HASH_TAG, &id.to_bytes()))?
             .map(|value| {
-                bincode::decode_from_slice(&value, BINCODE_CONFIG)
-                    .map(|((timestamp, content), _)| BuildHash::new(timestamp, content))
+                from_bytes::<(u64, u64), rancor::Error>(&value)
+                    .map(|(timestamp, content)| BuildHash::new(timestamp, content))
             })
             .transpose()?)
     }
@@ -56,7 +55,7 @@ impl Database for FjallDatabase {
     fn set_hash(&self, id: BuildId, hash: BuildHash) -> Result<(), DatabaseError> {
         self.insert(
             &key(HASH_TAG, &id.to_bytes()),
-            &bincode::encode_to_vec((hash.timestamp(), hash.content()), BINCODE_CONFIG)?,
+            &to_bytes::<rancor::Error>(&(hash.timestamp(), hash.content()))?,
         )
     }
 
@@ -65,14 +64,12 @@ impl Database for FjallDatabase {
             .keyspace
             .get(key(HEADER_DEPENDENCY_TAG, &id.to_bytes()))?
             .map(|value| {
-                bincode::borrow_decode_from_slice::<Vec<&str>, _>(&value, BINCODE_CONFIG).map(
-                    |(dependencies, _)| {
-                        dependencies
-                            .into_iter()
-                            .map(|path| self.path_pool.intern(path))
-                            .collect()
-                    },
-                )
+                access::<Archived<Vec<Arc<str>>>, rancor::Error>(&value).map(|dependencies| {
+                    dependencies
+                        .iter()
+                        .map(|path| self.path_pool.intern(path))
+                        .collect()
+                })
             })
             .transpose()?
             .unwrap_or_default())
@@ -85,7 +82,7 @@ impl Database for FjallDatabase {
     ) -> Result<(), DatabaseError> {
         self.insert(
             &key(HEADER_DEPENDENCY_TAG, &id.to_bytes()),
-            &bincode::encode_to_vec(dependencies, BINCODE_CONFIG)?,
+            &to_bytes::<rancor::Error>(&dependencies.to_vec())?,
         )
     }
 
@@ -181,6 +178,17 @@ mod tests {
     }
 
     #[test]
+    fn fail_to_get_invalid_hash() {
+        let (database, _fjall) = open(tempdir().unwrap().path());
+
+        database
+            .insert(&key(HASH_TAG, &BuildId::new(0).to_bytes()), &[0])
+            .unwrap();
+
+        assert!(database.get_hash(BuildId::new(0)).is_err());
+    }
+
+    #[test]
     fn set_output() {
         let (database, _fjall) = open(tempdir().unwrap().path());
 
@@ -221,6 +229,47 @@ mod tests {
     }
 
     #[test]
+    fn empty_header_dependencies() {
+        let (database, _fjall) = open(tempdir().unwrap().path());
+
+        database.set_header_inputs(BuildId::new(0), &[]).unwrap();
+
+        assert_eq!(
+            database.get_header_inputs(BuildId::new(0)).unwrap(),
+            Vec::<Arc<str>>::new()
+        );
+    }
+
+    #[test]
+    fn long_header_dependency() {
+        let (database, _fjall) = open(tempdir().unwrap().path());
+
+        database
+            .set_header_inputs(BuildId::new(0), &["foo/bar/baz/qux.h".into()])
+            .unwrap();
+
+        assert_eq!(
+            database.get_header_inputs(BuildId::new(0)).unwrap(),
+            vec!["foo/bar/baz/qux.h".into()]
+        );
+    }
+
+    #[test]
+    fn duplicate_header_dependencies() {
+        let (database, _fjall) = open(tempdir().unwrap().path());
+        let path = Arc::<str>::from("foo");
+
+        database
+            .set_header_inputs(BuildId::new(0), &[path.clone(), path])
+            .unwrap();
+
+        assert_eq!(
+            database.get_header_inputs(BuildId::new(0)).unwrap(),
+            vec!["foo".into(), "foo".into()]
+        );
+    }
+
+    #[test]
     fn intern_header_dependencies() {
         let directory = tempdir().unwrap();
         let path_pool = Arc::new(PathPool::new());
@@ -241,6 +290,20 @@ mod tests {
             &database.get_header_inputs(BuildId::new(0)).unwrap()[0],
             &path_pool.intern("foo")
         ));
+    }
+
+    #[test]
+    fn fail_to_get_invalid_header_dependencies() {
+        let (database, _fjall) = open(tempdir().unwrap().path());
+
+        database
+            .insert(
+                &key(HEADER_DEPENDENCY_TAG, &BuildId::new(0).to_bytes()),
+                &[0xff; 8],
+            )
+            .unwrap();
+
+        assert!(database.get_header_inputs(BuildId::new(0)).is_err());
     }
 
     #[test]

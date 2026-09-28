@@ -1,5 +1,5 @@
-use bincode::error::{DecodeError, EncodeError};
 use core::{fmt::Display, str::Utf8Error};
+use rkyv::rancor;
 use thiserror::Error;
 
 /// A database error.
@@ -14,20 +14,14 @@ impl DatabaseError {
     }
 }
 
-impl From<DecodeError> for DatabaseError {
-    fn from(error: DecodeError) -> Self {
-        Self::new(error)
-    }
-}
-
-impl From<EncodeError> for DatabaseError {
-    fn from(error: EncodeError) -> Self {
-        Self::new(error)
-    }
-}
-
 impl From<fjall::Error> for DatabaseError {
     fn from(error: fjall::Error) -> Self {
+        Self::new(error)
+    }
+}
+
+impl From<rancor::Error> for DatabaseError {
+    fn from(error: rancor::Error) -> Self {
         Self::new(error)
     }
 }

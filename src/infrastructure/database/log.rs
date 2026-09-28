@@ -53,7 +53,6 @@ impl LogDatabase {
         let records = bytes.as_chunks().0.as_chunks().0;
         let hashes = HashIndex::with_capacity(records.len());
 
-        // Newer records override older ones.
         for &record in records.iter().rev() {
             let (id, hash) = deserialize(record);
 

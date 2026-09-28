@@ -43,10 +43,13 @@ impl LogDatabase {
     }
 
     async fn open(path: &Path) -> Result<(File, HashIndex<BuildId, BuildHash>), io::Error> {
-        let bytes = match read(path).await {
-            Err(error) if error.kind() == ErrorKind::NotFound => vec![],
-            result => result?,
-        };
+        let bytes = read(path).await.or_else(|error| {
+            if error.kind() == ErrorKind::NotFound {
+                Ok(vec![])
+            } else {
+                Err(error)
+            }
+        })?;
         let records = bytes.as_chunks().0.as_chunks().0;
         let hashes = HashIndex::with_capacity(records.len());
 

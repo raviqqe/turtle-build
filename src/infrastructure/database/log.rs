@@ -1167,12 +1167,15 @@ mod tests {
             async fn compact_outputs_of_different_lengths() {
                 let directory = tempdir().unwrap();
 
-                write_log(&directory, "foo\nfoo\nfoo\nfoo\nfoo\nfoo\nbarbaz\n");
+                write_log(
+                    &directory,
+                    "foo\nfoo/bar\nfoo/bar\nfoo/bar\nfoo/bar\nfoo/bar\n",
+                );
 
                 let database = reopen(&directory).await;
 
-                assert_eq!(get_outputs(&database), ["barbaz", "foo"]);
-                assert_eq!(read_lines(&directory), ["barbaz\n", "foo\n"]);
+                assert_eq!(get_outputs(&database), ["foo", "foo/bar"]);
+                assert_eq!(read_lines(&directory), ["foo\n", "foo/bar\n"]);
             }
 
             #[tokio::test]
@@ -1252,12 +1255,15 @@ mod tests {
             async fn keep_log_of_compaction_ratio_with_outputs_of_different_lengths() {
                 let directory = tempdir().unwrap();
 
-                write_log(&directory, "foo\nfoo\nfoo\nfoo\nfoo\nbarbaz\n");
+                write_log(&directory, "foo\nfoo\nfoo\nfoo\nfoo\nfoo\nfoo/bar\n");
 
                 let database = reopen(&directory).await;
 
-                assert_eq!(get_outputs(&database), ["barbaz", "foo"]);
-                assert_eq!(read_log(&directory), b"foo\nfoo\nfoo\nfoo\nfoo\nbarbaz\n");
+                assert_eq!(get_outputs(&database), ["foo", "foo/bar"]);
+                assert_eq!(
+                    read_log(&directory),
+                    b"foo\nfoo\nfoo\nfoo\nfoo\nfoo\nfoo/bar\n"
+                );
             }
 
             #[tokio::test]

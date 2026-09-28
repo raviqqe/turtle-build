@@ -7,17 +7,12 @@ mod redb;
 #[cfg(test)]
 pub use self::fake::FakeDatabase;
 pub use self::{error::DatabaseError, fjall::FjallDatabase, redb::RedbDatabase};
-use crate::{hash_type::HashType, ir::BuildId};
+use crate::{build_hash::BuildHash, ir::BuildId};
 use alloc::sync::Arc;
 
 pub trait Database {
-    fn get_hash(&self, r#type: HashType, id: BuildId) -> Result<Option<u64>, DatabaseError>;
-    fn set_hashes(
-        &self,
-        id: BuildId,
-        timestamp_hash: u64,
-        content_hash: u64,
-    ) -> Result<(), DatabaseError>;
+    fn get_hash(&self, id: BuildId) -> Result<Option<BuildHash>, DatabaseError>;
+    fn set_hash(&self, id: BuildId, hash: BuildHash) -> Result<(), DatabaseError>;
 
     fn get_header_inputs(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError>;
     fn set_header_inputs(&self, id: BuildId, inputs: &[Arc<str>]) -> Result<(), DatabaseError>;

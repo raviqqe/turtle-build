@@ -4,11 +4,11 @@ extern crate alloc;
 
 mod ast;
 mod build_graph;
+mod build_hash;
 mod compile;
 mod context;
 mod error;
 mod file;
-mod hash_type;
 mod infrastructure;
 mod ir;
 mod job_limit;

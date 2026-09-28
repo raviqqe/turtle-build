@@ -11,6 +11,10 @@ impl BuildId {
         Self(id)
     }
 
+    pub const fn from_bytes(bytes: [u8; 8]) -> Self {
+        Self(u64::from_le_bytes(bytes))
+    }
+
     pub const fn to_bytes(self) -> [u8; 8] {
         self.0.to_le_bytes()
     }

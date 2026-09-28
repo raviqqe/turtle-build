@@ -24,7 +24,7 @@ pub use self::{
     context::Context,
     error::BuildError,
     infrastructure::{
-        Console, DatabaseError, FileSystem, FjallDatabase, OsCommandRunner, OsConsole,
+        Console, DatabaseError, FileSystem, FjallDatabase, LogDatabase, OsCommandRunner, OsConsole,
         OsFileSystem, RedbDatabase,
     },
     job_limit::job_limit,

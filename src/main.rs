@@ -18,14 +18,15 @@ use std::{
 };
 use tokio::{sync::Mutex, time::sleep};
 use turtle_build::{
-    BuildError, Console, Context, FileSystem, Module, ModuleDependencyMap, OsCommandRunner,
-    OsConsole, OsFileSystem, PathPool, RedbDatabase, RunOptions, Statement, clean_dead, compile,
-    job_limit, parse, run,
+    BuildError, Console, Context, FileSystem, LogDatabase, Module, ModuleDependencyMap,
+    OsCommandRunner, OsConsole, OsFileSystem, PathPool, RedbDatabase, RunOptions, Statement,
+    clean_dead, compile, job_limit, parse, run,
 };
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
 const DATABASE_DIRECTORY: &str = ".turtle";
 const DATABASE_EXTENSION: &str = "redb";
+const LOG_DATABASE_EXTENSION: &str = "log";
 const DEFAULT_FILE_COUNT_PER_PROCESS: usize = 3; // stdin, stdout, and stderr
 
 #[derive(Parser)]
@@ -129,18 +130,21 @@ async fn execute(arguments: &Arguments, console: &Arc<Mutex<OsConsole>>) -> Resu
         &root_module_path,
         &path_pool,
     )?);
+    let database_path = config
+        .build_directory()
+        .map(|string| string.as_ref().as_ref())
+        .unwrap_or_else(|| root_module_path.parent().unwrap())
+        .join(DATABASE_DIRECTORY)
+        .join(env!("CARGO_PKG_VERSION").replace('.', "_"));
     let context = Arc::new(Context::new(
         OsCommandRunner::new(job_limit),
         console.clone(),
-        RedbDatabase::new(
-            &config
-                .build_directory()
-                .map(|string| string.as_ref().as_ref())
-                .unwrap_or_else(|| root_module_path.parent().unwrap())
-                .join(DATABASE_DIRECTORY)
-                .join(env!("CARGO_PKG_VERSION").replace('.', "_"))
-                .with_extension(DATABASE_EXTENSION),
-            path_pool.clone(),
+        LogDatabase::new(
+            &database_path.with_extension(LOG_DATABASE_EXTENSION),
+            Box::new(RedbDatabase::new(
+                &database_path.with_extension(DATABASE_EXTENSION),
+                path_pool.clone(),
+            )?),
         )?,
         file_system,
         path_pool,

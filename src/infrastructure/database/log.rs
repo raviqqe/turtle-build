@@ -9,7 +9,6 @@ use std::{
     fs::File,
     io::{self, ErrorKind, Write},
     path::Path,
-    sync::Mutex,
 };
 use tokio::fs::{OpenOptions, create_dir_all, read, rename, write};
 
@@ -21,7 +20,7 @@ type Record = [[u8; size_of::<u64>()]; 3];
 
 /// A log database.
 pub struct LogDatabase {
-    file: Mutex<File>,
+    file: File,
     hashes: HashIndex<BuildId, BuildHash>,
     fallback: Box<dyn Database + Send + Sync>,
 }
@@ -37,7 +36,7 @@ impl LogDatabase {
         let (file, hashes) = Self::open(&directory.join(HASH_FILENAME)).await?;
 
         Ok(Self {
-            file: file.into(),
+            file,
             hashes,
             fallback,
         })
@@ -108,10 +107,7 @@ impl Database for LogDatabase {
     }
 
     fn set_hash(&self, id: BuildId, hash: BuildHash) -> Result<(), DatabaseError> {
-        // The lock keeps records in the same order in the file and memory.
-        let mut file = self.file.lock()?;
-
-        file.write_all(serialize(id, hash).as_flattened())?;
+        (&self.file).write_all(serialize(id, hash).as_flattened())?;
 
         match self.hashes.entry_sync(id) {
             Entry::Occupied(mut entry) => entry.update(hash),
@@ -155,7 +151,6 @@ mod tests {
     use pretty_assertions::assert_eq;
     use std::{
         fs::{exists, read, write},
-        sync::PoisonError,
         thread::scope,
     };
     use tempfile::{TempDir, tempdir};
@@ -291,29 +286,6 @@ mod tests {
                 Some(BuildHash::new(id + 1, id + 2))
             );
         }
-    }
-
-    #[tokio::test]
-    async fn fail_to_set_hash_with_poisoned_lock() {
-        let (database, directory) = open().await;
-
-        scope(|scope| {
-            scope
-                .spawn(|| {
-                    let _file = database.file.lock().unwrap();
-
-                    panic!()
-                })
-                .join()
-                .unwrap_err();
-        });
-
-        assert_eq!(
-            database.set_hash(BuildId::new(0), BuildHash::new(1, 2)),
-            Err(DatabaseError::new(PoisonError::new(())))
-        );
-        assert_eq!(database.get_hash(BuildId::new(0)).unwrap(), None);
-        assert_eq!(read_log(&directory), [0u8; 0]);
     }
 
     mod fallback {

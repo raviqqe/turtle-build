@@ -4,7 +4,6 @@ use core::str;
 use scc::{Guard, HashIndex};
 use std::{fs::File, io::Write, path::Path};
 
-const FILENAME: &str = "outputs";
 const LINE_TERMINATOR: u8 = b'\n';
 
 pub struct OutputLog {
@@ -13,9 +12,8 @@ pub struct OutputLog {
 }
 
 impl OutputLog {
-    pub async fn new(directory: &Path) -> Result<Self, DatabaseError> {
-        let path = directory.join(FILENAME);
-        let bytes = read_file(&path).await?;
+    pub async fn new(path: &Path) -> Result<Self, DatabaseError> {
+        let bytes = read_file(path).await?;
         let lines = bytes
             .split_inclusive(|&byte| byte == LINE_TERMINATOR)
             .filter_map(|line| line.strip_suffix(&[LINE_TERMINATOR]))
@@ -40,11 +38,11 @@ impl OutputLog {
                 .flat_map(|(path, _)| serialize(path))
                 .collect::<Vec<_>>();
 
-            compact_file(&path, bytes).await?;
+            compact_file(path, bytes).await?;
         }
 
         Ok(Self {
-            file: open_file(&path).await?,
+            file: open_file(path).await?,
             outputs,
         })
     }
@@ -79,6 +77,8 @@ mod tests {
     };
     use tempfile::{TempDir, tempdir};
 
+    const FILENAME: &str = "log";
+
     async fn open() -> (OutputLog, TempDir) {
         let directory = tempdir().unwrap();
 
@@ -86,7 +86,9 @@ mod tests {
     }
 
     async fn reopen(directory: &TempDir) -> OutputLog {
-        OutputLog::new(directory.path()).await.unwrap()
+        OutputLog::new(&directory.path().join(FILENAME))
+            .await
+            .unwrap()
     }
 
     fn get_outputs(log: &OutputLog) -> Vec<String> {
@@ -121,7 +123,7 @@ mod tests {
     async fn new() {
         let (_log, directory) = open().await;
 
-        assert!(exists(directory.path().join("outputs")).unwrap());
+        assert!(exists(directory.path().join(FILENAME)).unwrap());
     }
 
     #[tokio::test]
@@ -301,14 +303,22 @@ mod tests {
 
         write_log(&directory, [b'f', 0xff, b'\n']);
 
-        assert!(OutputLog::new(directory.path()).await.is_err());
+        assert!(
+            OutputLog::new(&directory.path().join(FILENAME))
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
     async fn fail_to_open_log_in_missing_directory() {
         let directory = tempdir().unwrap();
 
-        assert!(OutputLog::new(&directory.path().join("foo")).await.is_err());
+        assert!(
+            OutputLog::new(&directory.path().join("foo").join(FILENAME))
+                .await
+                .is_err()
+        );
     }
 
     mod compaction {

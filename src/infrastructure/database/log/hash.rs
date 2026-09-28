@@ -3,8 +3,6 @@ use crate::{build_hash::BuildHash, infrastructure::DatabaseError, ir::BuildId};
 use scc::{Guard, HashIndex, hash_index::Entry};
 use std::{fs::File, io::Write, path::Path};
 
-const FILENAME: &str = "hashes";
-
 type Record = [[u8; size_of::<u64>()]; 3];
 
 pub struct HashLog {
@@ -13,9 +11,8 @@ pub struct HashLog {
 }
 
 impl HashLog {
-    pub async fn new(directory: &Path) -> Result<Self, DatabaseError> {
-        let path = directory.join(FILENAME);
-        let bytes = read_file(&path).await?;
+    pub async fn new(path: &Path) -> Result<Self, DatabaseError> {
+        let bytes = read_file(path).await?;
         let records = bytes.as_chunks().0.as_chunks().0;
         let hashes = HashIndex::with_capacity(records.len());
 
@@ -35,11 +32,11 @@ impl HashLog {
                 .flatten()
                 .collect::<Vec<_>>();
 
-            compact_file(&path, bytes).await?;
+            compact_file(path, bytes).await?;
         }
 
         Ok(Self {
-            file: open_file(&path).await?,
+            file: open_file(path).await?,
             hashes,
         })
     }
@@ -87,6 +84,8 @@ mod tests {
     };
     use tempfile::{TempDir, tempdir};
 
+    const FILENAME: &str = "log";
+
     async fn open() -> (HashLog, TempDir) {
         let directory = tempdir().unwrap();
 
@@ -94,7 +93,9 @@ mod tests {
     }
 
     async fn reopen(directory: &TempDir) -> HashLog {
-        HashLog::new(directory.path()).await.unwrap()
+        HashLog::new(&directory.path().join(FILENAME))
+            .await
+            .unwrap()
     }
 
     fn read_log(directory: &TempDir) -> Vec<u8> {
@@ -113,7 +114,7 @@ mod tests {
     async fn new() {
         let (_log, directory) = open().await;
 
-        assert!(exists(directory.path().join("hashes")).unwrap());
+        assert!(exists(directory.path().join(FILENAME)).unwrap());
     }
 
     #[tokio::test]
@@ -294,7 +295,11 @@ mod tests {
     async fn fail_to_open_log_in_missing_directory() {
         let directory = tempdir().unwrap();
 
-        assert!(HashLog::new(&directory.path().join("foo")).await.is_err());
+        assert!(
+            HashLog::new(&directory.path().join("foo").join(FILENAME))
+                .await
+                .is_err()
+        );
     }
 
     mod compaction {

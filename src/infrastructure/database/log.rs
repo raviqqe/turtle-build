@@ -12,6 +12,9 @@ use alloc::sync::Arc;
 use std::path::Path;
 use tokio::{fs::create_dir_all, try_join};
 
+const HASH_FILENAME: &str = "hashes";
+const OUTPUT_FILENAME: &str = "outputs";
+
 /// A log database.
 pub struct LogDatabase {
     hash_log: HashLog,
@@ -27,7 +30,10 @@ impl LogDatabase {
     ) -> Result<Self, DatabaseError> {
         create_dir_all(directory).await?;
 
-        let (hash_log, output_log) = try_join!(HashLog::new(directory), OutputLog::new(directory))?;
+        let hash_path = directory.join(HASH_FILENAME);
+        let output_path = directory.join(OUTPUT_FILENAME);
+        let (hash_log, output_log) =
+            try_join!(HashLog::new(&hash_path), OutputLog::new(&output_path))?;
 
         Ok(Self {
             hash_log,
@@ -76,7 +82,7 @@ mod tests {
     use super::*;
     use crate::infrastructure::FakeDatabase;
     use pretty_assertions::assert_eq;
-    use std::fs::write;
+    use std::fs::{exists, write};
     use tempfile::{TempDir, tempdir};
 
     async fn open() -> (LogDatabase, TempDir) {
@@ -106,7 +112,10 @@ mod tests {
 
     #[tokio::test]
     async fn new() {
-        open().await;
+        let (_database, directory) = open().await;
+
+        assert!(exists(directory.path().join("hashes")).unwrap());
+        assert!(exists(directory.path().join("outputs")).unwrap());
     }
 
     #[tokio::test]

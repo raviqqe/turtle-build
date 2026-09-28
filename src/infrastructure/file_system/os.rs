@@ -2,12 +2,12 @@ use super::Metadata;
 use crate::infrastructure::{FileError, FileSystem};
 use async_trait::async_trait;
 use std::{
-    fs::{exists, metadata},
+    fs::{exists, metadata, read_to_string},
     io,
     path::{Path, PathBuf},
 };
 use tokio::{
-    fs::{canonicalize, create_dir_all, read, read_to_string, remove_file},
+    fs::{canonicalize, create_dir_all, read, remove_file},
     sync::Semaphore,
 };
 
@@ -38,12 +38,10 @@ impl FileSystem for OsFileSystem {
         read(path).await.map_err(|error| Self::error(error, path))
     }
 
+    // Text files are read inline because they are small enough for a read to be
+    // cheaper than a round trip through the blocking thread pool.
     async fn read_file_to_string(&self, path: &Path) -> Result<String, FileError> {
-        let _permit = self.semaphore.acquire().await?;
-
-        read_to_string(path)
-            .await
-            .map_err(|error| Self::error(error, path))
+        read_to_string(path).map_err(|error| Self::error(error, path))
     }
 
     // Existence checks run inline because a `stat` call is cheaper than a round

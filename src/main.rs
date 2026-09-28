@@ -26,7 +26,6 @@ use turtle_build::{
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
 const DATABASE_DIRECTORY: &str = ".turtle";
 const DATABASE_EXTENSION: &str = "redb";
-const LOG_DATABASE_EXTENSION: &str = "log";
 const DEFAULT_FILE_COUNT_PER_PROCESS: usize = 3; // stdin, stdout, and stderr
 
 #[derive(Parser)]
@@ -140,7 +139,7 @@ async fn execute(arguments: &Arguments, console: &Arc<Mutex<OsConsole>>) -> Resu
         OsCommandRunner::new(job_limit),
         console.clone(),
         LogDatabase::new(
-            &database_path.with_extension(LOG_DATABASE_EXTENSION),
+            &database_path,
             Box::new(RedbDatabase::new(
                 &database_path.with_extension(DATABASE_EXTENSION),
                 path_pool.clone(),

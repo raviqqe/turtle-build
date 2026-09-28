@@ -13,6 +13,7 @@ use std::{
 };
 
 const COMPACTION_RATIO: usize = 3;
+const HASH_FILENAME: &str = "hashes";
 const TEMPORARY_EXTENSION: &str = "tmp";
 
 type Record = [[u8; size_of::<u64>()]; 3];
@@ -27,10 +28,12 @@ pub struct LogDatabase {
 impl LogDatabase {
     /// Creates a database.
     pub fn new(
-        path: &Path,
+        directory: &Path,
         fallback: Box<dyn Database + Send + Sync>,
     ) -> Result<Self, DatabaseError> {
-        let (file, hashes) = Self::open(path)?;
+        create_dir_all(directory)?;
+
+        let (file, hashes) = Self::open(&directory.join(HASH_FILENAME))?;
 
         Ok(Self {
             file: file.into(),
@@ -40,10 +43,6 @@ impl LogDatabase {
     }
 
     fn open(path: &Path) -> Result<(File, HashIndex<BuildId, BuildHash>), io::Error> {
-        if let Some(directory) = path.parent() {
-            create_dir_all(directory)?;
-        }
-
         let bytes = match read(path) {
             Err(error) if error.kind() == ErrorKind::NotFound => vec![],
             result => result?,
@@ -104,7 +103,7 @@ impl Database for LogDatabase {
 
     fn set_hash(&self, id: BuildId, hash: BuildHash) -> Result<(), DatabaseError> {
         // The lock keeps records in the same order in the file and memory.
-        let mut file = self.file.lock().map_err(DatabaseError::new)?;
+        let mut file = self.file.lock()?;
 
         file.write_all(serialize(id, hash).as_flattened())?;
 
@@ -148,10 +147,8 @@ mod tests {
     use super::*;
     use crate::infrastructure::FakeDatabase;
     use pretty_assertions::assert_eq;
-    use std::{fs::exists, thread::scope};
+    use std::{fs::exists, sync::PoisonError, thread::scope};
     use tempfile::{TempDir, tempdir};
-
-    const FILENAME: &str = "database";
 
     fn open() -> (LogDatabase, TempDir) {
         let directory = tempdir().unwrap();
@@ -160,11 +157,7 @@ mod tests {
     }
 
     fn reopen(directory: &TempDir) -> LogDatabase {
-        LogDatabase::new(
-            &directory.path().join(FILENAME),
-            Box::new(FakeDatabase::default()),
-        )
-        .unwrap()
+        LogDatabase::new(directory.path(), Box::new(FakeDatabase::default())).unwrap()
     }
 
     fn open_with_fallback() -> (LogDatabase, FakeDatabase, TempDir) {
@@ -172,19 +165,19 @@ mod tests {
         let fallback = FakeDatabase::default();
 
         (
-            LogDatabase::new(&directory.path().join(FILENAME), Box::new(fallback.clone())).unwrap(),
+            LogDatabase::new(directory.path(), Box::new(fallback.clone())).unwrap(),
             fallback,
             directory,
         )
     }
 
     fn read_log(directory: &TempDir) -> Vec<u8> {
-        read(directory.path().join(FILENAME)).unwrap()
+        read(directory.path().join(HASH_FILENAME)).unwrap()
     }
 
     fn write_log(directory: &TempDir, records: &[Record]) {
         write(
-            directory.path().join(FILENAME),
+            directory.path().join(HASH_FILENAME),
             records.as_flattened().as_flattened(),
         )
         .unwrap();
@@ -192,7 +185,9 @@ mod tests {
 
     #[test]
     fn new() {
-        open();
+        let (_database, directory) = open();
+
+        assert!(exists(directory.path().join("hashes")).unwrap());
     }
 
     #[test]
@@ -200,7 +195,7 @@ mod tests {
         let directory = tempdir().unwrap();
 
         LogDatabase::new(
-            &directory.path().join("foo").join("bar").join(FILENAME),
+            &directory.path().join("foo").join("bar"),
             Box::new(FakeDatabase::default()),
         )
         .unwrap();
@@ -281,6 +276,29 @@ mod tests {
                 Some(BuildHash::new(id + 1, id + 2))
             );
         }
+    }
+
+    #[test]
+    fn fail_to_set_hash_with_poisoned_lock() {
+        let (database, directory) = open();
+
+        scope(|scope| {
+            scope
+                .spawn(|| {
+                    let _file = database.file.lock().unwrap();
+
+                    panic!()
+                })
+                .join()
+                .unwrap_err();
+        });
+
+        assert_eq!(
+            database.set_hash(BuildId::new(0), BuildHash::new(1, 2)),
+            Err(DatabaseError::new(PoisonError::new(())))
+        );
+        assert_eq!(database.get_hash(BuildId::new(0)).unwrap(), None);
+        assert_eq!(read_log(&directory), [0u8; 0]);
     }
 
     mod fallback {
@@ -664,7 +682,7 @@ mod tests {
                 !exists(
                     directory
                         .path()
-                        .join(FILENAME)
+                        .join(HASH_FILENAME)
                         .with_added_extension(TEMPORARY_EXTENSION)
                 )
                 .unwrap()
@@ -678,7 +696,7 @@ mod tests {
             write(
                 directory
                     .path()
-                    .join(FILENAME)
+                    .join(HASH_FILENAME)
                     .with_added_extension(TEMPORARY_EXTENSION),
                 [0; 42],
             )
@@ -749,7 +767,7 @@ mod tests {
 
         fn write_incomplete_log(directory: &TempDir, records: &[Record], size: usize) {
             write(
-                directory.path().join(FILENAME),
+                directory.path().join(HASH_FILENAME),
                 [records.as_flattened().as_flattened(), &vec![0xff; size]].concat(),
             )
             .unwrap();

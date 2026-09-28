@@ -1,11 +1,11 @@
 use crate::infrastructure::{FileError, FileSystem, Metadata};
 use alloc::sync::Arc;
 use core::hash::{BuildHasher, BuildHasherDefault};
-use scc::HashMap;
+use scc::HashIndex;
 use std::collections::hash_map::DefaultHasher;
 use tokio::sync::OnceCell;
 
-type Cache<T> = HashMap<Arc<str>, Arc<OnceCell<T>>>;
+type Cache<T> = HashIndex<Arc<str>, Arc<OnceCell<T>>>;
 
 pub struct FileCache {
     file_system: Arc<dyn FileSystem + Send + Sync>,
@@ -17,8 +17,8 @@ impl FileCache {
     pub fn new(file_system: Arc<dyn FileSystem + Send + Sync>) -> Self {
         Self {
             file_system,
-            metadata: HashMap::new(),
-            content_hashes: HashMap::new(),
+            metadata: HashIndex::new(),
+            content_hashes: HashIndex::new(),
         }
     }
 
@@ -69,7 +69,7 @@ impl FileCache {
         path: &Arc<str>,
         fetch: impl FnOnce() -> F,
     ) -> Result<T, E> {
-        if let Some(Some(value)) = cache.read_async(path, |_, cell| cell.get().copied()).await {
+        if let Some(Some(value)) = cache.peek_with(path, |_, cell| cell.get().copied()) {
             return Ok(value);
         }
 
@@ -583,6 +583,25 @@ mod tests {
                     Poll::Ready(Ok(()))
                 );
             }
+        }
+
+        #[tokio::test]
+        async fn get_cached_value_during_entry_lock() {
+            let cache = Cache::default();
+            let path = "foo".into();
+
+            FileCache::get(&cache, &path, || async { Ok::<_, FileError>(1) })
+                .await
+                .unwrap();
+
+            let _entry = cache.entry_async(path.clone()).await;
+
+            assert_eq!(
+                poll!(pin!(FileCache::get(&cache, &path, || async {
+                    Ok::<_, FileError>(2)
+                }))),
+                Poll::Ready(Ok(1))
+            );
         }
     }
 }

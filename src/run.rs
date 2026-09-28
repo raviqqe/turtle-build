@@ -103,13 +103,20 @@ pub async fn run(
 #[async_recursion]
 async fn run_build(context: Arc<RunContext>, build: &Arc<Build>) -> Result<bool, BuildError> {
     // Do not inline this to avoid holding a lock of build futures across an await point.
-    let future = context
+    let future = if let Some(future) = context
         .build_futures()
-        .entry_async(build.id())
-        .await
-        .or_insert_with(|| spawn_build(context.clone(), build.clone()).boxed().shared())
-        .get()
-        .clone();
+        .peek_with(&build.id(), |_, future| future.clone())
+    {
+        future
+    } else {
+        context
+            .build_futures()
+            .entry_async(build.id())
+            .await
+            .or_insert_with(|| spawn_build(context.clone(), build.clone()).boxed().shared())
+            .get()
+            .clone()
+    };
 
     future.await
 }
@@ -533,7 +540,7 @@ mod tests {
         infrastructure::{FakeCommandRunner, FakeConsole, FakeDatabase, FakeFileSystem, FileError},
         ir::HeaderDependency,
     };
-    use core::{num::NonZeroUsize, pin::pin};
+    use core::{num::NonZeroUsize, pin::pin, task::Poll};
     use futures::poll;
     use pretty_assertions::{assert_eq, assert_ne};
     use regex::Regex;
@@ -873,6 +880,28 @@ mod tests {
             command_runner.commands(),
             ["touch baz", "touch bar", "touch foo"]
         );
+    }
+
+    #[tokio::test]
+    async fn get_started_build_during_entry_lock() {
+        let command_runner = FakeCommandRunner::default();
+        let context = create_build_run_context(&command_runner, &Default::default(), vec![]);
+        let build = explicit_build(
+            vec!["foo".into()],
+            Rule::new("touch foo".into(), None),
+            vec![],
+        )
+        .into();
+
+        run_build(context.clone(), &build).await.unwrap();
+
+        let _entry = context.build_futures().entry_async(build.id()).await;
+
+        assert_eq!(
+            poll!(pin!(run_build(context.clone(), &build))),
+            Poll::Ready(Ok(false))
+        );
+        assert_eq!(command_runner.commands(), ["touch foo"]);
     }
 
     #[tokio::test]

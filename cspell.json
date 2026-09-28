@@ -2,7 +2,6 @@
   "words": [
     "agoa",
     "alnum",
-    "bincode",
     "builddir",
     "buildx",
     "canonicalize",
@@ -35,6 +34,7 @@
     "redb",
     "reimplementation",
     "restat",
+    "rkyv",
     "rlimit",
     "rninja",
     "rspfile",

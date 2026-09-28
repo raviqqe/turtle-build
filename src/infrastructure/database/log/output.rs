@@ -12,6 +12,7 @@ pub struct OutputLog {
 }
 
 impl OutputLog {
+    // TODO Load a file lazily.
     pub async fn new(path: &Path) -> Result<Self, DatabaseError> {
         let bytes = read_file(path).await?;
         let lines = bytes

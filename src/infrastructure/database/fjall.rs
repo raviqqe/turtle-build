@@ -7,10 +7,7 @@ use crate::{
 use alloc::sync::Arc;
 use core::str;
 use fjall::Keyspace;
-use rkyv::{
-    Archived, access, from_bytes, rancor, to_bytes,
-    with::{AsString, Map, With},
-};
+use rkyv::{Archived, access, from_bytes, rancor, to_bytes};
 
 const HASH_TAG: u8 = 0;
 const HEADER_DEPENDENCY_TAG: u8 = 1;
@@ -67,7 +64,7 @@ impl Database for FjallDatabase {
             .keyspace
             .get(key(HEADER_DEPENDENCY_TAG, &id.to_bytes()))?
             .map(|value| {
-                access::<Archived<Vec<String>>, rancor::Error>(&value).map(|dependencies| {
+                access::<Archived<Vec<Arc<str>>>, rancor::Error>(&value).map(|dependencies| {
                     dependencies
                         .iter()
                         .map(|path| self.path_pool.intern(path))
@@ -85,12 +82,7 @@ impl Database for FjallDatabase {
     ) -> Result<(), DatabaseError> {
         self.insert(
             &key(HEADER_DEPENDENCY_TAG, &id.to_bytes()),
-            &to_bytes::<rancor::Error>(With::<_, Map<AsString>>::cast(
-                &dependencies
-                    .iter()
-                    .map(AsRef::as_ref)
-                    .collect::<Vec<&str>>(),
-            ))?,
+            &to_bytes::<rancor::Error>(&dependencies.to_vec())?,
         )
     }
 
@@ -259,6 +251,21 @@ mod tests {
         assert_eq!(
             database.get_header_inputs(BuildId::new(0)).unwrap(),
             vec!["foo/bar/baz/qux.h".into()]
+        );
+    }
+
+    #[test]
+    fn duplicate_header_dependencies() {
+        let (database, _fjall) = open(tempdir().unwrap().path());
+        let path = Arc::<str>::from("foo");
+
+        database
+            .set_header_inputs(BuildId::new(0), &[path.clone(), path])
+            .unwrap();
+
+        assert_eq!(
+            database.get_header_inputs(BuildId::new(0)).unwrap(),
+            vec!["foo".into(), "foo".into()]
         );
     }
 

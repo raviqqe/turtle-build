@@ -60,7 +60,6 @@ impl LogDatabase {
             hashes.insert_sync(id, hash).ok();
         }
 
-        // A log ends with an incomplete record when its last write was interrupted.
         if !bytes.len().is_multiple_of(size_of::<Record>())
             || bytes.len() > COMPACTION_RATIO * size_of::<Record>() * hashes.len()
         {

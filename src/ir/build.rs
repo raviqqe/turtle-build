@@ -90,3 +90,35 @@ impl Build {
         BuildId::new(hasher.finish())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn convert_id_from_bytes() {
+        assert_eq!(
+            BuildId::from_bytes([0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01]),
+            BuildId::new(0x0102_0304_0506_0708)
+        );
+    }
+
+    #[test]
+    fn convert_id_to_bytes() {
+        assert_eq!(
+            BuildId::new(0x0102_0304_0506_0708).to_bytes(),
+            [0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01]
+        );
+    }
+
+    #[test]
+    fn convert_id_to_bytes_and_back() {
+        for id in [0, 1, 42, u64::MAX] {
+            assert_eq!(
+                BuildId::from_bytes(BuildId::new(id).to_bytes()),
+                BuildId::new(id)
+            );
+        }
+    }
+}

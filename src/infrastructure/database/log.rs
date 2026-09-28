@@ -17,7 +17,7 @@ const TEMPORARY_EXTENSION: &str = "tmp";
 
 type Record = [[u8; size_of::<u64>()]; 3];
 
-/// A log database of build hashes.
+/// A log database.
 pub struct LogDatabase {
     file: Mutex<File>,
     hashes: HashIndex<BuildId, BuildHash>,

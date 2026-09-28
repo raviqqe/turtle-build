@@ -247,11 +247,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
         context
             .build()
             .database()
-            .set_hash(HashType::Timestamp, build.id(), timestamp_hash)?;
-        context
-            .build()
-            .database()
-            .set_hash(HashType::Content, build.id(), content_hash)?;
+            .set_hashes(build.id(), timestamp_hash, content_hash)?;
 
         Ok(false)
     })

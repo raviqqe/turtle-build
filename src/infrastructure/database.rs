@@ -12,7 +12,12 @@ use alloc::sync::Arc;
 
 pub trait Database {
     fn get_hash(&self, r#type: HashType, id: BuildId) -> Result<Option<u64>, DatabaseError>;
-    fn set_hash(&self, r#type: HashType, id: BuildId, hash: u64) -> Result<(), DatabaseError>;
+    fn set_hashes(
+        &self,
+        id: BuildId,
+        timestamp_hash: u64,
+        content_hash: u64,
+    ) -> Result<(), DatabaseError>;
 
     fn get_header_inputs(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError>;
     fn set_header_inputs(&self, id: BuildId, inputs: &[Arc<str>]) -> Result<(), DatabaseError>;

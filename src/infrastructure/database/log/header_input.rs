@@ -141,6 +141,7 @@ fn serialize_lines<'a>(lines: impl Iterator<Item = &'a str>) -> Vec<u8> {
         .collect()
 }
 
+// TODO Consider binary encoding.
 fn serialize_id(id: BuildId) -> String {
     format!("{:x}", u64::from_le_bytes(id.to_bytes()))
 }

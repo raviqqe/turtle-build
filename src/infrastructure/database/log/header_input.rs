@@ -4,6 +4,7 @@ use super::utility::{
 use crate::{infrastructure::DatabaseError, ir::BuildId, path_pool::PathPool};
 use alloc::sync::Arc;
 use core::{iter::successors, str};
+use scc::{HashIndex, hash_index::Entry};
 use std::{
     collections::HashMap,
     fs::File,
@@ -19,16 +20,20 @@ const RECORD_HEADER_SIZE: usize = size_of::<u64>() + size_of::<Index>();
 type Index = [u8; size_of::<u32>()];
 
 pub struct HeaderInputLog {
-    state: Mutex<State>,
+    path_log: Mutex<PathLog>,
+    index_log: IndexLog,
 }
 
-struct State {
-    path_file: File,
-    index_file: File,
-    path_count: u32,
+struct PathLog {
+    file: File,
+    count: u32,
     indices: HashMap<Arc<str>, u32>,
-    inputs: HashMap<BuildId, Vec<Arc<str>>>,
     failed: bool,
+}
+
+struct IndexLog {
+    file: File,
+    inputs: HashIndex<BuildId, Vec<Arc<str>>>,
 }
 
 impl HeaderInputLog {
@@ -41,7 +46,93 @@ impl HeaderInputLog {
         let paths = split_lines(&path_bytes)
             .map(|line| Ok(path_pool.intern(str::from_utf8(line)?)))
             .collect::<Result<Vec<_>, DatabaseError>>()?;
-        let records = successors(deserialize_record(&index_bytes), |(_, _, bytes)| {
+        let (path_log, index_log) = try_join!(
+            PathLog::new(&path_file, &path_bytes, &paths),
+            IndexLog::new(&index_file, &index_bytes, &paths)
+        )?;
+
+        Ok(Self {
+            path_log: path_log.into(),
+            index_log,
+        })
+    }
+
+    pub fn get(&self, id: BuildId) -> Vec<Arc<str>> {
+        self.index_log.get(id)
+    }
+
+    pub async fn set(&self, id: BuildId, inputs: &[Arc<str>]) -> Result<(), DatabaseError> {
+        if let Some(path) = inputs
+            .iter()
+            .find(|path| path.contains(char::from(LINE_TERMINATOR)))
+        {
+            return Err(DatabaseError::new(format!(
+                "invalid header input path: {path}"
+            )));
+        } else if self.index_log.get(id) == inputs {
+            return Ok(());
+        }
+
+        // Paths are written first so that records never refer to paths written later.
+        // Do not inline this to avoid holding the lock while a record is written.
+        let indices = self.path_log.lock().await.index(inputs)?;
+
+        self.index_log.set(id, inputs, &indices)
+    }
+}
+
+impl PathLog {
+    async fn new(path: &Path, bytes: &[u8], paths: &[Arc<str>]) -> Result<Self, DatabaseError> {
+        Ok(Self {
+            file: open_log(
+                path,
+                bytes
+                    .last()
+                    .is_some_and(|&byte| byte != LINE_TERMINATOR)
+                    .then(|| serialize_paths(paths)),
+            )
+            .await?,
+            count: paths.len().try_into()?,
+            indices: paths.iter().cloned().zip(0..).collect(),
+            failed: false,
+        })
+    }
+
+    // This needs a lock to keep paths in the same order in the file and memory.
+    fn index(&mut self, paths: &[Arc<str>]) -> Result<Vec<Index>, DatabaseError> {
+        if self.failed {
+            return Err(DatabaseError::new("header input log failed to be written"));
+        }
+
+        let mut new_paths = vec![];
+        let indices = paths
+            .iter()
+            .map(|path| {
+                self.indices
+                    .entry(path.clone())
+                    .or_insert_with(|| {
+                        new_paths.push(path.clone());
+                        self.count += 1;
+                        self.count - 1
+                    })
+                    .to_le_bytes()
+            })
+            .collect();
+
+        if let Err(error) = self.file.write_all(&serialize_paths(&new_paths)) {
+            // The file and memory might have different paths.
+            self.failed = true;
+
+            return Err(error.into());
+        }
+
+        Ok(indices)
+    }
+}
+
+impl IndexLog {
+    async fn new(path: &Path, bytes: &[u8], paths: &[Arc<str>]) -> Result<Self, DatabaseError> {
+        let records = successors(deserialize_record(bytes), |(_, _, bytes)| {
             deserialize_record(bytes)
         })
         .collect::<Vec<_>>();
@@ -57,125 +148,67 @@ impl HeaderInputLog {
                     id,
                     indices
                         .iter()
-                        .map(|&index| deserialize_input(index, &paths))
+                        .map(|&index| deserialize_input(index, paths))
                         .collect::<Option<_>>()?,
                 ))
             })
             .collect::<HashMap<_, Vec<_>>>();
-        let (path_file, index_file) = try_join!(
-            open_log(
-                &path_file,
-                path_bytes
+        let file = open_log(
+            path,
+            (inputs.len() != indices.len()
+                || !records
                     .last()
-                    .is_some_and(|&byte| byte != LINE_TERMINATOR)
-                    .then(|| serialize_paths(&paths))
-            ),
-            open_log(
-                &index_file,
-                (inputs.len() != indices.len()
-                    || !records
-                        .last()
-                        .map_or(index_bytes.as_slice(), |&(_, _, bytes)| bytes)
-                        .is_empty()
-                    || index_bytes.len()
-                        > COMPACTION_RATIO
-                            * inputs
-                                .values()
-                                .map(|inputs| {
-                                    RECORD_HEADER_SIZE + size_of::<Index>() * inputs.len()
-                                })
-                                .sum::<usize>())
-                .then(|| {
-                    indices
-                        .iter()
-                        .filter(|(id, _)| inputs.contains_key(id))
-                        .map(|(&id, indices)| serialize_record(id, indices))
-                        .collect::<Result<Vec<_>, _>>()
-                })
-                .transpose()?
-                .map(|records| records.concat())
-            )
-        )?;
+                    .map_or(bytes, |&(_, _, bytes)| bytes)
+                    .is_empty()
+                || bytes.len()
+                    > COMPACTION_RATIO
+                        * inputs
+                            .values()
+                            .map(|inputs| RECORD_HEADER_SIZE + size_of::<Index>() * inputs.len())
+                            .sum::<usize>())
+            .then(|| {
+                indices
+                    .iter()
+                    .filter(|(id, _)| inputs.contains_key(id))
+                    .map(|(&id, indices)| serialize_record(id, indices))
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .transpose()?
+            .map(|records| records.concat()),
+        )
+        .await?;
+        let index = HashIndex::with_capacity(inputs.len());
+
+        for (id, inputs) in inputs {
+            index.insert_sync(id, inputs).ok();
+        }
 
         Ok(Self {
-            state: State {
-                path_file,
-                index_file,
-                path_count: paths.len().try_into()?,
-                indices: paths.into_iter().zip(0..).collect(),
-                inputs,
-                failed: false,
-            }
-            .into(),
+            file,
+            inputs: index,
         })
     }
 
-    pub async fn get(&self, id: BuildId) -> Vec<Arc<str>> {
-        self.state
-            .lock()
-            .await
-            .inputs
-            .get(&id)
-            .cloned()
+    fn get(&self, id: BuildId) -> Vec<Arc<str>> {
+        self.inputs
+            .peek_with(&id, |_, inputs| inputs.clone())
             .unwrap_or_default()
     }
 
-    pub async fn set(&self, id: BuildId, inputs: &[Arc<str>]) -> Result<(), DatabaseError> {
-        // The lock keeps paths in the same order in the file and memory.
-        let state = &mut *self.state.lock().await;
-
-        if state.failed {
-            return Err(DatabaseError::new("header input log failed to be written"));
-        } else if let Some(path) = inputs
-            .iter()
-            .find(|path| path.contains(char::from(LINE_TERMINATOR)))
-        {
-            return Err(DatabaseError::new(format!(
-                "invalid header input path: {path}"
-            )));
-        } else if state.inputs.get(&id).map(Vec::as_slice).unwrap_or_default() == inputs {
-            return Ok(());
-        }
-
-        let mut paths = vec![];
-        let indices = inputs
-            .iter()
-            .map(|path| {
-                state
-                    .indices
-                    .entry(path.clone())
-                    .or_insert_with(|| {
-                        paths.push(path.clone());
-                        state.path_count += 1;
-                        state.path_count - 1
-                    })
-                    .to_le_bytes()
-            })
-            .collect::<Vec<_>>();
-
-        if let Err(error) = state.write(id, &paths, &indices) {
-            // The files and memory might have different paths.
-            state.failed = true;
-
-            return Err(error);
-        }
-
-        state.inputs.insert(id, inputs.into());
-
-        Ok(())
-    }
-}
-
-impl State {
-    // Paths are written first so that records never refer to paths written later.
-    fn write(
-        &mut self,
+    fn set(
+        &self,
         id: BuildId,
-        paths: &[Arc<str>],
+        inputs: &[Arc<str>],
         indices: &[Index],
     ) -> Result<(), DatabaseError> {
-        self.path_file.write_all(&serialize_paths(paths))?;
-        self.index_file.write_all(&serialize_record(id, indices)?)?;
+        (&self.file).write_all(&serialize_record(id, indices)?)?;
+
+        match self.inputs.entry_sync(id) {
+            Entry::Occupied(mut entry) => entry.update(inputs.into()),
+            Entry::Vacant(entry) => {
+                entry.insert_entry(inputs.into());
+            }
+        }
 
         Ok(())
     }
@@ -310,7 +343,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(log.get(BuildId::new(1)).await, ["foo".into(), "bar".into()]);
+        assert_eq!(log.get(BuildId::new(1)), ["foo".into(), "bar".into()]);
     }
 
     #[tokio::test]
@@ -319,7 +352,7 @@ mod tests {
 
         log.set(BuildId::new(1), &["foo".into()]).await.unwrap();
 
-        assert_eq!(log.get(BuildId::new(2)).await, Vec::<Arc<str>>::new());
+        assert_eq!(log.get(BuildId::new(2)), Vec::<Arc<str>>::new());
     }
 
     #[tokio::test]
@@ -333,7 +366,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(log.get(BuildId::new(1)).await, ["bar".into(), "baz".into()]);
+        assert_eq!(log.get(BuildId::new(1)), ["bar".into(), "baz".into()]);
     }
 
     #[tokio::test]
@@ -343,7 +376,7 @@ mod tests {
         log.set(BuildId::new(1), &["foo".into()]).await.unwrap();
         log.set(BuildId::new(1), &[]).await.unwrap();
 
-        assert_eq!(log.get(BuildId::new(1)).await, Vec::<Arc<str>>::new());
+        assert_eq!(log.get(BuildId::new(1)), Vec::<Arc<str>>::new());
     }
 
     #[tokio::test]
@@ -357,8 +390,8 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(log.get(BuildId::new(1)).await, ["foo".into(), "bar".into()]);
-        assert_eq!(log.get(BuildId::new(2)).await, ["bar".into(), "baz".into()]);
+        assert_eq!(log.get(BuildId::new(1)), ["foo".into(), "bar".into()]);
+        assert_eq!(log.get(BuildId::new(2)), ["bar".into(), "baz".into()]);
     }
 
     #[tokio::test]
@@ -369,7 +402,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(log.get(BuildId::new(1)).await, ["foo".into(), "foo".into()]);
+        assert_eq!(log.get(BuildId::new(1)), ["foo".into(), "foo".into()]);
     }
 
     #[tokio::test]
@@ -380,7 +413,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(log.get(BuildId::new(1)).await, ["foo/bar baz.h".into()]);
+        assert_eq!(log.get(BuildId::new(1)), ["foo/bar baz.h".into()]);
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -410,7 +443,7 @@ mod tests {
         }
 
         for id in 0..BUILD_COUNT {
-            assert_eq!(log.get(BuildId::new(id)).await, inputs(id));
+            assert_eq!(log.get(BuildId::new(id)), inputs(id));
         }
 
         drop(log);
@@ -418,7 +451,7 @@ mod tests {
         let log = reopen(&directory).await;
 
         for id in 0..BUILD_COUNT {
-            assert_eq!(log.get(BuildId::new(id)).await, inputs(id));
+            assert_eq!(log.get(BuildId::new(id)), inputs(id));
         }
     }
 
@@ -436,7 +469,7 @@ mod tests {
             .unwrap();
 
         assert!(Arc::ptr_eq(
-            &log.get(BuildId::new(1)).await[0],
+            &log.get(BuildId::new(1))[0],
             &path_pool.intern("foo")
         ));
     }
@@ -450,7 +483,7 @@ mod tests {
                 .await
                 .is_err()
         );
-        assert_eq!(log.get(BuildId::new(1)).await, Vec::<Arc<str>>::new());
+        assert_eq!(log.get(BuildId::new(1)), Vec::<Arc<str>>::new());
         assert_eq!(read_path_file(&directory), "");
         assert_eq!(read_index_file(&directory), b"");
     }
@@ -459,40 +492,59 @@ mod tests {
     async fn fail_to_set_header_inputs_after_failed_write_of_paths() {
         let (log, directory) = open().await;
 
-        log.state.lock().await.path_file =
-            File::open(directory.path().join(PATH_FILENAME)).unwrap();
+        log.path_log.lock().await.file = File::open(directory.path().join(PATH_FILENAME)).unwrap();
 
         assert!(log.set(BuildId::new(1), &["foo".into()]).await.is_err());
 
-        log.state.lock().await.path_file = open_file(&directory.path().join(PATH_FILENAME))
+        log.path_log.lock().await.file = open_file(&directory.path().join(PATH_FILENAME))
             .await
             .unwrap();
 
         assert!(log.set(BuildId::new(2), &["bar".into()]).await.is_err());
-        assert_eq!(log.get(BuildId::new(1)).await, Vec::<Arc<str>>::new());
-        assert_eq!(log.get(BuildId::new(2)).await, Vec::<Arc<str>>::new());
+        assert_eq!(log.get(BuildId::new(1)), Vec::<Arc<str>>::new());
+        assert_eq!(log.get(BuildId::new(2)), Vec::<Arc<str>>::new());
         assert_eq!(read_path_file(&directory), "");
         assert_eq!(read_index_file(&directory), b"");
     }
 
     #[tokio::test]
-    async fn fail_to_set_header_inputs_after_failed_write_of_record() {
-        let (log, directory) = open().await;
+    async fn fail_to_set_header_inputs_on_failed_write_of_record() {
+        let (mut log, directory) = open().await;
 
-        log.state.lock().await.index_file =
-            File::open(directory.path().join(INDEX_FILENAME)).unwrap();
+        log.index_log.file = File::open(directory.path().join(INDEX_FILENAME)).unwrap();
+
+        assert!(log.set(BuildId::new(1), &["foo".into()]).await.is_err());
+        assert_eq!(log.get(BuildId::new(1)), Vec::<Arc<str>>::new());
+        assert_eq!(read_path_file(&directory), "foo\n");
+        assert_eq!(read_index_file(&directory), b"");
+    }
+
+    #[tokio::test]
+    async fn set_header_inputs_after_failed_write_of_record() {
+        let (mut log, directory) = open().await;
+
+        log.index_log.file = File::open(directory.path().join(INDEX_FILENAME)).unwrap();
 
         assert!(log.set(BuildId::new(1), &["foo".into()]).await.is_err());
 
-        log.state.lock().await.index_file = open_file(&directory.path().join(INDEX_FILENAME))
+        log.index_log.file = open_file(&directory.path().join(INDEX_FILENAME))
+            .await
+            .unwrap();
+        log.set(BuildId::new(2), &["bar".into(), "foo".into()])
             .await
             .unwrap();
 
-        assert!(log.set(BuildId::new(2), &["bar".into()]).await.is_err());
-        assert_eq!(log.get(BuildId::new(1)).await, Vec::<Arc<str>>::new());
-        assert_eq!(log.get(BuildId::new(2)).await, Vec::<Arc<str>>::new());
-        assert_eq!(read_path_file(&directory), "foo\n");
-        assert_eq!(read_index_file(&directory), b"");
+        assert_eq!(log.get(BuildId::new(1)), Vec::<Arc<str>>::new());
+        assert_eq!(log.get(BuildId::new(2)), ["bar".into(), "foo".into()]);
+        assert_eq!(read_path_file(&directory), "foo\nbar\n");
+        assert_eq!(read_index_file(&directory), record(2, &[1, 0]));
+
+        drop(log);
+
+        let log = reopen(&directory).await;
+
+        assert_eq!(log.get(BuildId::new(1)), Vec::<Arc<str>>::new());
+        assert_eq!(log.get(BuildId::new(2)), ["bar".into(), "foo".into()]);
     }
 
     mod path {
@@ -559,10 +611,7 @@ mod tests {
 
             drop(log);
 
-            assert_eq!(
-                reopen(&directory).await.get(BuildId::new(1)).await,
-                ["😄".into()]
-            );
+            assert_eq!(reopen(&directory).await.get(BuildId::new(1)), ["😄".into()]);
         }
 
         #[tokio::test]
@@ -574,7 +623,7 @@ mod tests {
 
             let log = reopen(&directory).await;
 
-            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into(), "foo".into()]);
+            assert_eq!(log.get(BuildId::new(1)), ["foo".into(), "foo".into()]);
 
             log.set(BuildId::new(2), &["foo".into(), "bar".into()])
                 .await
@@ -584,7 +633,7 @@ mod tests {
 
             assert_eq!(read_path_file(&directory), "foo\nfoo\nbar\n");
             assert_eq!(
-                reopen(&directory).await.get(BuildId::new(2)).await,
+                reopen(&directory).await.get(BuildId::new(2)),
                 ["foo".into(), "bar".into()]
             );
         }
@@ -627,7 +676,7 @@ mod tests {
 
             let log = reopen(&directory).await;
 
-            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
+            assert_eq!(log.get(BuildId::new(1)), ["foo".into()]);
             assert_eq!(read_path_file(&directory), "foo\n");
         }
 
@@ -670,7 +719,7 @@ mod tests {
 
             assert_eq!(read_path_file(&directory), "foo\nbar\n");
             assert_eq!(
-                reopen(&directory).await.get(BuildId::new(1)).await,
+                reopen(&directory).await.get(BuildId::new(1)),
                 ["bar".into(), "foo".into()]
             );
         }
@@ -832,8 +881,8 @@ mod tests {
 
             let log = reopen(&directory).await;
 
-            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into(), "bar".into()]);
-            assert_eq!(log.get(BuildId::new(2)).await, ["bar".into(), "baz".into()]);
+            assert_eq!(log.get(BuildId::new(1)), ["foo".into(), "bar".into()]);
+            assert_eq!(log.get(BuildId::new(2)), ["bar".into(), "baz".into()]);
         }
 
         #[tokio::test]
@@ -846,7 +895,7 @@ mod tests {
             drop(log);
 
             assert_eq!(
-                reopen(&directory).await.get(BuildId::new(1)).await,
+                reopen(&directory).await.get(BuildId::new(1)),
                 ["bar".into()]
             );
         }
@@ -861,7 +910,7 @@ mod tests {
             drop(log);
 
             assert_eq!(
-                reopen(&directory).await.get(BuildId::new(1)).await,
+                reopen(&directory).await.get(BuildId::new(1)),
                 Vec::<Arc<str>>::new()
             );
         }
@@ -877,7 +926,7 @@ mod tests {
             drop(log);
 
             assert_eq!(
-                reopen(&directory).await.get(BuildId::new(u64::MAX)).await,
+                reopen(&directory).await.get(BuildId::new(u64::MAX)),
                 ["foo".into()]
             );
         }
@@ -933,7 +982,7 @@ mod tests {
 
             let log = reopen(&directory).await;
 
-            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
+            assert_eq!(log.get(BuildId::new(1)), ["foo".into()]);
             assert_eq!(read_index_file(&directory), record(1, &[0]));
         }
 
@@ -954,7 +1003,7 @@ mod tests {
 
             let log = reopen(&directory).await;
 
-            assert_eq!(log.get(BuildId::new(1)).await, ["bar".into(), "foo".into()]);
+            assert_eq!(log.get(BuildId::new(1)), ["bar".into(), "foo".into()]);
             assert_eq!(read_index_file(&directory), record(1, &[1, 0]));
         }
 
@@ -978,8 +1027,8 @@ mod tests {
 
             let log = reopen(&directory).await;
 
-            assert_eq!(log.get(BuildId::new(1)).await, ["bar".into()]);
-            assert_eq!(log.get(BuildId::new(2)).await, ["bar".into(), "foo".into()]);
+            assert_eq!(log.get(BuildId::new(1)), ["bar".into()]);
+            assert_eq!(log.get(BuildId::new(2)), ["bar".into(), "foo".into()]);
             assert_eq!(
                 read_records(&directory),
                 [record(1, &[1]), record(2, &[1, 0])]
@@ -1036,7 +1085,7 @@ mod tests {
 
             let log = reopen(&directory).await;
 
-            assert_eq!(log.get(BuildId::new(1)).await, ["bar".into()]);
+            assert_eq!(log.get(BuildId::new(1)), ["bar".into()]);
             assert_eq!(read_index_file(&directory), record(1, &[1]));
         }
 
@@ -1083,7 +1132,7 @@ mod tests {
 
             let log = reopen(&directory).await;
 
-            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
+            assert_eq!(log.get(BuildId::new(1)), ["foo".into()]);
             assert_eq!(read_index_file(&directory), records.concat());
         }
 
@@ -1139,8 +1188,8 @@ mod tests {
 
                 let log = reopen(&directory).await;
 
-                assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
-                assert_eq!(log.get(BuildId::new(2)).await, Vec::<Arc<str>>::new());
+                assert_eq!(log.get(BuildId::new(1)), ["foo".into()]);
+                assert_eq!(log.get(BuildId::new(2)), Vec::<Arc<str>>::new());
                 assert_eq!(read_index_file(&directory), record(1, &[0]));
             }
         }
@@ -1154,7 +1203,7 @@ mod tests {
 
             let log = reopen(&directory).await;
 
-            assert_eq!(log.get(BuildId::new(1)).await, Vec::<Arc<str>>::new());
+            assert_eq!(log.get(BuildId::new(1)), Vec::<Arc<str>>::new());
             assert_eq!(read_index_file(&directory), b"");
         }
 
@@ -1178,8 +1227,8 @@ mod tests {
 
             let log = reopen(&directory).await;
 
-            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
-            assert_eq!(log.get(BuildId::new(2)).await, Vec::<Arc<str>>::new());
+            assert_eq!(log.get(BuildId::new(1)), ["foo".into()]);
+            assert_eq!(log.get(BuildId::new(2)), Vec::<Arc<str>>::new());
             assert_eq!(read_index_file(&directory), record(1, &[0]));
         }
 
@@ -1203,8 +1252,8 @@ mod tests {
 
             let log = reopen(&directory).await;
 
-            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
-            assert_eq!(log.get(BuildId::new(3)).await, ["bar".into(), "foo".into()]);
+            assert_eq!(log.get(BuildId::new(1)), ["foo".into()]);
+            assert_eq!(log.get(BuildId::new(3)), ["bar".into(), "foo".into()]);
         }
     }
 
@@ -1221,8 +1270,8 @@ mod tests {
 
             let log = reopen(&directory).await;
 
-            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
-            assert_eq!(log.get(BuildId::new(2)).await, Vec::<Arc<str>>::new());
+            assert_eq!(log.get(BuildId::new(1)), ["foo".into()]);
+            assert_eq!(log.get(BuildId::new(2)), Vec::<Arc<str>>::new());
             assert_eq!(read_path_file(&directory), "foo\n");
             assert_eq!(read_index_file(&directory), record(1, &[0]));
         }
@@ -1236,7 +1285,7 @@ mod tests {
 
             let log = reopen(&directory).await;
 
-            assert_eq!(log.get(BuildId::new(1)).await, Vec::<Arc<str>>::new());
+            assert_eq!(log.get(BuildId::new(1)), Vec::<Arc<str>>::new());
             assert_eq!(read_index_file(&directory), b"");
         }
 
@@ -1250,7 +1299,7 @@ mod tests {
 
             let log = reopen(&directory).await;
 
-            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
+            assert_eq!(log.get(BuildId::new(1)), ["foo".into()]);
             assert_eq!(read_index_file(&directory), records.concat());
         }
 
@@ -1262,7 +1311,7 @@ mod tests {
 
             let log = reopen(&directory).await;
 
-            assert_eq!(log.get(BuildId::new(1)).await, Vec::<Arc<str>>::new());
+            assert_eq!(log.get(BuildId::new(1)), Vec::<Arc<str>>::new());
             assert_eq!(read_index_file(&directory), b"");
         }
 
@@ -1287,9 +1336,9 @@ mod tests {
 
             let log = reopen(&directory).await;
 
-            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
-            assert_eq!(log.get(BuildId::new(2)).await, Vec::<Arc<str>>::new());
-            assert_eq!(log.get(BuildId::new(3)).await, ["bar".into()]);
+            assert_eq!(log.get(BuildId::new(1)), ["foo".into()]);
+            assert_eq!(log.get(BuildId::new(2)), Vec::<Arc<str>>::new());
+            assert_eq!(log.get(BuildId::new(3)), ["bar".into()]);
         }
     }
 }

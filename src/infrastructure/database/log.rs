@@ -65,7 +65,7 @@ impl Database for LogDatabase {
     }
 
     async fn get_header_inputs(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError> {
-        Ok(self.header_input_log.get(id).await)
+        Ok(self.header_input_log.get(id))
     }
 
     async fn set_header_inputs(

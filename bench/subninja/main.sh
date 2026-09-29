@@ -3,7 +3,7 @@
 set -e
 
 rule_count=10
-input_count=10
+input_count=5
 subninja_count=$(expr $1 / $rule_count / $input_count)
 
 print_rule() (

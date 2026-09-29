@@ -20,7 +20,7 @@ for name in "$@"; do
     sizes=1
     ;;
   *)
-    sizes='100 1000 10000'
+    sizes='50 500 5000'
     ;;
   esac
 

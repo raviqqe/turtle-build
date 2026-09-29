@@ -2,7 +2,7 @@
 
 set -e
 
-build_count=1000
+build_count=$1
 
 touch 0.in
 

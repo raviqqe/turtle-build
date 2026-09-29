@@ -219,10 +219,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(
-            log.get(BuildId::new(1)).await,
-            ["foo".into(), "bar".into()]
-        );
+        assert_eq!(log.get(BuildId::new(1)).await, ["foo".into(), "bar".into()]);
     }
 
     #[tokio::test]
@@ -245,10 +242,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(
-            log.get(BuildId::new(1)).await,
-            ["bar".into(), "baz".into()]
-        );
+        assert_eq!(log.get(BuildId::new(1)).await, ["bar".into(), "baz".into()]);
     }
 
     #[tokio::test]
@@ -272,14 +266,8 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(
-            log.get(BuildId::new(1)).await,
-            ["foo".into(), "bar".into()]
-        );
-        assert_eq!(
-            log.get(BuildId::new(2)).await,
-            ["bar".into(), "baz".into()]
-        );
+        assert_eq!(log.get(BuildId::new(1)).await, ["foo".into(), "bar".into()]);
+        assert_eq!(log.get(BuildId::new(2)).await, ["bar".into(), "baz".into()]);
     }
 
     #[tokio::test]
@@ -290,10 +278,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(
-            log.get(BuildId::new(1)).await,
-            ["foo".into(), "foo".into()]
-        );
+        assert_eq!(log.get(BuildId::new(1)).await, ["foo".into(), "foo".into()]);
     }
 
     #[tokio::test]
@@ -399,9 +384,7 @@ mod tests {
 
         assert!(log.set(BuildId::new(1), &["foo".into()]).await.is_err());
 
-        log.state.lock().await.file = open_file(&directory.path().join(FILENAME))
-            .await
-            .unwrap();
+        log.state.lock().await.file = open_file(&directory.path().join(FILENAME)).await.unwrap();
 
         assert!(log.set(BuildId::new(2), &["bar".into()]).await.is_err());
         assert_eq!(log.get(BuildId::new(1)).await, Vec::<Arc<str>>::new());
@@ -421,10 +404,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(
-                read_log(&directory),
-                format!("foo\nbar\n1{NUL}0{NUL}1\n")
-            );
+            assert_eq!(read_log(&directory), format!("foo\nbar\n1{NUL}0{NUL}1\n"));
         }
 
         #[tokio::test]
@@ -555,14 +535,8 @@ mod tests {
 
             let log = reopen(&directory).await;
 
-            assert_eq!(
-                log.get(BuildId::new(1)).await,
-                ["foo".into(), "bar".into()]
-            );
-            assert_eq!(
-                log.get(BuildId::new(2)).await,
-                ["bar".into(), "baz".into()]
-            );
+            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into(), "bar".into()]);
+            assert_eq!(log.get(BuildId::new(2)).await, ["bar".into(), "baz".into()]);
         }
 
         #[tokio::test]
@@ -633,10 +607,7 @@ mod tests {
 
             let log = reopen(&directory).await;
 
-            assert_eq!(
-                log.get(BuildId::new(1)).await,
-                ["foo".into(), "foo".into()]
-            );
+            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into(), "foo".into()]);
 
             log.set(BuildId::new(2), &["foo".into(), "bar".into()])
                 .await
@@ -787,10 +758,7 @@ mod tests {
 
             let log = reopen(&directory).await;
 
-            assert_eq!(
-                log.get(BuildId::new(1)).await,
-                ["bar".into(), "foo".into()]
-            );
+            assert_eq!(log.get(BuildId::new(1)).await, ["bar".into(), "foo".into()]);
             assert_eq!(read_log(&directory), format!("foo\nbar\n1{NUL}1{NUL}0\n"));
         }
 
@@ -809,10 +777,7 @@ mod tests {
             let log = reopen(&directory).await;
 
             assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
-            assert_eq!(
-                log.get(BuildId::new(2)).await,
-                ["bar".into(), "foo".into()]
-            );
+            assert_eq!(log.get(BuildId::new(2)).await, ["bar".into(), "foo".into()]);
             assert_eq!(
                 read_lines(&directory),
                 [
@@ -997,11 +962,7 @@ mod tests {
 
             write_log(
                 &directory,
-                [
-                    format!("foo\n1{NUL}0\n").as_bytes(),
-                    &"😄".as_bytes()[..2],
-                ]
-                .concat(),
+                [format!("foo\n1{NUL}0\n").as_bytes(), &"😄".as_bytes()[..2]].concat(),
             );
 
             let log = reopen(&directory).await;
@@ -1030,10 +991,7 @@ mod tests {
             let log = reopen(&directory).await;
 
             assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
-            assert_eq!(
-                log.get(BuildId::new(2)).await,
-                ["bar".into(), "foo".into()]
-            );
+            assert_eq!(log.get(BuildId::new(2)).await, ["bar".into(), "foo".into()]);
         }
     }
 }

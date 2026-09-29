@@ -142,7 +142,8 @@ mod tests {
         let (database, _fjall) = open(tempdir().unwrap().path());
 
         database
-            .set_hash(BuildId::new(0), BuildHash::new(1, 2)).await
+            .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+            .await
             .unwrap();
 
         assert_eq!(
@@ -156,7 +157,8 @@ mod tests {
         let (database, _fjall) = open(tempdir().unwrap().path());
 
         database
-            .set_hash(BuildId::new(0), BuildHash::new(1, 2)).await
+            .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+            .await
             .unwrap();
 
         assert_eq!(database.get_hash(BuildId::new(1)).await.unwrap(), None);
@@ -167,10 +169,12 @@ mod tests {
         let (database, _fjall) = open(tempdir().unwrap().path());
 
         database
-            .set_hash(BuildId::new(0), BuildHash::new(1, 2)).await
+            .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+            .await
             .unwrap();
         database
-            .set_hash(BuildId::new(0), BuildHash::new(3, 4)).await
+            .set_hash(BuildId::new(0), BuildHash::new(3, 4))
+            .await
             .unwrap();
 
         assert_eq!(
@@ -221,7 +225,8 @@ mod tests {
         let (database, _fjall) = open(tempdir().unwrap().path());
 
         database
-            .set_header_inputs(BuildId::new(0), &["foo".into(), "bar".into()]).await
+            .set_header_inputs(BuildId::new(0), &["foo".into(), "bar".into()])
+            .await
             .unwrap();
 
         assert_eq!(
@@ -234,7 +239,10 @@ mod tests {
     async fn empty_header_dependencies() {
         let (database, _fjall) = open(tempdir().unwrap().path());
 
-        database.set_header_inputs(BuildId::new(0), &[]).await.unwrap();
+        database
+            .set_header_inputs(BuildId::new(0), &[])
+            .await
+            .unwrap();
 
         assert_eq!(
             database.get_header_inputs(BuildId::new(0)).await.unwrap(),
@@ -247,7 +255,8 @@ mod tests {
         let (database, _fjall) = open(tempdir().unwrap().path());
 
         database
-            .set_header_inputs(BuildId::new(0), &["foo/bar/baz/qux.h".into()]).await
+            .set_header_inputs(BuildId::new(0), &["foo/bar/baz/qux.h".into()])
+            .await
             .unwrap();
 
         assert_eq!(
@@ -262,7 +271,8 @@ mod tests {
         let path = Arc::<str>::from("foo");
 
         database
-            .set_header_inputs(BuildId::new(0), &[path.clone(), path]).await
+            .set_header_inputs(BuildId::new(0), &[path.clone(), path])
+            .await
             .unwrap();
 
         assert_eq!(
@@ -285,7 +295,8 @@ mod tests {
         );
 
         database
-            .set_header_inputs(BuildId::new(0), &["foo".into()]).await
+            .set_header_inputs(BuildId::new(0), &["foo".into()])
+            .await
             .unwrap();
 
         assert!(Arc::ptr_eq(
@@ -321,7 +332,10 @@ mod tests {
 
         database.set_source("foo", "bar").await.unwrap();
 
-        assert_eq!(database.get_source("foo").await.unwrap(), Some("bar".into()));
+        assert_eq!(
+            database.get_source("foo").await.unwrap(),
+            Some("bar".into())
+        );
     }
 
     #[tokio::test]
@@ -331,10 +345,12 @@ mod tests {
         let (database, fjall) = open(directory.path());
 
         database
-            .set_hash(BuildId::new(0), BuildHash::new(1, 2)).await
+            .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+            .await
             .unwrap();
         database
-            .set_header_inputs(BuildId::new(0), &["foo".into()]).await
+            .set_header_inputs(BuildId::new(0), &["foo".into()])
+            .await
             .unwrap();
         database.set_output("foo").await.unwrap();
         database.set_source("foo", "bar").await.unwrap();
@@ -353,6 +369,9 @@ mod tests {
             vec!["foo".into()]
         );
         assert_eq!(database.get_outputs().await.unwrap(), vec!["foo"]);
-        assert_eq!(database.get_source("foo").await.unwrap(), Some("bar".into()));
+        assert_eq!(
+            database.get_source("foo").await.unwrap(),
+            Some("bar".into())
+        );
     }
 }

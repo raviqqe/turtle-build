@@ -66,7 +66,11 @@ impl Database for LogDatabase {
         self.fallback.get_header_inputs(id).await
     }
 
-    async fn set_header_inputs(&self, id: BuildId, inputs: &[Arc<str>]) -> Result<(), DatabaseError> {
+    async fn set_header_inputs(
+        &self,
+        id: BuildId,
+        inputs: &[Arc<str>],
+    ) -> Result<(), DatabaseError> {
         self.fallback.set_header_inputs(id, inputs).await
     }
 
@@ -146,7 +150,8 @@ mod tests {
         let (database, _directory) = open().await;
 
         database
-            .set_hash(BuildId::new(0), BuildHash::new(1, 2)).await
+            .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+            .await
             .unwrap();
 
         assert_eq!(
@@ -160,7 +165,8 @@ mod tests {
         let (database, _directory) = open().await;
 
         database
-            .set_hash(BuildId::new(0), BuildHash::new(1, 2)).await
+            .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+            .await
             .unwrap();
 
         assert_eq!(database.get_hash(BuildId::new(1)).await.unwrap(), None);
@@ -198,7 +204,10 @@ mod tests {
 
         database.set_source("foo", "bar").await.unwrap();
 
-        assert_eq!(database.get_source("foo").await.unwrap(), Some("bar".into()));
+        assert_eq!(
+            database.get_source("foo").await.unwrap(),
+            Some("bar".into())
+        );
     }
 
     #[tokio::test]
@@ -215,7 +224,8 @@ mod tests {
         let (database, directory) = open().await;
 
         database
-            .set_hash(BuildId::new(0), BuildHash::new(1, 2)).await
+            .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+            .await
             .unwrap();
         database.set_output("foo").await.unwrap();
         database.set_source("foo", "bar").await.unwrap();
@@ -229,7 +239,10 @@ mod tests {
             Some(BuildHash::new(1, 2))
         );
         assert_eq!(database.get_outputs().await.unwrap(), ["foo"]);
-        assert_eq!(database.get_source("foo").await.unwrap(), Some("bar".into()));
+        assert_eq!(
+            database.get_source("foo").await.unwrap(),
+            Some("bar".into())
+        );
     }
 
     #[tokio::test]
@@ -254,7 +267,8 @@ mod tests {
             let (database, fallback, _directory) = open_with_fallback().await;
 
             database
-                .set_hash(BuildId::new(0), BuildHash::new(1, 2)).await
+                .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+                .await
                 .unwrap();
 
             assert_eq!(fallback.get_hash(BuildId::new(0)).await.unwrap(), None);
@@ -265,7 +279,8 @@ mod tests {
             let (database, fallback, _directory) = open_with_fallback().await;
 
             fallback
-                .set_hash(BuildId::new(0), BuildHash::new(1, 2)).await
+                .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+                .await
                 .unwrap();
 
             assert_eq!(database.get_hash(BuildId::new(0)).await.unwrap(), None);
@@ -276,7 +291,8 @@ mod tests {
             let (database, fallback, _directory) = open_with_fallback().await;
 
             database
-                .set_header_inputs(BuildId::new(0), &["foo".into(), "bar".into()]).await
+                .set_header_inputs(BuildId::new(0), &["foo".into(), "bar".into()])
+                .await
                 .unwrap();
 
             assert_eq!(
@@ -290,7 +306,8 @@ mod tests {
             let (database, fallback, _directory) = open_with_fallback().await;
 
             fallback
-                .set_header_inputs(BuildId::new(0), &["foo".into(), "bar".into()]).await
+                .set_header_inputs(BuildId::new(0), &["foo".into(), "bar".into()])
+                .await
                 .unwrap();
 
             assert_eq!(

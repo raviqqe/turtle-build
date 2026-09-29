@@ -18,7 +18,11 @@ pub trait Database {
     async fn set_hash(&self, id: BuildId, hash: BuildHash) -> Result<(), DatabaseError>;
 
     async fn get_header_inputs(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError>;
-    async fn set_header_inputs(&self, id: BuildId, inputs: &[Arc<str>]) -> Result<(), DatabaseError>;
+    async fn set_header_inputs(
+        &self,
+        id: BuildId,
+        inputs: &[Arc<str>],
+    ) -> Result<(), DatabaseError>;
 
     async fn get_outputs(&self) -> Result<Vec<String>, DatabaseError>;
     async fn set_output(&self, path: &str) -> Result<(), DatabaseError>;

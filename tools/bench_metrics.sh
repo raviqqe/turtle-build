@@ -19,4 +19,4 @@ jq -n --arg os $1 '
   | map(INDEX(.tool))
   | metrics("time"; "build time"; .mean),
     metrics("memory"; "peak memory usage"; .memory_usage_byte | max)
-' */tmp/*.json
+' */tmp/*/*.json

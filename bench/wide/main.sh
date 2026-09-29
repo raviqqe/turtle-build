@@ -3,7 +3,7 @@
 set -e
 
 rule_count=10
-build_count=100
+build_count=$(expr $1 / $rule_count)
 
 print_rule() (
   echo rule $1
@@ -19,12 +19,12 @@ print_default() (
   echo default $1
 )
 
-for index in $(seq 0 $rule_count); do
+for index in $(seq $rule_count); do
   rule=rule$index
 
   print_rule $rule
 
-  for index in $(seq 0 $build_count); do
+  for index in $(seq $build_count); do
     input=${rule}_$index.in
     output=${rule}_$index.out
 

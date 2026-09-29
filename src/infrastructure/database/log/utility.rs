@@ -37,6 +37,14 @@ pub async fn open_file(path: &Path) -> Result<File, io::Error> {
         .await)
 }
 
+pub async fn open_log(path: &Path, bytes: Option<Vec<u8>>) -> Result<File, io::Error> {
+    if let Some(bytes) = bytes {
+        compact_file(path, bytes).await?;
+    }
+
+    open_file(path).await
+}
+
 pub fn split_lines(bytes: &[u8]) -> impl DoubleEndedIterator<Item = &[u8]> {
     bytes
         .split_inclusive(|&byte| byte == LINE_TERMINATOR)
@@ -161,6 +169,58 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn open_log_without_compaction() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join(FILENAME);
+
+        write(&path, "bar\n").unwrap();
+
+        open_log(&path, None)
+            .await
+            .unwrap()
+            .write_all(b"baz\n")
+            .unwrap();
+
+        assert_eq!(read(&path).unwrap(), b"bar\nbaz\n");
+    }
+
+    #[tokio::test]
+    async fn open_log_with_compaction() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join(FILENAME);
+
+        write(&path, "bar\n").unwrap();
+
+        open_log(&path, Some(b"foo\n".into()))
+            .await
+            .unwrap()
+            .write_all(b"baz\n")
+            .unwrap();
+
+        assert_eq!(read(&path).unwrap(), b"foo\nbaz\n");
+    }
+
+    #[tokio::test]
+    async fn open_missing_log() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join(FILENAME);
+
+        open_log(&path, None).await.unwrap();
+
+        assert_eq!(read(&path).unwrap(), b"");
+    }
+
+    #[tokio::test]
+    async fn open_missing_log_with_compaction() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join(FILENAME);
+
+        open_log(&path, Some(b"foo\n".into())).await.unwrap();
+
+        assert_eq!(read(&path).unwrap(), b"foo\n");
     }
 
     #[test]

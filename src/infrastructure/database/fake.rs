@@ -4,6 +4,7 @@ use crate::{
     ir::BuildId,
 };
 use alloc::{collections::BTreeSet, sync::Arc};
+use async_trait::async_trait;
 use std::{collections::HashMap, sync::Mutex};
 
 #[derive(Clone, Debug, Default)]
@@ -21,18 +22,19 @@ impl FakeDatabase {
     }
 }
 
+#[async_trait]
 impl Database for FakeDatabase {
-    fn get_hash(&self, id: BuildId) -> Result<Option<BuildHash>, DatabaseError> {
+    async fn get_hash(&self, id: BuildId) -> Result<Option<BuildHash>, DatabaseError> {
         Ok(self.hashes.lock().unwrap().get(&id).copied())
     }
 
-    fn set_hash(&self, id: BuildId, hash: BuildHash) -> Result<(), DatabaseError> {
+    async fn set_hash(&self, id: BuildId, hash: BuildHash) -> Result<(), DatabaseError> {
         self.hashes.lock().unwrap().insert(id, hash);
 
         Ok(())
     }
 
-    fn get_header_inputs(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError> {
+    async fn get_header_inputs(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError> {
         self.header_dependency_requests.lock().unwrap().push(id);
 
         Ok(self
@@ -44,7 +46,7 @@ impl Database for FakeDatabase {
             .unwrap_or_default())
     }
 
-    fn set_header_inputs(
+    async fn set_header_inputs(
         &self,
         id: BuildId,
         dependencies: &[Arc<str>],
@@ -57,21 +59,21 @@ impl Database for FakeDatabase {
         Ok(())
     }
 
-    fn get_outputs(&self) -> Result<Vec<String>, DatabaseError> {
+    async fn get_outputs(&self) -> Result<Vec<String>, DatabaseError> {
         Ok(self.outputs.lock().unwrap().iter().cloned().collect())
     }
 
-    fn set_output(&self, path: &str) -> Result<(), DatabaseError> {
+    async fn set_output(&self, path: &str) -> Result<(), DatabaseError> {
         self.outputs.lock().unwrap().insert(path.into());
 
         Ok(())
     }
 
-    fn get_source(&self, output: &str) -> Result<Option<String>, DatabaseError> {
+    async fn get_source(&self, output: &str) -> Result<Option<String>, DatabaseError> {
         Ok(self.sources.lock().unwrap().get(output).cloned())
     }
 
-    fn set_source(&self, output: &str, source: &str) -> Result<(), DatabaseError> {
+    async fn set_source(&self, output: &str, source: &str) -> Result<(), DatabaseError> {
         self.sources
             .lock()
             .unwrap()

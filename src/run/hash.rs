@@ -33,7 +33,7 @@ pub async fn calculate_timestamp_hash(
     }
 
     for &input in phony_inputs {
-        get_build_hash(context, input)?
+        get_build_hash(context, input).await?
             .timestamp()
             .hash(&mut hasher);
     }
@@ -64,13 +64,13 @@ pub async fn calculate_content_hash(
     }
 
     for &input in phony_inputs {
-        get_build_hash(context, input)?.content().hash(&mut hasher);
+        get_build_hash(context, input).await?.content().hash(&mut hasher);
     }
 
     Ok(hasher.finish())
 }
 
-fn get_build_hash(context: &RunContext, input: &str) -> Result<BuildHash, BuildError> {
+async fn get_build_hash(context: &RunContext, input: &str) -> Result<BuildHash, BuildError> {
     context
         .build()
         .database()
@@ -81,7 +81,7 @@ fn get_build_hash(context: &RunContext, input: &str) -> Result<BuildHash, BuildE
                 .get(input)
                 .ok_or_else(|| BuildError::InputNotFound(input.into()))?
                 .id(),
-        )?
+        ).await?
         .ok_or_else(|| BuildError::InputNotBuilt(input.into()))
 }
 

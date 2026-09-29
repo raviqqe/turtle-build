@@ -20,7 +20,7 @@ jobs:
       - run: brew install ninja
       - run: cargo install --path . --locked
       - run: tools/bench.sh
-      - run: tools/bench_metrics.sh ${{ matrix.os }} > ${{ matrix.os }}.json
+      - run: tools/bench_metrics.ts ${{ matrix.os }} > ${{ matrix.os }}.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bench-${{ matrix.os }}

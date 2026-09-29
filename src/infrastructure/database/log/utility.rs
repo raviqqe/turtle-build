@@ -5,6 +5,7 @@ use std::{
 };
 use tokio::fs::{OpenOptions, read, rename, write};
 
+pub const COLUMN_SEPARATOR: u8 = b'\0';
 pub const COMPACTION_RATIO: usize = 3;
 pub const LINE_TERMINATOR: u8 = b'\n';
 const TEMPORARY_EXTENSION: &str = "tmp";

@@ -1,12 +1,11 @@
 use super::utility::{
-    COMPACTION_RATIO, LINE_TERMINATOR, compact_file, open_file, read_file, split_lines,
+    COLUMN_SEPARATOR, COMPACTION_RATIO, LINE_TERMINATOR, compact_file, open_file, read_file,
+    split_lines,
 };
 use crate::infrastructure::DatabaseError;
 use core::str;
 use scc::{Guard, HashIndex, hash_index::Entry};
 use std::{fs::File, io::Write, path::Path};
-
-const COLUMN_SEPARATOR: u8 = b'\0';
 
 pub struct SourceLog {
     file: File,

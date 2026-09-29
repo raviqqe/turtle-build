@@ -1,4 +1,4 @@
-use core::{fmt::Display, str::Utf8Error};
+use core::{fmt::Display, num::ParseIntError, str::Utf8Error};
 use rkyv::rancor;
 use std::io;
 use thiserror::Error;
@@ -23,6 +23,12 @@ impl From<fjall::Error> for DatabaseError {
 
 impl From<io::Error> for DatabaseError {
     fn from(error: io::Error) -> Self {
+        Self::new(error)
+    }
+}
+
+impl From<ParseIntError> for DatabaseError {
+    fn from(error: ParseIntError) -> Self {
         Self::new(error)
     }
 }

@@ -20,58 +20,47 @@ impl IndexLog {
             deserialize_record(bytes)
         })
         .collect::<Vec<_>>();
-        let indices = records
+        let mut indices = records
             .iter()
             .map(|&(id, indices, _)| (id, indices))
             .collect::<HashMap<_, _>>();
+        let count = indices.len();
+        let inputs = HashIndex::with_capacity(count);
+
         // Paths might be lost on a system failure while records of them are not.
-        let inputs = indices
-            .iter()
-            .filter_map(|(&id, indices)| {
-                Some((
-                    id,
-                    indices
-                        .iter()
-                        .map(|&index| deserialize_input(index, paths))
-                        .collect::<Option<_>>()?,
-                ))
-            })
-            .collect::<HashMap<_, Vec<_>>>();
-
-        let file = open_log(
-            path,
-            (inputs.len() != indices.len()
-                || !records
-                    .last()
-                    .map_or(bytes, |&(_, _, bytes)| bytes)
-                    .is_empty()
-                || bytes.len()
-                    > COMPACTION_RATIO
-                        * inputs
-                            .values()
-                            .map(|inputs| RECORD_HEADER_SIZE + size_of::<Index>() * inputs.len())
-                            .sum::<usize>())
-            .then(|| {
-                indices
-                    .iter()
-                    .filter(|(id, _)| inputs.contains_key(id))
-                    .map(|(&id, indices)| serialize_record(id, indices))
-                    .collect::<Result<Vec<_>, _>>()
-            })
-            .transpose()?
-            .map(|records| records.concat()),
-        )
-        .await?;
-
-        let index = HashIndex::with_capacity(inputs.len());
-
-        for (id, inputs) in inputs {
-            index.insert_sync(id, inputs).ok();
-        }
+        indices.retain(|&id, indices| {
+            indices
+                .iter()
+                .map(|&index| deserialize_input(index, paths))
+                .collect::<Option<_>>()
+                .is_some_and(|paths| inputs.insert_sync(id, paths).is_ok())
+        });
 
         Ok(Self {
-            file,
-            inputs: index,
+            file: open_log(
+                path,
+                (indices.len() != count
+                    || !records
+                        .last()
+                        .map_or(bytes, |&(_, _, bytes)| bytes)
+                        .is_empty()
+                    || bytes.len()
+                        > COMPACTION_RATIO
+                            * indices
+                                .values()
+                                .map(|indices| RECORD_HEADER_SIZE + size_of_val(*indices))
+                                .sum::<usize>())
+                .then(|| {
+                    indices
+                        .iter()
+                        .map(|(&id, indices)| serialize_record(id, indices))
+                        .collect::<Result<Vec<_>, _>>()
+                })
+                .transpose()?
+                .map(|records| records.concat()),
+            )
+            .await?,
+            inputs,
         })
     }
 

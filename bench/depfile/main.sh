@@ -2,7 +2,7 @@
 
 set -e
 
-build_count=1000
+build_count=$1
 header_count=100
 
 headers=$(seq -f %g.h 0 $header_count)
@@ -18,7 +18,7 @@ rule cc
   description = run faster
 EOF
 
-for index in $(seq 0 $build_count); do
+for index in $(seq $build_count); do
   touch $index.c
   echo build $index.out: cc $index.c
 done >>build.ninja

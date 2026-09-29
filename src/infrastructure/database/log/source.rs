@@ -58,7 +58,7 @@ impl SourceLog {
     pub fn set(&self, output: &str, source: &str) -> Result<(), DatabaseError> {
         if self
             .sources
-            .peek_with(output, |_, stored| stored != source)
+            .peek_with(output, |_, value| value != source)
             .unwrap_or(true)
         {
             (&self.file).write_all(&serialize(output, source))?;

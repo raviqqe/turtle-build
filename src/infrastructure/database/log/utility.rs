@@ -6,6 +6,7 @@ use std::{
 use tokio::fs::{OpenOptions, read, rename, write};
 
 pub const COMPACTION_RATIO: usize = 3;
+pub const LINE_TERMINATOR: u8 = b'\n';
 const TEMPORARY_EXTENSION: &str = "tmp";
 
 pub async fn read_file(path: &Path) -> Result<Vec<u8>, io::Error> {
@@ -33,6 +34,12 @@ pub async fn open_file(path: &Path) -> Result<File, io::Error> {
         .await?
         .into_std()
         .await)
+}
+
+pub fn split_lines(bytes: &[u8]) -> impl DoubleEndedIterator<Item = &[u8]> {
+    bytes
+        .split_inclusive(|&byte| byte == LINE_TERMINATOR)
+        .filter_map(|line| line.strip_suffix(&[LINE_TERMINATOR]))
 }
 
 #[cfg(test)]
@@ -152,6 +159,50 @@ mod tests {
             open_file(&directory.path().join("foo").join(FILENAME))
                 .await
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn split_no_line() {
+        assert_eq!(split_lines(b"").collect::<Vec<_>>(), [b""; 0]);
+    }
+
+    #[test]
+    fn split_line() {
+        assert_eq!(split_lines(b"foo\n").collect::<Vec<_>>(), [b"foo"]);
+    }
+
+    #[test]
+    fn split_many_lines() {
+        assert_eq!(
+            split_lines(b"foo\nbar\nbaz\n").collect::<Vec<_>>(),
+            [b"foo", b"bar", b"baz"]
+        );
+    }
+
+    #[test]
+    fn split_empty_line() {
+        assert_eq!(
+            split_lines(b"foo\n\nbar\n").collect::<Vec<_>>(),
+            [b"foo".as_slice(), b"", b"bar"]
+        );
+    }
+
+    #[test]
+    fn split_no_incomplete_line() {
+        assert_eq!(split_lines(b"foo\nba").collect::<Vec<_>>(), [b"foo"]);
+    }
+
+    #[test]
+    fn split_only_incomplete_line() {
+        assert_eq!(split_lines(b"fo").collect::<Vec<_>>(), [b""; 0]);
+    }
+
+    #[test]
+    fn split_lines_in_reverse() {
+        assert_eq!(
+            split_lines(b"foo\nbar\nba").rev().collect::<Vec<_>>(),
+            [b"bar", b"foo"]
         );
     }
 }

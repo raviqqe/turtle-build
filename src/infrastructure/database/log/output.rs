@@ -1,10 +1,10 @@
-use super::utility::{COMPACTION_RATIO, compact_file, open_file, read_file};
+use super::utility::{
+    COMPACTION_RATIO, LINE_TERMINATOR, compact_file, open_file, read_file, split_lines,
+};
 use crate::infrastructure::DatabaseError;
 use core::str;
 use scc::{Guard, HashIndex};
 use std::{fs::File, io::Write, path::Path};
-
-const LINE_TERMINATOR: u8 = b'\n';
 
 pub struct OutputLog {
     file: File,
@@ -15,10 +15,7 @@ impl OutputLog {
     // TODO Load a file lazily.
     pub async fn new(path: &Path) -> Result<Self, DatabaseError> {
         let bytes = read_file(path).await?;
-        let lines = bytes
-            .split_inclusive(|&byte| byte == LINE_TERMINATOR)
-            .filter_map(|line| line.strip_suffix(&[LINE_TERMINATOR]))
-            .collect::<Vec<_>>();
+        let lines = split_lines(&bytes).collect::<Vec<_>>();
         let outputs = HashIndex::<String, _>::with_capacity(lines.len());
 
         for line in lines {

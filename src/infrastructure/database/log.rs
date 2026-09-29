@@ -1,8 +1,9 @@
 mod hash;
 mod output;
+mod source;
 mod utility;
 
-use self::{hash::HashLog, output::OutputLog};
+use self::{hash::HashLog, output::OutputLog, source::SourceLog};
 use crate::{
     build_hash::BuildHash,
     infrastructure::{Database, DatabaseError},
@@ -14,11 +15,13 @@ use tokio::{fs::create_dir_all, try_join};
 
 const HASH_FILENAME: &str = "hashes";
 const OUTPUT_FILENAME: &str = "outputs";
+const SOURCE_FILENAME: &str = "sources";
 
 /// A log database.
 pub struct LogDatabase {
     hash_log: HashLog,
     output_log: OutputLog,
+    source_log: SourceLog,
     fallback: Box<dyn Database + Send + Sync>,
 }
 
@@ -32,12 +35,17 @@ impl LogDatabase {
 
         let hash_path = directory.join(HASH_FILENAME);
         let output_path = directory.join(OUTPUT_FILENAME);
-        let (hash_log, output_log) =
-            try_join!(HashLog::new(&hash_path), OutputLog::new(&output_path))?;
+        let source_path = directory.join(SOURCE_FILENAME);
+        let (hash_log, output_log, source_log) = try_join!(
+            HashLog::new(&hash_path),
+            OutputLog::new(&output_path),
+            SourceLog::new(&source_path)
+        )?;
 
         Ok(Self {
             hash_log,
             output_log,
+            source_log,
             fallback,
         })
     }
@@ -69,11 +77,11 @@ impl Database for LogDatabase {
     }
 
     fn get_source(&self, output: &str) -> Result<Option<String>, DatabaseError> {
-        self.fallback.get_source(output)
+        Ok(self.source_log.get(output))
     }
 
     fn set_source(&self, output: &str, source: &str) -> Result<(), DatabaseError> {
-        self.fallback.set_source(output, source)
+        self.source_log.set(output, source)
     }
 }
 
@@ -116,6 +124,7 @@ mod tests {
 
         assert!(exists(directory.path().join("hashes")).unwrap());
         assert!(exists(directory.path().join("outputs")).unwrap());
+        assert!(exists(directory.path().join("sources")).unwrap());
     }
 
     #[tokio::test]
@@ -182,6 +191,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn set_source() {
+        let (database, _directory) = open().await;
+
+        database.set_source("foo", "bar").unwrap();
+
+        assert_eq!(database.get_source("foo").unwrap(), Some("bar".into()));
+    }
+
+    #[tokio::test]
+    async fn get_no_source() {
+        let (database, _directory) = open().await;
+
+        database.set_source("foo", "bar").unwrap();
+
+        assert_eq!(database.get_source("baz").unwrap(), None);
+    }
+
+    #[tokio::test]
     async fn reopen_database() {
         let (database, directory) = open().await;
 
@@ -189,6 +216,7 @@ mod tests {
             .set_hash(BuildId::new(0), BuildHash::new(1, 2))
             .unwrap();
         database.set_output("foo").unwrap();
+        database.set_source("foo", "bar").unwrap();
 
         drop(database);
 
@@ -199,6 +227,7 @@ mod tests {
             Some(BuildHash::new(1, 2))
         );
         assert_eq!(database.get_outputs().unwrap(), ["foo"]);
+        assert_eq!(database.get_source("foo").unwrap(), Some("bar".into()));
     }
 
     #[tokio::test]
@@ -287,21 +316,21 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn set_source() {
+        async fn set_no_source() {
             let (database, fallback, _directory) = open_with_fallback().await;
 
             database.set_source("foo", "bar").unwrap();
 
-            assert_eq!(fallback.get_source("foo").unwrap(), Some("bar".into()));
+            assert_eq!(fallback.get_source("foo").unwrap(), None);
         }
 
         #[tokio::test]
-        async fn get_source() {
+        async fn get_no_source() {
             let (database, fallback, _directory) = open_with_fallback().await;
 
             fallback.set_source("foo", "bar").unwrap();
 
-            assert_eq!(database.get_source("foo").unwrap(), Some("bar".into()));
+            assert_eq!(database.get_source("foo").unwrap(), None);
         }
     }
 }

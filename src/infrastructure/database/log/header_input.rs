@@ -54,8 +54,6 @@ impl HeaderInputLog {
             return Ok(());
         }
 
-        // Paths are written first so that records never refer to paths written later.
-        // Do not inline this to avoid holding the lock while a record is written.
         let indices = self.path_log.lock().await.index(inputs)?;
 
         self.index_log.set(id, inputs, &indices)

@@ -17,7 +17,7 @@ use std::path::Path;
 use tokio::{fs::create_dir_all, try_join};
 
 const HASH_FILENAME: &str = "hashes";
-const HEADER_INPUT_FILENAME: &str = "header_inputs";
+const HEADER_INPUT_DIRECTORY: &str = "header_inputs";
 const OUTPUT_FILENAME: &str = "outputs";
 const SOURCE_FILENAME: &str = "sources";
 
@@ -35,7 +35,7 @@ impl LogDatabase {
         create_dir_all(directory).await?;
 
         let hash_path = directory.join(HASH_FILENAME);
-        let header_input_path = directory.join(HEADER_INPUT_FILENAME);
+        let header_input_path = directory.join(HEADER_INPUT_DIRECTORY);
         let output_path = directory.join(OUTPUT_FILENAME);
         let source_path = directory.join(SOURCE_FILENAME);
         let (hash_log, header_input_log, output_log, source_log) = try_join!(
@@ -117,7 +117,8 @@ mod tests {
         let (_database, directory) = open().await;
 
         assert!(exists(directory.path().join("hashes")).unwrap());
-        assert!(exists(directory.path().join("header_inputs")).unwrap());
+        assert!(exists(directory.path().join("header_inputs").join("paths")).unwrap());
+        assert!(exists(directory.path().join("header_inputs").join("indices")).unwrap());
         assert!(exists(directory.path().join("outputs")).unwrap());
         assert!(exists(directory.path().join("sources")).unwrap());
     }

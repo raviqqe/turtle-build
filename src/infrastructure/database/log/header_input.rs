@@ -1,79 +1,121 @@
 use super::utility::{
-    COLUMN_SEPARATOR, COMPACTION_RATIO, LINE_TERMINATOR, compact_file, open_file, read_file,
-    split_lines,
+    COMPACTION_RATIO, LINE_TERMINATOR, compact_file, open_file, read_file, split_lines,
 };
 use crate::{infrastructure::DatabaseError, ir::BuildId, path_pool::PathPool};
 use alloc::sync::Arc;
-use core::str;
-use itertools::Itertools;
+use core::{iter::successors, str};
 use std::{collections::HashMap, fs::File, io::Write, path::Path};
-use tokio::sync::Mutex;
+use tokio::{fs::create_dir_all, sync::Mutex};
 
-const ID_RADIX: u32 = 16;
+const PATH_FILENAME: &str = "paths";
+const INDEX_FILENAME: &str = "indices";
+const RECORD_HEADER_SIZE: usize = size_of::<u64>() + size_of::<Index>();
+
+type Index = [u8; size_of::<u32>()];
 
 pub struct HeaderInputLog {
     state: Mutex<State>,
 }
 
 struct State {
-    file: File,
-    path_count: usize,
-    indices: HashMap<Arc<str>, usize>,
+    path_file: File,
+    index_file: File,
+    path_count: u32,
+    indices: HashMap<Arc<str>, u32>,
     inputs: HashMap<BuildId, Vec<Arc<str>>>,
     failed: bool,
 }
 
 impl HeaderInputLog {
-    pub async fn new(path: &Path, path_pool: &PathPool) -> Result<Self, DatabaseError> {
-        let bytes = read_file(path).await?;
-        let mut paths = vec![];
-        let mut records = HashMap::new();
+    pub async fn new(directory: &Path, path_pool: &PathPool) -> Result<Self, DatabaseError> {
+        create_dir_all(directory).await?;
 
-        for line in split_lines(&bytes) {
-            let line = str::from_utf8(line)?;
-
-            if let Some((id, indices)) = line.split_once(char::from(COLUMN_SEPARATOR)) {
-                records.insert(deserialize_id(id)?, (line, indices));
-            } else {
-                paths.push(path_pool.intern(line));
-            }
-        }
-
-        let inputs = records
-            .iter()
-            .map(|(&id, (_, indices))| Ok((id, deserialize_inputs(indices, &paths)?)))
-            .collect::<Result<_, DatabaseError>>()?;
-        let lines = || {
-            paths
-                .iter()
-                .map(AsRef::as_ref)
-                .chain(records.values().map(|&(line, _)| line))
-        };
-
-        if bytes.last().is_some_and(|&byte| byte != LINE_TERMINATOR)
-            || bytes.len()
-                > COMPACTION_RATIO
-                    * lines()
-                        .map(|line| line.len() + size_of_val(&LINE_TERMINATOR))
-                        .sum::<usize>()
-        {
-            compact_file(path, serialize_lines(lines())).await?;
-        }
+        let (path_file, paths) =
+            Self::open_paths(&directory.join(PATH_FILENAME), path_pool).await?;
+        let (index_file, inputs) =
+            Self::open_indices(&directory.join(INDEX_FILENAME), &paths).await?;
 
         Ok(Self {
             state: State {
-                file: open_file(path).await?,
-                path_count: paths.len(),
-                indices: paths
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, path)| (path, index))
-                    .collect(),
+                path_file,
+                index_file,
+                path_count: paths.len().try_into()?,
+                indices: paths.into_iter().zip(0..).collect(),
                 inputs,
                 failed: false,
             }
             .into(),
         })
+    }
+
+    async fn open_paths(
+        path: &Path,
+        path_pool: &PathPool,
+    ) -> Result<(File, Vec<Arc<str>>), DatabaseError> {
+        let bytes = read_file(path).await?;
+        let paths = split_lines(&bytes)
+            .map(|line| Ok(path_pool.intern(str::from_utf8(line)?)))
+            .collect::<Result<Vec<_>, DatabaseError>>()?;
+
+        if bytes.last().is_some_and(|&byte| byte != LINE_TERMINATOR) {
+            compact_file(path, serialize_paths(&paths)).await?;
+        }
+
+        Ok((open_file(path).await?, paths))
+    }
+
+    async fn open_indices(
+        path: &Path,
+        paths: &[Arc<str>],
+    ) -> Result<(File, HashMap<BuildId, Vec<Arc<str>>>), DatabaseError> {
+        let bytes = read_file(path).await?;
+        let records = successors(deserialize_record(&bytes), |(_, _, bytes)| {
+            deserialize_record(bytes)
+        })
+        .collect::<Vec<_>>();
+        let indices = records
+            .iter()
+            .map(|&(id, indices, _)| (id, indices))
+            .collect::<HashMap<_, _>>();
+        // Paths might be lost on a system failure while records of them are not.
+        let inputs = indices
+            .iter()
+            .filter_map(|(&id, indices)| {
+                Some((
+                    id,
+                    indices
+                        .iter()
+                        .map(|&index| deserialize_input(index, paths))
+                        .collect::<Option<_>>()?,
+                ))
+            })
+            .collect::<HashMap<_, Vec<_>>>();
+
+        if inputs.len() != indices.len()
+            || !records
+                .last()
+                .map_or(bytes.as_slice(), |&(_, _, bytes)| bytes)
+                .is_empty()
+            || bytes.len()
+                > COMPACTION_RATIO
+                    * inputs
+                        .values()
+                        .map(|inputs| RECORD_HEADER_SIZE + size_of::<Index>() * inputs.len())
+                        .sum::<usize>()
+        {
+            compact_file(
+                path,
+                indices
+                    .iter()
+                    .filter(|(id, _)| inputs.contains_key(id))
+                    .map(|(&id, indices)| serialize_record(id, indices))
+                    .collect::<Result<Vec<_>, _>>()?
+                    .concat(),
+            )
+            .await?;
+        }
+
+        Ok((open_file(path).await?, inputs))
     }
 
     pub async fn get(&self, id: BuildId) -> Vec<Arc<str>> {
@@ -87,14 +129,14 @@ impl HeaderInputLog {
     }
 
     pub async fn set(&self, id: BuildId, inputs: &[Arc<str>]) -> Result<(), DatabaseError> {
-        // The lock keeps path lines in the same order in the file and memory.
+        // The lock keeps paths in the same order in the file and memory.
         let state = &mut *self.state.lock().await;
 
         if state.failed {
             return Err(DatabaseError::new("header input log failed to be written"));
         } else if let Some(path) = inputs
             .iter()
-            .find(|path| path.contains([COLUMN_SEPARATOR, LINE_TERMINATOR].map(char::from)))
+            .find(|path| path.contains(char::from(LINE_TERMINATOR)))
         {
             return Err(DatabaseError::new(format!(
                 "invalid header input path: {path}"
@@ -104,29 +146,26 @@ impl HeaderInputLog {
         }
 
         let mut paths = vec![];
-        let record = [
-            serialize_id(id),
-            inputs
-                .iter()
-                .map(|path| {
-                    *state.indices.entry(path.clone()).or_insert_with(|| {
-                        paths.push(path.as_ref());
+        let indices = inputs
+            .iter()
+            .map(|path| {
+                state
+                    .indices
+                    .entry(path.clone())
+                    .or_insert_with(|| {
+                        paths.push(path.clone());
                         state.path_count += 1;
                         state.path_count - 1
                     })
-                })
-                .join(str::from_utf8(&[COLUMN_SEPARATOR])?),
-        ]
-        .join(str::from_utf8(&[COLUMN_SEPARATOR])?);
+                    .to_le_bytes()
+            })
+            .collect::<Vec<_>>();
 
-        if let Err(error) = state
-            .file
-            .write_all(&serialize_lines(paths.into_iter().chain([record.as_str()])))
-        {
-            // The file and memory might have different path lines.
+        if let Err(error) = state.write(id, &paths, &indices) {
+            // The files and memory might have different paths.
             state.failed = true;
 
-            return Err(error.into());
+            return Err(error);
         }
 
         state.inputs.insert(id, inputs.into());
@@ -135,31 +174,51 @@ impl HeaderInputLog {
     }
 }
 
-fn serialize_lines<'a>(lines: impl Iterator<Item = &'a str>) -> Vec<u8> {
-    lines
-        .flat_map(|line| [line.as_bytes(), &[LINE_TERMINATOR]].concat())
+impl State {
+    // Paths are written first so that records never refer to paths written later.
+    fn write(
+        &mut self,
+        id: BuildId,
+        paths: &[Arc<str>],
+        indices: &[Index],
+    ) -> Result<(), DatabaseError> {
+        self.path_file.write_all(&serialize_paths(paths))?;
+        self.index_file.write_all(&serialize_record(id, indices)?)?;
+
+        Ok(())
+    }
+}
+
+fn serialize_paths(paths: &[Arc<str>]) -> Vec<u8> {
+    paths
+        .iter()
+        .flat_map(|path| [path.as_bytes(), &[LINE_TERMINATOR]].concat())
         .collect()
 }
 
-// TODO Consider binary encoding.
-fn serialize_id(id: BuildId) -> String {
-    format!("{:x}", u64::from_le_bytes(id.to_bytes()))
+fn serialize_record(id: BuildId, indices: &[Index]) -> Result<Vec<u8>, DatabaseError> {
+    Ok([
+        id.to_bytes().as_slice(),
+        &u32::try_from(indices.len())?.to_le_bytes(),
+        indices.as_flattened(),
+    ]
+    .concat())
 }
 
-fn deserialize_id(id: &str) -> Result<BuildId, DatabaseError> {
-    Ok(BuildId::new(u64::from_str_radix(id, ID_RADIX)?))
+fn deserialize_record(bytes: &[u8]) -> Option<(BuildId, &[Index], &[u8])> {
+    let (id, bytes) = bytes.split_first_chunk()?;
+    let (count, bytes) = bytes.split_first_chunk()?;
+    let (indices, bytes) = bytes.split_at_checked(
+        size_of::<Index>().checked_mul(u32::from_le_bytes(*count).try_into().ok()?)?,
+    )?;
+
+    Some((BuildId::from_bytes(*id), indices.as_chunks().0, bytes))
 }
 
-fn deserialize_inputs(indices: &str, paths: &[Arc<str>]) -> Result<Vec<Arc<str>>, DatabaseError> {
-    indices
-        .split_terminator(char::from(COLUMN_SEPARATOR))
-        .map(|index| {
-            paths
-                .get(index.parse::<usize>()?)
-                .cloned()
-                .ok_or_else(|| DatabaseError::new("path index out of range in header input log"))
-        })
-        .collect()
+fn deserialize_input(index: Index, paths: &[Arc<str>]) -> Option<Arc<str>> {
+    paths
+        .get(usize::try_from(u32::from_le_bytes(index)).ok()?)
+        .cloned()
 }
 
 #[cfg(test)]
@@ -171,9 +230,6 @@ mod tests {
     use tempfile::{TempDir, tempdir};
     use tokio::spawn;
 
-    const FILENAME: &str = "log";
-    const NUL: char = '\0';
-
     async fn open() -> (HeaderInputLog, TempDir) {
         let directory = tempdir().unwrap();
 
@@ -181,35 +237,69 @@ mod tests {
     }
 
     async fn reopen(directory: &TempDir) -> HeaderInputLog {
-        HeaderInputLog::new(&directory.path().join(FILENAME), &Default::default())
+        HeaderInputLog::new(directory.path(), &Default::default())
             .await
             .unwrap()
     }
 
-    fn read_log(directory: &TempDir) -> String {
-        String::from_utf8(read(directory.path().join(FILENAME)).unwrap()).unwrap()
+    fn record(id: u64, indices: &[u32]) -> Vec<u8> {
+        serialize_record(
+            BuildId::new(id),
+            &indices
+                .iter()
+                .map(|index| index.to_le_bytes())
+                .collect::<Vec<_>>(),
+        )
+        .unwrap()
     }
 
-    fn read_lines(directory: &TempDir) -> Vec<String> {
-        let mut lines = read_log(directory)
-            .split_inclusive('\n')
-            .map(From::from)
-            .collect::<Vec<_>>();
-
-        lines.sort();
-
-        lines
+    fn read_path_file(directory: &TempDir) -> String {
+        String::from_utf8(read(directory.path().join(PATH_FILENAME)).unwrap()).unwrap()
     }
 
-    fn write_log(directory: &TempDir, log: impl AsRef<[u8]>) {
-        write(directory.path().join(FILENAME), log).unwrap();
+    fn read_index_file(directory: &TempDir) -> Vec<u8> {
+        read(directory.path().join(INDEX_FILENAME)).unwrap()
+    }
+
+    fn read_records(directory: &TempDir) -> Vec<Vec<u8>> {
+        let bytes = read_index_file(directory);
+        let mut records = successors(deserialize_record(&bytes), |(_, _, bytes)| {
+            deserialize_record(bytes)
+        })
+        .map(|(id, indices, _)| serialize_record(id, indices).unwrap())
+        .collect::<Vec<_>>();
+
+        records.sort();
+
+        records
+    }
+
+    fn write_path_file(directory: &TempDir, paths: impl AsRef<[u8]>) {
+        write(directory.path().join(PATH_FILENAME), paths).unwrap();
+    }
+
+    fn write_index_file(directory: &TempDir, records: &[Vec<u8>]) {
+        write(directory.path().join(INDEX_FILENAME), records.concat()).unwrap();
     }
 
     #[tokio::test]
     async fn new() {
         let (_log, directory) = open().await;
 
-        assert!(exists(directory.path().join(FILENAME)).unwrap());
+        assert!(exists(directory.path().join("paths")).unwrap());
+        assert!(exists(directory.path().join("indices")).unwrap());
+    }
+
+    #[tokio::test]
+    async fn new_in_missing_directory() {
+        let directory = tempdir().unwrap();
+
+        HeaderInputLog::new(
+            &directory.path().join("foo").join("bar"),
+            &Default::default(),
+        )
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
@@ -341,7 +431,7 @@ mod tests {
         drop(log);
 
         let path_pool = PathPool::new();
-        let log = HeaderInputLog::new(&directory.path().join(FILENAME), &path_pool)
+        let log = HeaderInputLog::new(directory.path(), &path_pool)
             .await
             .unwrap();
 
@@ -349,19 +439,6 @@ mod tests {
             &log.get(BuildId::new(1)).await[0],
             &path_pool.intern("foo")
         ));
-    }
-
-    #[tokio::test]
-    async fn fail_to_set_header_input_with_column_separator() {
-        let (log, directory) = open().await;
-
-        assert!(
-            log.set(BuildId::new(1), &["foo".into(), "bar\0baz".into()])
-                .await
-                .is_err()
-        );
-        assert_eq!(log.get(BuildId::new(1)).await, Vec::<Arc<str>>::new());
-        assert_eq!(read_log(&directory), "");
     }
 
     #[tokio::test]
@@ -374,81 +451,72 @@ mod tests {
                 .is_err()
         );
         assert_eq!(log.get(BuildId::new(1)).await, Vec::<Arc<str>>::new());
-        assert_eq!(read_log(&directory), "");
+        assert_eq!(read_path_file(&directory), "");
+        assert_eq!(read_index_file(&directory), b"");
     }
 
     #[tokio::test]
-    async fn fail_to_set_header_inputs_after_failed_write() {
+    async fn fail_to_set_header_inputs_after_failed_write_of_paths() {
         let (log, directory) = open().await;
 
-        log.state.lock().await.file = File::open(directory.path().join(FILENAME)).unwrap();
+        log.state.lock().await.path_file =
+            File::open(directory.path().join(PATH_FILENAME)).unwrap();
 
         assert!(log.set(BuildId::new(1), &["foo".into()]).await.is_err());
 
-        log.state.lock().await.file = open_file(&directory.path().join(FILENAME)).await.unwrap();
+        log.state.lock().await.path_file = open_file(&directory.path().join(PATH_FILENAME))
+            .await
+            .unwrap();
 
         assert!(log.set(BuildId::new(2), &["bar".into()]).await.is_err());
         assert_eq!(log.get(BuildId::new(1)).await, Vec::<Arc<str>>::new());
         assert_eq!(log.get(BuildId::new(2)).await, Vec::<Arc<str>>::new());
-        assert_eq!(read_log(&directory), "");
+        assert_eq!(read_path_file(&directory), "");
+        assert_eq!(read_index_file(&directory), b"");
     }
 
-    mod log {
+    #[tokio::test]
+    async fn fail_to_set_header_inputs_after_failed_write_of_record() {
+        let (log, directory) = open().await;
+
+        log.state.lock().await.index_file =
+            File::open(directory.path().join(INDEX_FILENAME)).unwrap();
+
+        assert!(log.set(BuildId::new(1), &["foo".into()]).await.is_err());
+
+        log.state.lock().await.index_file = open_file(&directory.path().join(INDEX_FILENAME))
+            .await
+            .unwrap();
+
+        assert!(log.set(BuildId::new(2), &["bar".into()]).await.is_err());
+        assert_eq!(log.get(BuildId::new(1)).await, Vec::<Arc<str>>::new());
+        assert_eq!(log.get(BuildId::new(2)).await, Vec::<Arc<str>>::new());
+        assert_eq!(read_path_file(&directory), "foo\n");
+        assert_eq!(read_index_file(&directory), b"");
+    }
+
+    mod path {
         use super::*;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
-        async fn write_lines() {
+        async fn write_paths() {
             let (log, directory) = open().await;
 
             log.set(BuildId::new(1), &["foo".into(), "bar".into()])
                 .await
                 .unwrap();
 
-            assert_eq!(read_log(&directory), format!("foo\nbar\n1{NUL}0{NUL}1\n"));
+            assert_eq!(read_path_file(&directory), "foo\nbar\n");
         }
 
         #[tokio::test]
-        async fn write_lines_in_utf8() {
+        async fn write_path_in_utf8() {
             let (log, directory) = open().await;
 
             log.set(BuildId::new(1), &["😄".into()]).await.unwrap();
 
-            assert_eq!(read_log(&directory), format!("😄\n1{NUL}0\n"));
-        }
-
-        #[tokio::test]
-        async fn write_id_in_hexadecimal() {
-            let (log, directory) = open().await;
-
-            log.set(BuildId::new(0x0123_4567_89ab_cdef), &["foo".into()])
-                .await
-                .unwrap();
-
-            assert_eq!(
-                read_log(&directory),
-                format!("foo\n123456789abcdef{NUL}0\n")
-            );
-        }
-
-        #[tokio::test]
-        async fn write_index_in_decimal() {
-            let (log, directory) = open().await;
-
-            log.set(
-                BuildId::new(1),
-                &(0..11)
-                    .map(|index| index.to_string().into())
-                    .collect::<Vec<_>>(),
-            )
-            .await
-            .unwrap();
-            log.set(BuildId::new(2), &["10".into()]).await.unwrap();
-
-            assert_eq!(
-                read_log(&directory).lines().last(),
-                Some(format!("2{NUL}10").as_str())
-            );
+            assert_eq!(read_path_file(&directory), "😄\n");
         }
 
         #[tokio::test]
@@ -460,10 +528,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(
-                read_log(&directory),
-                format!("foo\n1{NUL}0\nbar\n2{NUL}0{NUL}1\n")
-            );
+            assert_eq!(read_path_file(&directory), "foo\nbar\n");
         }
 
         #[tokio::test]
@@ -474,11 +539,239 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(read_log(&directory), format!("foo\n1{NUL}0{NUL}0\n"));
+            assert_eq!(read_path_file(&directory), "foo\n");
         }
 
         #[tokio::test]
-        async fn write_updated_header_inputs() {
+        async fn write_no_path_of_no_header_input() {
+            let (log, directory) = open().await;
+
+            log.set(BuildId::new(1), &[]).await.unwrap();
+
+            assert_eq!(read_path_file(&directory), "");
+        }
+
+        #[tokio::test]
+        async fn reopen_paths_in_utf8() {
+            let (log, directory) = open().await;
+
+            log.set(BuildId::new(1), &["😄".into()]).await.unwrap();
+
+            drop(log);
+
+            assert_eq!(
+                reopen(&directory).await.get(BuildId::new(1)).await,
+                ["😄".into()]
+            );
+        }
+
+        #[tokio::test]
+        async fn reopen_duplicate_paths() {
+            let directory = tempdir().unwrap();
+
+            write_path_file(&directory, "foo\nfoo\n");
+            write_index_file(&directory, &[record(1, &[0, 1])]);
+
+            let log = reopen(&directory).await;
+
+            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into(), "foo".into()]);
+
+            log.set(BuildId::new(2), &["foo".into(), "bar".into()])
+                .await
+                .unwrap();
+
+            drop(log);
+
+            assert_eq!(read_path_file(&directory), "foo\nfoo\nbar\n");
+            assert_eq!(
+                reopen(&directory).await.get(BuildId::new(2)).await,
+                ["foo".into(), "bar".into()]
+            );
+        }
+
+        #[tokio::test]
+        async fn append_paths_after_reopen() {
+            let (log, directory) = open().await;
+
+            log.set(BuildId::new(1), &["foo".into()]).await.unwrap();
+
+            drop(log);
+
+            reopen(&directory)
+                .await
+                .set(BuildId::new(2), &["bar".into(), "foo".into()])
+                .await
+                .unwrap();
+
+            assert_eq!(read_path_file(&directory), "foo\nbar\n");
+        }
+
+        #[tokio::test]
+        async fn keep_unused_path() {
+            let directory = tempdir().unwrap();
+
+            write_path_file(&directory, "foo\nbar\n");
+            write_index_file(&directory, &[record(1, &[1])]);
+
+            reopen(&directory).await;
+
+            assert_eq!(read_path_file(&directory), "foo\nbar\n");
+        }
+
+        #[tokio::test]
+        async fn remove_incomplete_path() {
+            let directory = tempdir().unwrap();
+
+            write_path_file(&directory, "foo\nba");
+            write_index_file(&directory, &[record(1, &[0])]);
+
+            let log = reopen(&directory).await;
+
+            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
+            assert_eq!(read_path_file(&directory), "foo\n");
+        }
+
+        #[tokio::test]
+        async fn remove_only_incomplete_path() {
+            let directory = tempdir().unwrap();
+
+            write_path_file(&directory, "fo");
+
+            reopen(&directory).await;
+
+            assert_eq!(read_path_file(&directory), "");
+        }
+
+        #[tokio::test]
+        async fn remove_incomplete_path_in_incomplete_utf8() {
+            let directory = tempdir().unwrap();
+
+            write_path_file(
+                &directory,
+                [b"foo\n".as_slice(), &"😄".as_bytes()[..2]].concat(),
+            );
+
+            reopen(&directory).await;
+
+            assert_eq!(read_path_file(&directory), "foo\n");
+        }
+
+        #[tokio::test]
+        async fn append_path_after_incomplete_path() {
+            let directory = tempdir().unwrap();
+
+            write_path_file(&directory, "foo\nba");
+
+            reopen(&directory)
+                .await
+                .set(BuildId::new(1), &["bar".into(), "foo".into()])
+                .await
+                .unwrap();
+
+            assert_eq!(read_path_file(&directory), "foo\nbar\n");
+            assert_eq!(
+                reopen(&directory).await.get(BuildId::new(1)).await,
+                ["bar".into(), "foo".into()]
+            );
+        }
+
+        #[tokio::test]
+        async fn fail_to_open_paths_in_invalid_utf8() {
+            let directory = tempdir().unwrap();
+
+            write_path_file(&directory, [b'f', 0xff, b'\n']);
+
+            assert!(
+                HeaderInputLog::new(directory.path(), &Default::default())
+                    .await
+                    .is_err()
+            );
+        }
+    }
+
+    mod index {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[tokio::test]
+        async fn write_record() {
+            let (log, directory) = open().await;
+
+            log.set(BuildId::new(1), &["foo".into(), "bar".into()])
+                .await
+                .unwrap();
+
+            assert_eq!(
+                read_index_file(&directory),
+                [
+                    [1, 0, 0, 0, 0, 0, 0, 0].as_slice(),
+                    &[2, 0, 0, 0],
+                    &[0, 0, 0, 0],
+                    &[1, 0, 0, 0]
+                ]
+                .concat()
+            );
+        }
+
+        #[tokio::test]
+        async fn write_record_in_little_endian() {
+            const INPUT_COUNT: usize = 0x102;
+
+            let (log, directory) = open().await;
+
+            log.set(
+                BuildId::new(0x0102_0304_0506_0708),
+                &(0..INPUT_COUNT)
+                    .map(|index| index.to_string().into())
+                    .collect::<Vec<_>>(),
+            )
+            .await
+            .unwrap();
+
+            let bytes = read_index_file(&directory);
+
+            assert_eq!(
+                bytes[..RECORD_HEADER_SIZE],
+                [
+                    [0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01].as_slice(),
+                    &[0x02, 0x01, 0, 0]
+                ]
+                .concat()
+            );
+            assert_eq!(
+                bytes[RECORD_HEADER_SIZE + size_of::<Index>() * (INPUT_COUNT - 2)..],
+                [[0x00, 0x01, 0, 0], [0x01, 0x01, 0, 0]].concat()
+            );
+        }
+
+        #[tokio::test]
+        async fn write_records() {
+            let (log, directory) = open().await;
+
+            log.set(BuildId::new(1), &["foo".into()]).await.unwrap();
+            log.set(BuildId::new(2), &["foo".into(), "bar".into()])
+                .await
+                .unwrap();
+
+            assert_eq!(
+                read_index_file(&directory),
+                [record(1, &[0]), record(2, &[0, 1])].concat()
+            );
+        }
+
+        #[tokio::test]
+        async fn write_record_of_duplicate_header_inputs() {
+            let (log, directory) = open().await;
+
+            log.set(BuildId::new(1), &["foo".into(), "foo".into()])
+                .await
+                .unwrap();
+
+            assert_eq!(read_index_file(&directory), record(1, &[0, 0]));
+        }
+
+        #[tokio::test]
+        async fn write_record_of_updated_header_inputs() {
             let (log, directory) = open().await;
 
             log.set(BuildId::new(1), &["foo".into()]).await.unwrap();
@@ -487,42 +780,45 @@ mod tests {
                 .unwrap();
 
             assert_eq!(
-                read_log(&directory),
-                format!("foo\n1{NUL}0\nbar\n1{NUL}1{NUL}0\n")
+                read_index_file(&directory),
+                [record(1, &[0]), record(1, &[1, 0])].concat()
             );
         }
 
         #[tokio::test]
-        async fn write_no_header_input() {
+        async fn write_record_of_no_header_input() {
             let (log, directory) = open().await;
 
             log.set(BuildId::new(1), &["foo".into()]).await.unwrap();
             log.set(BuildId::new(1), &[]).await.unwrap();
 
-            assert_eq!(read_log(&directory), format!("foo\n1{NUL}0\n1{NUL}\n"));
+            assert_eq!(
+                read_index_file(&directory),
+                [record(1, &[0]), record(1, &[])].concat()
+            );
         }
 
         #[tokio::test]
-        async fn write_no_line_of_same_header_inputs() {
+        async fn write_no_record_of_same_header_inputs() {
             let (log, directory) = open().await;
 
             log.set(BuildId::new(1), &["foo".into()]).await.unwrap();
             log.set(BuildId::new(1), &["foo".into()]).await.unwrap();
 
-            assert_eq!(read_log(&directory), format!("foo\n1{NUL}0\n"));
+            assert_eq!(read_index_file(&directory), record(1, &[0]));
         }
 
         #[tokio::test]
-        async fn write_no_line_of_no_header_input() {
+        async fn write_no_record_of_no_header_input() {
             let (log, directory) = open().await;
 
             log.set(BuildId::new(1), &[]).await.unwrap();
 
-            assert_eq!(read_log(&directory), "");
+            assert_eq!(read_index_file(&directory), b"");
         }
 
         #[tokio::test]
-        async fn reopen_log() {
+        async fn reopen_records() {
             let (log, directory) = open().await;
 
             log.set(BuildId::new(1), &["foo".into(), "bar".into()])
@@ -541,7 +837,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn reopen_log_with_updated_header_inputs() {
+        async fn reopen_record_of_updated_header_inputs() {
             let (log, directory) = open().await;
 
             log.set(BuildId::new(1), &["foo".into()]).await.unwrap();
@@ -556,7 +852,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn reopen_log_with_no_header_input() {
+        async fn reopen_record_of_no_header_input() {
             let (log, directory) = open().await;
 
             log.set(BuildId::new(1), &["foo".into()]).await.unwrap();
@@ -571,21 +867,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn reopen_log_in_utf8() {
-            let (log, directory) = open().await;
-
-            log.set(BuildId::new(1), &["😄".into()]).await.unwrap();
-
-            drop(log);
-
-            assert_eq!(
-                reopen(&directory).await.get(BuildId::new(1)).await,
-                ["😄".into()]
-            );
-        }
-
-        #[tokio::test]
-        async fn reopen_log_with_large_id() {
+        async fn reopen_record_with_large_id() {
             let (log, directory) = open().await;
 
             log.set(BuildId::new(u64::MAX), &["foo".into()])
@@ -601,29 +883,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn reopen_log_with_duplicate_paths() {
-            let directory = tempdir().unwrap();
-
-            write_log(&directory, format!("foo\nfoo\n1{NUL}0{NUL}1\n"));
-
-            let log = reopen(&directory).await;
-
-            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into(), "foo".into()]);
-
-            log.set(BuildId::new(2), &["foo".into(), "bar".into()])
-                .await
-                .unwrap();
-
-            drop(log);
-
-            assert_eq!(
-                reopen(&directory).await.get(BuildId::new(2)).await,
-                ["foo".into(), "bar".into()]
-            );
-        }
-
-        #[tokio::test]
-        async fn append_lines_after_reopen() {
+        async fn append_records_after_reopen() {
             let (log, directory) = open().await;
 
             log.set(BuildId::new(1), &["foo".into()]).await.unwrap();
@@ -637,13 +897,13 @@ mod tests {
                 .unwrap();
 
             assert_eq!(
-                read_log(&directory),
-                format!("foo\n1{NUL}0\nbar\n2{NUL}1{NUL}0\n")
+                read_index_file(&directory),
+                [record(1, &[0]), record(2, &[1, 0])].concat()
             );
         }
 
         #[tokio::test]
-        async fn append_no_line_of_same_header_inputs_after_reopen() {
+        async fn append_no_record_of_same_header_inputs_after_reopen() {
             let (log, directory) = open().await;
 
             log.set(BuildId::new(1), &["foo".into()]).await.unwrap();
@@ -656,73 +916,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(read_log(&directory), format!("foo\n1{NUL}0\n"));
-        }
-
-        #[tokio::test]
-        async fn fail_to_open_log_in_invalid_utf8() {
-            let directory = tempdir().unwrap();
-
-            write_log(&directory, [b'f', 0xff, b'\n']);
-
-            assert!(
-                HeaderInputLog::new(&directory.path().join(FILENAME), &Default::default())
-                    .await
-                    .is_err()
-            );
-        }
-
-        #[tokio::test]
-        async fn fail_to_open_log_with_invalid_id() {
-            let directory = tempdir().unwrap();
-
-            write_log(&directory, format!("foo\nbar{NUL}0\n"));
-
-            assert!(
-                HeaderInputLog::new(&directory.path().join(FILENAME), &Default::default())
-                    .await
-                    .is_err()
-            );
-        }
-
-        #[tokio::test]
-        async fn fail_to_open_log_with_invalid_index() {
-            let directory = tempdir().unwrap();
-
-            write_log(&directory, format!("foo\n1{NUL}bar\n"));
-
-            assert!(
-                HeaderInputLog::new(&directory.path().join(FILENAME), &Default::default())
-                    .await
-                    .is_err()
-            );
-        }
-
-        #[tokio::test]
-        async fn fail_to_open_log_with_index_out_of_range() {
-            let directory = tempdir().unwrap();
-
-            write_log(&directory, format!("foo\n1{NUL}1\n"));
-
-            assert!(
-                HeaderInputLog::new(&directory.path().join(FILENAME), &Default::default())
-                    .await
-                    .is_err()
-            );
-        }
-
-        #[tokio::test]
-        async fn fail_to_open_log_in_missing_directory() {
-            let directory = tempdir().unwrap();
-
-            assert!(
-                HeaderInputLog::new(
-                    &directory.path().join("foo").join(FILENAME),
-                    &Default::default()
-                )
-                .await
-                .is_err()
-            );
+            assert_eq!(read_index_file(&directory), record(1, &[0]));
         }
     }
 
@@ -734,82 +928,94 @@ mod tests {
         async fn compact() {
             let directory = tempdir().unwrap();
 
-            write_log(
-                &directory,
-                format!("foo\n{}", format!("1{NUL}0\n").repeat(6)),
-            );
+            write_path_file(&directory, "foo\n");
+            write_index_file(&directory, &vec![record(1, &[0]); 4]);
 
             let log = reopen(&directory).await;
 
             assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
-            assert_eq!(read_log(&directory), format!("foo\n1{NUL}0\n"));
+            assert_eq!(read_index_file(&directory), record(1, &[0]));
         }
 
         #[tokio::test]
         async fn compact_updated_header_inputs() {
             let directory = tempdir().unwrap();
 
-            write_log(
+            write_path_file(&directory, "foo\nbar\n");
+            write_index_file(
                 &directory,
-                format!(
-                    "foo\nbar\n{}1{NUL}1{NUL}0\n",
-                    format!("1{NUL}0{NUL}1\n").repeat(6)
-                ),
+                &[
+                    record(1, &[0, 1]),
+                    record(1, &[0, 1]),
+                    record(1, &[0, 1]),
+                    record(1, &[1, 0]),
+                ],
             );
 
             let log = reopen(&directory).await;
 
             assert_eq!(log.get(BuildId::new(1)).await, ["bar".into(), "foo".into()]);
-            assert_eq!(read_log(&directory), format!("foo\nbar\n1{NUL}1{NUL}0\n"));
+            assert_eq!(read_index_file(&directory), record(1, &[1, 0]));
         }
 
         #[tokio::test]
         async fn compact_many_builds() {
             let directory = tempdir().unwrap();
 
-            write_log(
+            write_path_file(&directory, "foo\nbar\n");
+            write_index_file(
                 &directory,
-                format!(
-                    "foo\nbar\n{}",
-                    format!("1{NUL}0\n2{NUL}1{NUL}0\n").repeat(5)
-                ),
-            );
-
-            let log = reopen(&directory).await;
-
-            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
-            assert_eq!(log.get(BuildId::new(2)).await, ["bar".into(), "foo".into()]);
-            assert_eq!(
-                read_lines(&directory),
-                [
-                    format!("1{NUL}0\n"),
-                    format!("2{NUL}1{NUL}0\n"),
-                    "bar\n".into(),
-                    "foo\n".into()
-                ]
-            );
-        }
-
-        #[tokio::test]
-        async fn compact_paths_before_records() {
-            let directory = tempdir().unwrap();
-
-            write_log(
-                &directory,
-                format!("foo\n{}bar\n1{NUL}1\n", format!("1{NUL}0\n").repeat(8)),
+                &[
+                    record(1, &[0]),
+                    record(2, &[1, 0]),
+                    record(1, &[0]),
+                    record(2, &[1, 0]),
+                    record(1, &[0]),
+                    record(2, &[1, 0]),
+                    record(1, &[1]),
+                ],
             );
 
             let log = reopen(&directory).await;
 
             assert_eq!(log.get(BuildId::new(1)).await, ["bar".into()]);
-            assert_eq!(read_log(&directory), format!("foo\nbar\n1{NUL}1\n"));
+            assert_eq!(log.get(BuildId::new(2)).await, ["bar".into(), "foo".into()]);
+            assert_eq!(
+                read_records(&directory),
+                [record(1, &[1]), record(2, &[1, 0])]
+            );
         }
 
         #[tokio::test]
-        async fn compact_after_appending_lines() {
+        async fn compact_records_of_different_lengths() {
+            let directory = tempdir().unwrap();
+
+            write_path_file(&directory, "foo\nbar\nbaz\n");
+            write_index_file(
+                &directory,
+                &[
+                    record(1, &[0]),
+                    record(2, &[0, 1, 2]),
+                    record(2, &[0, 1, 2]),
+                    record(2, &[0, 1, 2]),
+                    record(2, &[0, 1, 2]),
+                    record(2, &[0, 1, 2]),
+                ],
+            );
+
+            reopen(&directory).await;
+
+            assert_eq!(
+                read_records(&directory),
+                [record(1, &[0]), record(2, &[0, 1, 2])]
+            );
+        }
+
+        #[tokio::test]
+        async fn compact_after_appending_records() {
             let (log, directory) = open().await;
 
-            for inputs in [["foo"], ["bar"]].into_iter().cycle().take(8) {
+            for inputs in [["foo"], ["bar"]].into_iter().cycle().take(4) {
                 log.set(BuildId::new(1), &inputs.map(From::from))
                     .await
                     .unwrap();
@@ -818,27 +1024,28 @@ mod tests {
             drop(log);
 
             assert_eq!(
-                read_log(&directory),
-                format!(
-                    "foo\n1{NUL}0\nbar\n1{NUL}1\n{}",
-                    format!("1{NUL}0\n1{NUL}1\n").repeat(3)
-                )
+                read_index_file(&directory),
+                [
+                    record(1, &[0]),
+                    record(1, &[1]),
+                    record(1, &[0]),
+                    record(1, &[1])
+                ]
+                .concat()
             );
 
             let log = reopen(&directory).await;
 
             assert_eq!(log.get(BuildId::new(1)).await, ["bar".into()]);
-            assert_eq!(read_log(&directory), format!("foo\nbar\n1{NUL}1\n"));
+            assert_eq!(read_index_file(&directory), record(1, &[1]));
         }
 
         #[tokio::test]
-        async fn append_lines_after_compaction() {
+        async fn append_record_after_compaction() {
             let directory = tempdir().unwrap();
 
-            write_log(
-                &directory,
-                format!("foo\nbar\n{}", format!("1{NUL}1\n").repeat(10)),
-            );
+            write_path_file(&directory, "foo\nbar\n");
+            write_index_file(&directory, &vec![record(1, &[1]); 4]);
 
             reopen(&directory)
                 .await
@@ -846,153 +1053,243 @@ mod tests {
                 .await
                 .unwrap();
 
+            assert_eq!(read_path_file(&directory), "foo\nbar\nbaz\n");
             assert_eq!(
-                read_log(&directory),
-                format!("foo\nbar\n1{NUL}1\nbaz\n2{NUL}2{NUL}0\n")
+                read_index_file(&directory),
+                [record(1, &[1]), record(2, &[2, 0])].concat()
             );
-        }
-
-        #[tokio::test]
-        async fn keep_unused_path() {
-            let directory = tempdir().unwrap();
-
-            write_log(
-                &directory,
-                format!("foo\nbar\n{}", format!("1{NUL}1\n").repeat(10)),
-            );
-
-            let log = reopen(&directory).await;
-
-            assert_eq!(log.get(BuildId::new(1)).await, ["bar".into()]);
-            assert_eq!(read_log(&directory), format!("foo\nbar\n1{NUL}1\n"));
         }
 
         #[tokio::test]
         async fn keep_log_of_optimal_size() {
             let directory = tempdir().unwrap();
-            let lines = format!("foo\n1{NUL}0\nbar\n2{NUL}1{NUL}0\n");
+            let records = [record(1, &[0]), record(2, &[1, 0])];
 
-            write_log(&directory, &lines);
+            write_path_file(&directory, "foo\nbar\n");
+            write_index_file(&directory, &records);
 
             reopen(&directory).await;
 
-            assert_eq!(read_log(&directory), lines);
+            assert_eq!(read_index_file(&directory), records.concat());
         }
 
         #[tokio::test]
         async fn keep_log_of_compaction_ratio() {
             let directory = tempdir().unwrap();
-            let lines = format!("foo\n{}", format!("1{NUL}0\n").repeat(5));
+            let records = [record(1, &[0]), record(1, &[0]), record(1, &[0])];
 
-            write_log(&directory, &lines);
+            write_path_file(&directory, "foo\n");
+            write_index_file(&directory, &records);
 
             let log = reopen(&directory).await;
 
             assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
-            assert_eq!(read_log(&directory), lines);
+            assert_eq!(read_index_file(&directory), records.concat());
+        }
+
+        #[tokio::test]
+        async fn keep_log_of_compaction_ratio_with_records_of_different_lengths() {
+            let directory = tempdir().unwrap();
+            let records = [
+                record(1, &[0]),
+                record(1, &[0]),
+                record(1, &[0]),
+                record(1, &[0]),
+                record(1, &[0]),
+                record(1, &[0]),
+                record(2, &[0, 1, 2]),
+            ];
+
+            write_path_file(&directory, "foo\nbar\nbaz\n");
+            write_index_file(&directory, &records);
+
+            reopen(&directory).await;
+
+            assert_eq!(read_index_file(&directory), records.concat());
         }
 
         #[tokio::test]
         async fn keep_empty_log() {
             let directory = tempdir().unwrap();
 
-            write_log(&directory, "");
+            write_path_file(&directory, "");
+            write_index_file(&directory, &[]);
 
             reopen(&directory).await;
 
-            assert_eq!(read_log(&directory), "");
+            assert_eq!(read_path_file(&directory), "");
+            assert_eq!(read_index_file(&directory), b"");
         }
     }
 
-    mod incomplete_line {
+    mod incomplete_record {
         use super::*;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
-        async fn remove_incomplete_path() {
-            let directory = tempdir().unwrap();
-
-            write_log(&directory, format!("foo\n1{NUL}0\nba"));
-
-            let log = reopen(&directory).await;
-
-            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
-            assert_eq!(read_log(&directory), format!("foo\n1{NUL}0\n"));
-        }
-
-        #[tokio::test]
         async fn remove_incomplete_record() {
+            for size in 1..record(2, &[0, 0]).len() {
+                let directory = tempdir().unwrap();
+
+                write_path_file(&directory, "foo\n");
+                write_index_file(
+                    &directory,
+                    &[record(1, &[0]), record(2, &[0, 0])[..size].into()],
+                );
+
+                let log = reopen(&directory).await;
+
+                assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
+                assert_eq!(log.get(BuildId::new(2)).await, Vec::<Arc<str>>::new());
+                assert_eq!(read_index_file(&directory), record(1, &[0]));
+            }
+        }
+
+        #[tokio::test]
+        async fn remove_only_incomplete_record() {
             let directory = tempdir().unwrap();
 
-            write_log(&directory, format!("foo\n1{NUL}0\nbar\n2{NUL}1{NUL}"));
+            write_path_file(&directory, "foo\n");
+            write_index_file(&directory, &[record(1, &[0])[..1].into()]);
 
             let log = reopen(&directory).await;
 
-            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
-            assert_eq!(log.get(BuildId::new(2)).await, Vec::<Arc<str>>::new());
-            assert_eq!(read_log(&directory), format!("foo\nbar\n1{NUL}0\n"));
+            assert_eq!(log.get(BuildId::new(1)).await, Vec::<Arc<str>>::new());
+            assert_eq!(read_index_file(&directory), b"");
         }
 
         #[tokio::test]
-        async fn remove_incomplete_record_with_invalid_index() {
+        async fn remove_incomplete_record_with_large_count() {
             let directory = tempdir().unwrap();
 
-            write_log(&directory, format!("foo\n1{NUL}0\n2{NUL}1"));
-
-            let log = reopen(&directory).await;
-
-            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
-            assert_eq!(log.get(BuildId::new(2)).await, Vec::<Arc<str>>::new());
-            assert_eq!(read_log(&directory), format!("foo\n1{NUL}0\n"));
-        }
-
-        #[tokio::test]
-        async fn remove_only_incomplete_line() {
-            let directory = tempdir().unwrap();
-
-            write_log(&directory, "fo");
-
-            reopen(&directory).await;
-
-            assert_eq!(read_log(&directory), "");
-        }
-
-        #[tokio::test]
-        async fn remove_incomplete_line_in_incomplete_utf8() {
-            let directory = tempdir().unwrap();
-
-            write_log(
+            write_path_file(&directory, "foo\n");
+            write_index_file(
                 &directory,
-                [format!("foo\n1{NUL}0\n").as_bytes(), &"😄".as_bytes()[..2]].concat(),
+                &[
+                    record(1, &[0]),
+                    [
+                        BuildId::new(2).to_bytes().as_slice(),
+                        &u32::MAX.to_le_bytes(),
+                        &[0; 4],
+                    ]
+                    .concat(),
+                ],
             );
 
             let log = reopen(&directory).await;
 
             assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
-            assert_eq!(read_log(&directory), format!("foo\n1{NUL}0\n"));
+            assert_eq!(log.get(BuildId::new(2)).await, Vec::<Arc<str>>::new());
+            assert_eq!(read_index_file(&directory), record(1, &[0]));
         }
 
         #[tokio::test]
-        async fn append_lines_after_incomplete_line() {
+        async fn append_record_after_incomplete_record() {
             let directory = tempdir().unwrap();
 
-            write_log(&directory, format!("foo\n1{NUL}0\nba"));
+            write_path_file(&directory, "foo\n");
+            write_index_file(&directory, &[record(1, &[0]), record(2, &[0])[..1].into()]);
 
             reopen(&directory)
                 .await
-                .set(BuildId::new(2), &["bar".into(), "foo".into()])
+                .set(BuildId::new(3), &["bar".into(), "foo".into()])
                 .await
                 .unwrap();
 
             assert_eq!(
-                read_log(&directory),
-                format!("foo\n1{NUL}0\nbar\n2{NUL}1{NUL}0\n")
+                read_index_file(&directory),
+                [record(1, &[0]), record(3, &[1, 0])].concat()
             );
 
             let log = reopen(&directory).await;
 
             assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
-            assert_eq!(log.get(BuildId::new(2)).await, ["bar".into(), "foo".into()]);
+            assert_eq!(log.get(BuildId::new(3)).await, ["bar".into(), "foo".into()]);
+        }
+    }
+
+    mod missing_path {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        #[tokio::test]
+        async fn remove_record() {
+            let directory = tempdir().unwrap();
+
+            write_path_file(&directory, "foo\n");
+            write_index_file(&directory, &[record(1, &[0]), record(2, &[0, 1])]);
+
+            let log = reopen(&directory).await;
+
+            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
+            assert_eq!(log.get(BuildId::new(2)).await, Vec::<Arc<str>>::new());
+            assert_eq!(read_path_file(&directory), "foo\n");
+            assert_eq!(read_index_file(&directory), record(1, &[0]));
+        }
+
+        #[tokio::test]
+        async fn remove_record_of_updated_header_inputs() {
+            let directory = tempdir().unwrap();
+
+            write_path_file(&directory, "foo\n");
+            write_index_file(&directory, &[record(1, &[0]), record(1, &[1])]);
+
+            let log = reopen(&directory).await;
+
+            assert_eq!(log.get(BuildId::new(1)).await, Vec::<Arc<str>>::new());
+            assert_eq!(read_index_file(&directory), b"");
+        }
+
+        #[tokio::test]
+        async fn keep_record_updated_from_one_with_missing_path() {
+            let directory = tempdir().unwrap();
+            let records = [record(1, &[1]), record(1, &[0])];
+
+            write_path_file(&directory, "foo\n");
+            write_index_file(&directory, &records);
+
+            let log = reopen(&directory).await;
+
+            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
+            assert_eq!(read_index_file(&directory), records.concat());
+        }
+
+        #[tokio::test]
+        async fn remove_record_without_any_path() {
+            let directory = tempdir().unwrap();
+
+            write_index_file(&directory, &[record(1, &[0])]);
+
+            let log = reopen(&directory).await;
+
+            assert_eq!(log.get(BuildId::new(1)).await, Vec::<Arc<str>>::new());
+            assert_eq!(read_index_file(&directory), b"");
+        }
+
+        #[tokio::test]
+        async fn append_path_after_removing_record() {
+            let directory = tempdir().unwrap();
+
+            write_path_file(&directory, "foo\n");
+            write_index_file(&directory, &[record(1, &[0]), record(2, &[1])]);
+
+            reopen(&directory)
+                .await
+                .set(BuildId::new(3), &["bar".into()])
+                .await
+                .unwrap();
+
+            assert_eq!(read_path_file(&directory), "foo\nbar\n");
+            assert_eq!(
+                read_index_file(&directory),
+                [record(1, &[0]), record(3, &[1])].concat()
+            );
+
+            let log = reopen(&directory).await;
+
+            assert_eq!(log.get(BuildId::new(1)).await, ["foo".into()]);
+            assert_eq!(log.get(BuildId::new(2)).await, Vec::<Arc<str>>::new());
+            assert_eq!(log.get(BuildId::new(3)).await, ["bar".into()]);
         }
     }
 }

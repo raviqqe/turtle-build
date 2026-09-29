@@ -4,8 +4,13 @@ use super::utility::{
 use crate::{infrastructure::DatabaseError, ir::BuildId, path_pool::PathPool};
 use alloc::sync::Arc;
 use core::{iter::successors, str};
-use std::{collections::HashMap, fs::File, io::Write, path::Path};
-use tokio::{fs::create_dir_all, sync::Mutex};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{self, Write},
+    path::Path,
+};
+use tokio::{fs::create_dir_all, sync::Mutex, try_join};
 
 const PATH_FILENAME: &str = "paths";
 const INDEX_FILENAME: &str = "indices";
@@ -30,46 +35,13 @@ impl HeaderInputLog {
     pub async fn new(directory: &Path, path_pool: &PathPool) -> Result<Self, DatabaseError> {
         create_dir_all(directory).await?;
 
-        let (path_file, paths) =
-            Self::open_paths(&directory.join(PATH_FILENAME), path_pool).await?;
-        let (index_file, inputs) =
-            Self::open_indices(&directory.join(INDEX_FILENAME), &paths).await?;
-
-        Ok(Self {
-            state: State {
-                path_file,
-                index_file,
-                path_count: paths.len().try_into()?,
-                indices: paths.into_iter().zip(0..).collect(),
-                inputs,
-                failed: false,
-            }
-            .into(),
-        })
-    }
-
-    async fn open_paths(
-        path: &Path,
-        path_pool: &PathPool,
-    ) -> Result<(File, Vec<Arc<str>>), DatabaseError> {
-        let bytes = read_file(path).await?;
-        let paths = split_lines(&bytes)
+        let path_file = directory.join(PATH_FILENAME);
+        let index_file = directory.join(INDEX_FILENAME);
+        let (path_bytes, index_bytes) = try_join!(read_file(&path_file), read_file(&index_file))?;
+        let paths = split_lines(&path_bytes)
             .map(|line| Ok(path_pool.intern(str::from_utf8(line)?)))
             .collect::<Result<Vec<_>, DatabaseError>>()?;
-
-        if bytes.last().is_some_and(|&byte| byte != LINE_TERMINATOR) {
-            compact_file(path, serialize_paths(&paths)).await?;
-        }
-
-        Ok((open_file(path).await?, paths))
-    }
-
-    async fn open_indices(
-        path: &Path,
-        paths: &[Arc<str>],
-    ) -> Result<(File, HashMap<BuildId, Vec<Arc<str>>>), DatabaseError> {
-        let bytes = read_file(path).await?;
-        let records = successors(deserialize_record(&bytes), |(_, _, bytes)| {
+        let records = successors(deserialize_record(&index_bytes), |(_, _, bytes)| {
             deserialize_record(bytes)
         })
         .collect::<Vec<_>>();
@@ -85,37 +57,57 @@ impl HeaderInputLog {
                     id,
                     indices
                         .iter()
-                        .map(|&index| deserialize_input(index, paths))
+                        .map(|&index| deserialize_input(index, &paths))
                         .collect::<Option<_>>()?,
                 ))
             })
             .collect::<HashMap<_, Vec<_>>>();
-
-        if inputs.len() != indices.len()
-            || !records
-                .last()
-                .map_or(bytes.as_slice(), |&(_, _, bytes)| bytes)
-                .is_empty()
-            || bytes.len()
-                > COMPACTION_RATIO
-                    * inputs
-                        .values()
-                        .map(|inputs| RECORD_HEADER_SIZE + size_of::<Index>() * inputs.len())
-                        .sum::<usize>()
-        {
-            compact_file(
-                path,
-                indices
-                    .iter()
-                    .filter(|(id, _)| inputs.contains_key(id))
-                    .map(|(&id, indices)| serialize_record(id, indices))
-                    .collect::<Result<Vec<_>, _>>()?
-                    .concat(),
+        let (path_file, index_file) = try_join!(
+            open_log(
+                &path_file,
+                path_bytes
+                    .last()
+                    .is_some_and(|&byte| byte != LINE_TERMINATOR)
+                    .then(|| serialize_paths(&paths))
+            ),
+            open_log(
+                &index_file,
+                (inputs.len() != indices.len()
+                    || !records
+                        .last()
+                        .map_or(index_bytes.as_slice(), |&(_, _, bytes)| bytes)
+                        .is_empty()
+                    || index_bytes.len()
+                        > COMPACTION_RATIO
+                            * inputs
+                                .values()
+                                .map(|inputs| {
+                                    RECORD_HEADER_SIZE + size_of::<Index>() * inputs.len()
+                                })
+                                .sum::<usize>())
+                .then(|| {
+                    indices
+                        .iter()
+                        .filter(|(id, _)| inputs.contains_key(id))
+                        .map(|(&id, indices)| serialize_record(id, indices))
+                        .collect::<Result<Vec<_>, _>>()
+                })
+                .transpose()?
+                .map(|records| records.concat())
             )
-            .await?;
-        }
+        )?;
 
-        Ok((open_file(path).await?, inputs))
+        Ok(Self {
+            state: State {
+                path_file,
+                index_file,
+                path_count: paths.len().try_into()?,
+                indices: paths.into_iter().zip(0..).collect(),
+                inputs,
+                failed: false,
+            }
+            .into(),
+        })
     }
 
     pub async fn get(&self, id: BuildId) -> Vec<Arc<str>> {
@@ -187,6 +179,14 @@ impl State {
 
         Ok(())
     }
+}
+
+async fn open_log(path: &Path, bytes: Option<Vec<u8>>) -> Result<File, io::Error> {
+    if let Some(bytes) = bytes {
+        compact_file(path, bytes).await?;
+    }
+
+    open_file(path).await
 }
 
 fn serialize_paths(paths: &[Arc<str>]) -> Vec<u8> {

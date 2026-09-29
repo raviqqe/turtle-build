@@ -37,6 +37,7 @@ impl IndexLog {
                 ))
             })
             .collect::<HashMap<_, Vec<_>>>();
+
         let file = open_log(
             path,
             (inputs.len() != indices.len()
@@ -61,6 +62,7 @@ impl IndexLog {
             .map(|records| records.concat()),
         )
         .await?;
+
         let index = HashIndex::with_capacity(inputs.len());
 
         for (id, inputs) in inputs {

@@ -1,4 +1,4 @@
-use core::{fmt::Display, str::Utf8Error};
+use core::{fmt::Display, num::TryFromIntError, str::Utf8Error};
 use rkyv::rancor;
 use std::io;
 use thiserror::Error;
@@ -35,6 +35,12 @@ impl From<rancor::Error> for DatabaseError {
 
 impl From<redb::Error> for DatabaseError {
     fn from(error: redb::Error) -> Self {
+        Self::new(error)
+    }
+}
+
+impl From<TryFromIntError> for DatabaseError {
+    fn from(error: TryFromIntError) -> Self {
         Self::new(error)
     }
 }

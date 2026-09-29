@@ -6,7 +6,8 @@ pub async fn clean_dead(context: &Context, config: &Config) -> Result<(), BuildE
     try_join_all(
         context
             .database()
-            .get_outputs()?
+            .get_outputs()
+            .await?
             .iter()
             .map(|output| remove_output(context, config, output)),
     )

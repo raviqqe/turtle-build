@@ -5,6 +5,7 @@ use crate::{
     path_pool::PathPool,
 };
 use alloc::sync::Arc;
+use async_trait::async_trait;
 use redb::{
     Durability, Key, ReadOnlyTable, ReadableDatabase, ReadableTable, TableDefinition, Value,
 };
@@ -74,8 +75,9 @@ impl RedbDatabase {
     }
 }
 
+#[async_trait]
 impl Database for RedbDatabase {
-    fn get_hash(&self, id: BuildId) -> Result<Option<BuildHash>, DatabaseError> {
+    async fn get_hash(&self, id: BuildId) -> Result<Option<BuildHash>, DatabaseError> {
         Ok(self.read(HASHES, |table| {
             Ok(table
                 .get(id.to_bytes())?
@@ -84,11 +86,11 @@ impl Database for RedbDatabase {
         })?)
     }
 
-    fn set_hash(&self, id: BuildId, hash: BuildHash) -> Result<(), DatabaseError> {
+    async fn set_hash(&self, id: BuildId, hash: BuildHash) -> Result<(), DatabaseError> {
         Ok(self.write(HASHES, id.to_bytes(), (hash.timestamp(), hash.content()))?)
     }
 
-    fn get_header_inputs(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError> {
+    async fn get_header_inputs(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError> {
         Ok(self.read(HEADER_DEPENDENCIES, |table| {
             Ok(table
                 .get(id.to_bytes())?
@@ -103,7 +105,7 @@ impl Database for RedbDatabase {
         })?)
     }
 
-    fn set_header_inputs(
+    async fn set_header_inputs(
         &self,
         id: BuildId,
         dependencies: &[Arc<str>],
@@ -115,7 +117,7 @@ impl Database for RedbDatabase {
         )?)
     }
 
-    fn get_outputs(&self) -> Result<Vec<String>, DatabaseError> {
+    async fn get_outputs(&self) -> Result<Vec<String>, DatabaseError> {
         Ok(self.read(OUTPUTS, |table| {
             table
                 .iter()?
@@ -124,17 +126,17 @@ impl Database for RedbDatabase {
         })?)
     }
 
-    fn set_output(&self, path: &str) -> Result<(), DatabaseError> {
+    async fn set_output(&self, path: &str) -> Result<(), DatabaseError> {
         Ok(self.write(OUTPUTS, path, ())?)
     }
 
-    fn get_source(&self, output: &str) -> Result<Option<String>, DatabaseError> {
+    async fn get_source(&self, output: &str) -> Result<Option<String>, DatabaseError> {
         Ok(self.read(SOURCES, |table| {
             Ok(table.get(output)?.map(|source| source.value().into()))
         })?)
     }
 
-    fn set_source(&self, output: &str, source: &str) -> Result<(), DatabaseError> {
+    async fn set_source(&self, output: &str, source: &str) -> Result<(), DatabaseError> {
         Ok(self.write(SOURCES, output, source)?)
     }
 }
@@ -171,107 +173,112 @@ mod tests {
         .unwrap();
     }
 
-    #[test]
-    fn hash() {
+    #[tokio::test]
+    async fn hash() {
         let (database, _directory) = open();
 
         database
             .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+            .await
             .unwrap();
 
         assert_eq!(
-            database.get_hash(BuildId::new(0)).unwrap(),
+            database.get_hash(BuildId::new(0)).await.unwrap(),
             Some(BuildHash::new(1, 2))
         );
     }
 
-    #[test]
-    fn get_no_hash() {
+    #[tokio::test]
+    async fn get_no_hash() {
         let (database, _directory) = open();
 
         database
             .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+            .await
             .unwrap();
 
-        assert_eq!(database.get_hash(BuildId::new(1)).unwrap(), None);
+        assert_eq!(database.get_hash(BuildId::new(1)).await.unwrap(), None);
     }
 
-    #[test]
-    fn update_hash() {
+    #[tokio::test]
+    async fn update_hash() {
         let (database, _directory) = open();
 
         database
             .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+            .await
             .unwrap();
         database
             .set_hash(BuildId::new(0), BuildHash::new(3, 4))
+            .await
             .unwrap();
 
         assert_eq!(
-            database.get_hash(BuildId::new(0)).unwrap(),
+            database.get_hash(BuildId::new(0)).await.unwrap(),
             Some(BuildHash::new(3, 4))
         );
     }
 
-    #[test]
-    fn set_output() {
+    #[tokio::test]
+    async fn set_output() {
         let (database, _directory) = open();
 
-        database.set_output("foo").unwrap();
+        database.set_output("foo").await.unwrap();
     }
 
-    #[test]
-    fn get_output() {
+    #[tokio::test]
+    async fn get_output() {
         let (database, _directory) = open();
 
-        database.set_output("foo").unwrap();
+        database.set_output("foo").await.unwrap();
 
-        assert_eq!(database.get_outputs().unwrap(), vec!["foo"]);
+        assert_eq!(database.get_outputs().await.unwrap(), vec!["foo"]);
     }
 
-    #[test]
-    fn get_no_output() {
+    #[tokio::test]
+    async fn get_no_output() {
         let (database, _directory) = open();
 
-        assert_eq!(database.get_outputs().unwrap(), Vec::<String>::new());
+        assert_eq!(database.get_outputs().await.unwrap(), Vec::<String>::new());
     }
 
-    #[test]
-    fn get_output_with_source() {
+    #[tokio::test]
+    async fn get_output_with_source() {
         let (database, _directory) = open();
 
-        database.set_output("foo").unwrap();
-        database.set_source("foo", "bar").unwrap();
+        database.set_output("foo").await.unwrap();
+        database.set_source("foo", "bar").await.unwrap();
 
-        assert_eq!(database.get_outputs().unwrap(), vec!["foo"]);
+        assert_eq!(database.get_outputs().await.unwrap(), vec!["foo"]);
     }
 
-    #[test]
-    fn header_dependencies() {
+    #[tokio::test]
+    async fn header_dependencies() {
         let (database, _directory) = open();
 
         database
             .set_header_inputs(BuildId::new(0), &["foo".into(), "bar".into()])
+            .await
             .unwrap();
 
         assert_eq!(
-            database.get_header_inputs(BuildId::new(0)).unwrap(),
+            database.get_header_inputs(BuildId::new(0)).await.unwrap(),
             vec!["foo".into(), "bar".into()]
         );
     }
 
-    #[test]
-    fn get_no_header_dependencies() {
+    #[tokio::test]
+    async fn get_no_header_dependencies() {
         let (database, _directory) = open();
 
         assert_eq!(
-            database.get_header_inputs(BuildId::new(0)).unwrap(),
+            database.get_header_inputs(BuildId::new(0)).await.unwrap(),
             Vec::<Arc<str>>::new()
         );
     }
 
-    #[test]
-    fn intern_header_dependencies() {
+    #[tokio::test]
+    async fn intern_header_dependencies() {
         let directory = tempdir().unwrap();
         let path_pool = Arc::new(PathPool::new());
         let database =
@@ -279,49 +286,55 @@ mod tests {
 
         database
             .set_header_inputs(BuildId::new(0), &["foo".into()])
+            .await
             .unwrap();
 
         assert!(Arc::ptr_eq(
-            &database.get_header_inputs(BuildId::new(0)).unwrap()[0],
+            &database.get_header_inputs(BuildId::new(0)).await.unwrap()[0],
             &path_pool.intern("foo")
         ));
     }
 
-    #[test]
-    fn set_source() {
+    #[tokio::test]
+    async fn set_source() {
         let (database, _directory) = open();
 
-        database.set_source("foo", "bar").unwrap();
+        database.set_source("foo", "bar").await.unwrap();
     }
 
-    #[test]
-    fn get_source() {
+    #[tokio::test]
+    async fn get_source() {
         let (database, _directory) = open();
 
-        database.set_source("foo", "bar").unwrap();
+        database.set_source("foo", "bar").await.unwrap();
 
-        assert_eq!(database.get_source("foo").unwrap(), Some("bar".into()));
+        assert_eq!(
+            database.get_source("foo").await.unwrap(),
+            Some("bar".into())
+        );
     }
 
-    #[test]
-    fn get_no_source() {
+    #[tokio::test]
+    async fn get_no_source() {
         let (database, _directory) = open();
 
-        assert_eq!(database.get_source("foo").unwrap(), None);
+        assert_eq!(database.get_source("foo").await.unwrap(), None);
     }
 
-    #[test]
-    fn reopen() {
+    #[tokio::test]
+    async fn reopen() {
         let (database, directory) = open();
 
         database
             .set_hash(BuildId::new(0), BuildHash::new(1, 2))
+            .await
             .unwrap();
         database
             .set_header_inputs(BuildId::new(0), &["foo".into()])
+            .await
             .unwrap();
-        database.set_output("foo").unwrap();
-        database.set_source("foo", "bar").unwrap();
+        database.set_output("foo").await.unwrap();
+        database.set_source("foo", "bar").await.unwrap();
 
         drop(database);
 
@@ -329,14 +342,17 @@ mod tests {
             RedbDatabase::new(&directory.path().join(FILENAME), Default::default()).unwrap();
 
         assert_eq!(
-            database.get_hash(BuildId::new(0)).unwrap(),
+            database.get_hash(BuildId::new(0)).await.unwrap(),
             Some(BuildHash::new(1, 2))
         );
         assert_eq!(
-            database.get_header_inputs(BuildId::new(0)).unwrap(),
+            database.get_header_inputs(BuildId::new(0)).await.unwrap(),
             vec!["foo".into()]
         );
-        assert_eq!(database.get_outputs().unwrap(), vec!["foo"]);
-        assert_eq!(database.get_source("foo").unwrap(), Some("bar".into()));
+        assert_eq!(database.get_outputs().await.unwrap(), vec!["foo"]);
+        assert_eq!(
+            database.get_source("foo").await.unwrap(),
+            Some("bar".into())
+        );
     }
 }

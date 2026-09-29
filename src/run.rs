@@ -45,7 +45,7 @@ pub async fn run(
         .filter(|build| build.rule().is_some())
         .unique_by(|build| build.id())
     {
-        let inputs = context.database().get_header_inputs(build.id())?;
+        let inputs = context.database().get_header_inputs(build.id()).await?;
 
         graph.add_inputs(&build.outputs()[0], &inputs);
         header_inputs.insert(build.id(), inputs);
@@ -59,12 +59,9 @@ pub async fn run(
         options,
     ));
 
-    context
-        .build_graph()
-        .lock()
-        .await
-        .validate()
-        .map_err(|error| map_build_graph_error(&context, &error))?;
+    if let Err(error) = context.build_graph().lock().await.validate() {
+        return Err(map_build_graph_error(&context, &error).await);
+    }
 
     try_join_all(
         if outputs.is_empty() {
@@ -174,7 +171,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
 
         let (phony_inputs, file_inputs) =
             classify_inputs(&context, &build, dynamic_inputs, &header_inputs);
-        let hash = context.build().database().get_hash(build.id())?;
+        let hash = context.build().database().get_hash(build.id()).await?;
         let mut timestamp_hash =
             calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
@@ -214,13 +211,18 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
             context
                 .build()
                 .database()
-                .set_header_inputs(build.id(), &new_header_inputs)?;
+                .set_header_inputs(build.id(), &new_header_inputs)
+                .await?;
 
             for output in build.outputs() {
-                context.build().database().set_output(output)?;
+                context.build().database().set_output(output).await?;
 
                 if let Some(source) = context.config().source_map().get(output) {
-                    context.build().database().set_source(output, source)?;
+                    context
+                        .build()
+                        .database()
+                        .set_source(output, source)
+                        .await?;
                 }
             }
 
@@ -240,7 +242,8 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
         context
             .build()
             .database()
-            .set_hash(build.id(), BuildHash::new(timestamp_hash, content_hash))?;
+            .set_hash(build.id(), BuildHash::new(timestamp_hash, content_hash))
+            .await?;
 
         Ok(false)
     })
@@ -285,12 +288,9 @@ async fn load_dynamic_config<'a>(
                 context.build().path_pool(),
             )?;
 
-            context
-                .build_graph()
-                .lock()
-                .await
-                .validate_dynamic(&config)
-                .map_err(|error| map_build_graph_error(context, &error))?;
+            if let Err(error) = context.build_graph().lock().await.validate_dynamic(&config) {
+                return Err(map_build_graph_error(context, &error).await);
+            }
 
             Ok(config)
         })
@@ -355,7 +355,8 @@ async fn check_file_existence(context: &RunContext, path: &Arc<str>) -> Result<(
             context
                 .build()
                 .database()
-                .get_source(path)?
+                .get_source(path)
+                .await?
                 .unwrap_or_else(|| path.as_ref().into()),
         ));
     }
@@ -496,20 +497,21 @@ async fn write_description<'a>(
     Ok(console)
 }
 
-fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> BuildError {
+async fn map_build_graph_error(context: &RunContext, error: &BuildGraphError) -> BuildError {
     match error {
         BuildGraphError::CircularDependency(outputs) => {
-            match outputs
-                .iter()
-                .map(|output| {
-                    Ok(context
+            match try_join_all(outputs.iter().map(|output| async {
+                Ok::<_, BuildError>(
+                    context
                         .build()
                         .database()
-                        .get_source(output)?
+                        .get_source(output)
+                        .await?
                         .map(|string| string.into())
-                        .unwrap_or_else(|| output.clone()))
-                })
-                .collect::<Result<Vec<_>, BuildError>>()
+                        .unwrap_or_else(|| output.clone()),
+                )
+            }))
+            .await
             {
                 Ok(outputs) => {
                     BuildGraphError::CircularDependency(outputs.into_iter().dedup().collect())
@@ -1023,7 +1025,11 @@ mod tests {
             &Default::default(),
         );
 
-        context.database().set_source("foo.o", "foo.c").unwrap();
+        context
+            .database()
+            .set_source("foo.o", "foo.c")
+            .await
+            .unwrap();
 
         assert_eq!(
             run(
@@ -1079,8 +1085,8 @@ mod tests {
             &Default::default(),
         );
 
-        context.database().set_source("foo", "baz").unwrap();
-        context.database().set_source("bar", "baz").unwrap();
+        context.database().set_source("foo", "baz").await.unwrap();
+        context.database().set_source("bar", "baz").await.unwrap();
 
         assert_eq!(
             run(
@@ -1164,9 +1170,9 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(context.database().get_outputs().unwrap(), ["foo.o"]);
+        assert_eq!(context.database().get_outputs().await.unwrap(), ["foo.o"]);
         assert_eq!(
-            context.database().get_source("foo.o").unwrap(),
+            context.database().get_source("foo.o").await.unwrap(),
             Some("foo.c".into())
         );
     }
@@ -1975,7 +1981,11 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            context.database().get_header_inputs(build.id()).unwrap(),
+            context
+                .database()
+                .get_header_inputs(build.id())
+                .await
+                .unwrap(),
             ["foo.h".into()]
         );
         assert!(
@@ -2030,7 +2040,11 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            context.database().get_header_inputs(build.id()).unwrap(),
+            context
+                .database()
+                .get_header_inputs(build.id())
+                .await
+                .unwrap(),
             ["foo.h".into()]
         );
         assert_eq!(console.stdout(), "foo.c\n");
@@ -2064,7 +2078,11 @@ mod tests {
         .unwrap();
 
         assert!(Arc::ptr_eq(
-            &context.database().get_header_inputs(build.id()).unwrap()[0],
+            &context
+                .database()
+                .get_header_inputs(build.id())
+                .await
+                .unwrap()[0],
             &context.path_pool().intern("foo.h")
         ));
     }
@@ -2083,6 +2101,7 @@ mod tests {
         context
             .database()
             .set_header_inputs(build.id(), &["foo.h".into()])
+            .await
             .unwrap();
         file_system.write_file("foo.c", "");
         file_system.write_file("foo.h", "");
@@ -2122,6 +2141,7 @@ mod tests {
         context
             .database()
             .set_header_inputs(build.id(), &["foo.h".into()])
+            .await
             .unwrap();
         file_system.write_file("foo.c", "");
 
@@ -2155,6 +2175,7 @@ mod tests {
         context
             .database()
             .set_header_inputs(build.id(), &["foo.h".into()])
+            .await
             .unwrap();
         file_system.write_file("foo.c", "");
         file_system.write_file("foo.h", "");
@@ -2187,6 +2208,7 @@ mod tests {
         context
             .database()
             .set_header_inputs(build.id(), &["foo".into()])
+            .await
             .unwrap();
 
         assert_eq!(
@@ -3098,10 +3120,10 @@ mod tests {
             .unwrap();
 
             assert_eq!(
-                context.database().get_outputs().unwrap(),
+                context.database().get_outputs().await.unwrap(),
                 Vec::<String>::new()
             );
-            assert_eq!(context.database().get_source("foo.o").unwrap(), None);
+            assert_eq!(context.database().get_source("foo.o").await.unwrap(), None);
         }
 
         #[tokio::test]

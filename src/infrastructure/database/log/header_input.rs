@@ -257,7 +257,8 @@ fn deserialize_input(index: Index, paths: &[Arc<str>]) -> Option<Arc<str>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use futures::future::try_join_all;
+    use core::{pin::pin, task::Poll};
+    use futures::{future::try_join_all, poll};
     use pretty_assertions::assert_eq;
     use std::fs::{exists, read, write};
     use tempfile::{TempDir, tempdir};
@@ -472,6 +473,46 @@ mod tests {
             &log.get(BuildId::new(1))[0],
             &path_pool.intern("foo")
         ));
+    }
+
+    #[tokio::test]
+    async fn get_header_inputs_during_lock() {
+        let (log, _directory) = open().await;
+
+        log.set(BuildId::new(1), &["foo".into()]).await.unwrap();
+
+        let _lock = log.path_log.lock().await;
+
+        assert_eq!(log.get(BuildId::new(1)), ["foo".into()]);
+    }
+
+    #[tokio::test]
+    async fn set_same_header_inputs_during_lock() {
+        let (log, _directory) = open().await;
+
+        log.set(BuildId::new(1), &["foo".into()]).await.unwrap();
+
+        let _lock = log.path_log.lock().await;
+
+        assert_eq!(
+            poll!(pin!(log.set(BuildId::new(1), &["foo".into()]))),
+            Poll::Ready(Ok(()))
+        );
+    }
+
+    #[tokio::test]
+    async fn wait_for_lock_to_set_header_inputs() {
+        let (log, _directory) = open().await;
+        let lock = log.path_log.lock().await;
+        let inputs = ["foo".into()];
+        let mut future = pin!(log.set(BuildId::new(1), &inputs));
+
+        assert!(poll!(&mut future).is_pending());
+
+        drop(lock);
+
+        assert_eq!(future.await, Ok(()));
+        assert_eq!(log.get(BuildId::new(1)), inputs);
     }
 
     #[tokio::test]

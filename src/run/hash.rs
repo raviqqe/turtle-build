@@ -6,7 +6,7 @@ use crate::{
 };
 use alloc::sync::Arc;
 use core::hash::{Hash, Hasher};
-use rapidhash::fast::RapidHasher;
+use rapidhash::quality::RapidHasher;
 
 pub async fn calculate_timestamp_hash(
     context: &RunContext,

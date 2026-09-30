@@ -1,7 +1,7 @@
 use super::Rule;
 use alloc::sync::Arc;
 use core::hash::{Hash, Hasher};
-use rapidhash::fast::RapidHasher;
+use rapidhash::quality::RapidHasher;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct BuildId(u64);
@@ -94,6 +94,7 @@ impl Build {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use itertools::Itertools;
     use pretty_assertions::{assert_eq, assert_ne};
 
     fn create_build(
@@ -155,6 +156,15 @@ mod tests {
         assert_eq!(
             create_build(vec!["foo".into()], vec![], vec![]).id(),
             create_build(vec!["foo".into()], vec![], vec!["bar".into()]).id()
+        );
+    }
+
+    #[test]
+    fn calculate_distinct_ids_for_similar_outputs() {
+        assert!(
+            (0..1000)
+                .map(|index| create_build(vec![index.to_string().into()], vec![], vec![]).id())
+                .all_unique()
         );
     }
 }

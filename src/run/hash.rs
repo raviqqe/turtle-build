@@ -2,11 +2,11 @@ use super::context::RunContext;
 use crate::{
     build_hash::BuildHash,
     error::BuildError,
-    hash::StableHasher,
     ir::{Build, Rule},
 };
 use alloc::sync::Arc;
 use core::hash::{Hash, Hasher};
+use rapidhash::fast::RapidHasher;
 
 pub async fn calculate_timestamp_hash(
     context: &RunContext,
@@ -18,7 +18,7 @@ pub async fn calculate_timestamp_hash(
         return Ok(hash);
     }
 
-    let mut hasher = StableHasher::default();
+    let mut hasher = RapidHasher::default();
 
     hash_command(build, &mut hasher);
 
@@ -52,7 +52,7 @@ pub async fn calculate_content_hash(
         return Ok(hash);
     }
 
-    let mut hasher = StableHasher::default();
+    let mut hasher = RapidHasher::default();
 
     hash_command(build, &mut hasher);
 
@@ -170,7 +170,7 @@ mod tests {
             SystemTime::UNIX_EPOCH,
             SystemTime::UNIX_EPOCH + Duration::from_secs(1),
         ];
-        let mut hasher = StableHasher::default();
+        let mut hasher = RapidHasher::default();
 
         file_system.write_file("foo.c", "");
         file_system.write_file("foo.h", "");
@@ -230,7 +230,7 @@ mod tests {
             vec![],
             None,
         );
-        let mut hasher = StableHasher::default();
+        let mut hasher = RapidHasher::default();
 
         file_system.write_file("foo.c", "foo");
         file_system.write_file("foo.h", "bar");
@@ -239,7 +239,7 @@ mod tests {
         None::<&HeaderDependency>.hash(&mut hasher);
 
         for content in ["foo", "bar"] {
-            let mut content_hasher = StableHasher::default();
+            let mut content_hasher = RapidHasher::default();
 
             content_hasher.write(content.as_bytes());
             content_hasher.finish().hash(&mut hasher);

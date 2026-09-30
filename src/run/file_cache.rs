@@ -1,10 +1,7 @@
-use crate::{
-    hash::StableHasher,
-    infrastructure::{FileError, FileSystem, Metadata},
-};
+use crate::infrastructure::{FileError, FileSystem, Metadata};
 use alloc::sync::Arc;
 use core::hash::Hasher;
-use rapidhash::fast::RandomState;
+use rapidhash::fast::{RandomState, RapidHasher};
 use scc::HashIndex;
 use tokio::sync::OnceCell;
 
@@ -56,7 +53,7 @@ impl FileCache {
 
     pub async fn content_hash(&self, path: &Arc<str>) -> Result<u64, FileError> {
         Self::get(&self.content_hashes, path, || async {
-            let mut hasher = StableHasher::default();
+            let mut hasher = RapidHasher::default();
 
             hasher.write(&self.file_system.read_file(path.as_ref().as_ref()).await?);
 

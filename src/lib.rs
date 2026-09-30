@@ -9,7 +9,6 @@ mod compile;
 mod context;
 mod error;
 mod file;
-mod hash;
 mod infrastructure;
 mod ir;
 mod job_limit;

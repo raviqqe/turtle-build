@@ -1,7 +1,7 @@
 use super::Rule;
-use crate::hash::StableHasher;
 use alloc::sync::Arc;
 use core::hash::{Hash, Hasher};
+use rapidhash::fast::RapidHasher;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct BuildId(u64);
@@ -82,7 +82,7 @@ impl Build {
     }
 
     fn calculate_id(outputs: &[Arc<str>], implicit_outputs: &[Arc<str>]) -> BuildId {
-        let mut hasher = StableHasher::default();
+        let mut hasher = RapidHasher::default();
 
         outputs.hash(&mut hasher);
         implicit_outputs.hash(&mut hasher);

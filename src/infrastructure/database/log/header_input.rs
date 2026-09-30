@@ -273,7 +273,7 @@ mod tests {
         let _lock = log.path_log.lock().await;
 
         assert_eq!(
-            poll!(pin!(log.set(BuildId::new(1), &["foo".into()]).await)),
+            poll!(pin!(log.set(BuildId::new(1), &["foo".into()]))),
             Poll::Ready(Ok(()))
         );
     }
@@ -283,7 +283,7 @@ mod tests {
         let (log, _directory) = open().await;
         let lock = log.path_log.lock().await;
         let inputs = ["foo".into()];
-        let mut future = pin!(log.set(BuildId::new(1), &inputs).await);
+        let mut future = pin!(log.set(BuildId::new(1), &inputs));
 
         assert!(poll!(&mut future).is_pending());
 

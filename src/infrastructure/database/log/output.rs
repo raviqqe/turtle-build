@@ -63,7 +63,7 @@ impl OutputLog {
             .flatten()
     }
 
-    pub fn set(&self, output: &str, source: Option<&str>) -> Result<(), DatabaseError> {
+    pub async fn set(&self, output: &str, source: Option<&str>) -> Result<(), DatabaseError> {
         if self
             .outputs
             .peek_with(output, |_, value| value.as_deref() != source)
@@ -71,7 +71,7 @@ impl OutputLog {
         {
             (&self.file).write_all(&serialize(output, source))?;
 
-            match self.outputs.entry_sync(output.into()) {
+            match self.outputs.entry_async(output.into()).await {
                 Entry::Occupied(mut entry) => entry.update(source.map(From::from)),
                 Entry::Vacant(entry) => {
                     entry.insert_entry(source.map(From::from));
@@ -106,12 +106,12 @@ fn deserialize(line: &[u8]) -> Result<(&str, Option<&str>), DatabaseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::sync::Arc;
+    use futures::future::try_join_all;
     use pretty_assertions::assert_eq;
-    use std::{
-        fs::{exists, read, write},
-        thread::scope,
-    };
+    use std::fs::{exists, read, write};
     use tempfile::{TempDir, tempdir};
+    use tokio::spawn;
 
     const FILENAME: &str = "log";
 
@@ -166,7 +166,7 @@ mod tests {
     async fn set_output() {
         let (log, _directory) = open().await;
 
-        log.set("foo", None).unwrap();
+        log.set("foo", None).await.unwrap();
 
         assert_eq!(log.get(), ["foo"]);
     }
@@ -182,8 +182,8 @@ mod tests {
     async fn set_outputs() {
         let (log, _directory) = open().await;
 
-        log.set("foo", None).unwrap();
-        log.set("bar", None).unwrap();
+        log.set("foo", None).await.unwrap();
+        log.set("bar", None).await.unwrap();
 
         assert_eq!(get_outputs(&log), ["bar", "foo"]);
     }
@@ -192,8 +192,8 @@ mod tests {
     async fn set_output_twice() {
         let (log, _directory) = open().await;
 
-        log.set("foo", None).unwrap();
-        log.set("foo", None).unwrap();
+        log.set("foo", None).await.unwrap();
+        log.set("foo", None).await.unwrap();
 
         assert_eq!(log.get(), ["foo"]);
     }
@@ -202,7 +202,7 @@ mod tests {
     async fn set_output_in_directory() {
         let (log, _directory) = open().await;
 
-        log.set("foo/bar baz.o", None).unwrap();
+        log.set("foo/bar baz.o", None).await.unwrap();
 
         assert_eq!(log.get(), ["foo/bar baz.o"]);
     }
@@ -211,7 +211,7 @@ mod tests {
     async fn set_output_with_source() {
         let (log, _directory) = open().await;
 
-        log.set("foo", Some("bar")).unwrap();
+        log.set("foo", Some("bar")).await.unwrap();
 
         assert_eq!(log.get(), ["foo"]);
     }
@@ -220,7 +220,7 @@ mod tests {
     async fn get_source() {
         let (log, _directory) = open().await;
 
-        log.set("foo", Some("bar")).unwrap();
+        log.set("foo", Some("bar")).await.unwrap();
 
         assert_eq!(log.get_source("foo"), Some("bar".into()));
     }
@@ -229,7 +229,7 @@ mod tests {
     async fn get_no_source() {
         let (log, _directory) = open().await;
 
-        log.set("foo", None).unwrap();
+        log.set("foo", None).await.unwrap();
 
         assert_eq!(log.get_source("foo"), None);
     }
@@ -238,7 +238,7 @@ mod tests {
     async fn get_no_source_of_missing_output() {
         let (log, _directory) = open().await;
 
-        log.set("foo", Some("bar")).unwrap();
+        log.set("foo", Some("bar")).await.unwrap();
 
         assert_eq!(log.get_source("baz"), None);
     }
@@ -247,8 +247,8 @@ mod tests {
     async fn update_source() {
         let (log, _directory) = open().await;
 
-        log.set("foo", Some("bar")).unwrap();
-        log.set("foo", Some("baz")).unwrap();
+        log.set("foo", Some("bar")).await.unwrap();
+        log.set("foo", Some("baz")).await.unwrap();
 
         assert_eq!(log.get_source("foo"), Some("baz".into()));
     }
@@ -257,8 +257,8 @@ mod tests {
     async fn remove_source() {
         let (log, _directory) = open().await;
 
-        log.set("foo", Some("bar")).unwrap();
-        log.set("foo", None).unwrap();
+        log.set("foo", Some("bar")).await.unwrap();
+        log.set("foo", None).await.unwrap();
 
         assert_eq!(log.get(), ["foo"]);
         assert_eq!(log.get_source("foo"), None);
@@ -268,8 +268,8 @@ mod tests {
     async fn set_sources() {
         let (log, _directory) = open().await;
 
-        log.set("foo", Some("bar")).unwrap();
-        log.set("baz", Some("qux")).unwrap();
+        log.set("foo", Some("bar")).await.unwrap();
+        log.set("baz", Some("qux")).await.unwrap();
 
         assert_eq!(log.get_source("foo"), Some("bar".into()));
         assert_eq!(log.get_source("baz"), Some("qux".into()));
@@ -279,8 +279,8 @@ mod tests {
     async fn set_same_source_of_outputs() {
         let (log, _directory) = open().await;
 
-        log.set("foo", Some("baz")).unwrap();
-        log.set("bar", Some("baz")).unwrap();
+        log.set("foo", Some("baz")).await.unwrap();
+        log.set("bar", Some("baz")).await.unwrap();
 
         assert_eq!(log.get_source("foo"), Some("baz".into()));
         assert_eq!(log.get_source("bar"), Some("baz".into()));
@@ -290,7 +290,9 @@ mod tests {
     async fn set_source_in_directory() {
         let (log, _directory) = open().await;
 
-        log.set("foo/bar baz.o", Some("foo/bar baz.c")).unwrap();
+        log.set("foo/bar baz.o", Some("foo/bar baz.c"))
+            .await
+            .unwrap();
 
         assert_eq!(
             log.get_source("foo/bar baz.o"),
@@ -302,32 +304,32 @@ mod tests {
     async fn set_empty_source() {
         let (log, _directory) = open().await;
 
-        log.set("foo", Some("")).unwrap();
+        log.set("foo", Some("")).await.unwrap();
 
         assert_eq!(log.get_source("foo"), Some("".into()));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn set_outputs_concurrently() {
-        const THREAD_COUNT: usize = 8;
-        const OUTPUT_COUNT: usize = 256;
+        const OUTPUT_COUNT: usize = 1024;
 
         let (log, directory) = open().await;
-        let outputs = (0..THREAD_COUNT * OUTPUT_COUNT)
+        let log = Arc::new(log);
+        let outputs = (0..OUTPUT_COUNT)
             .map(|index| format!("{index:04}"))
             .collect::<Vec<_>>();
 
-        scope(|scope| {
-            for outputs in outputs.chunks(OUTPUT_COUNT) {
-                let log = &log;
+        for result in try_join_all(outputs.iter().map(|output| {
+            let log = log.clone();
+            let output = output.clone();
 
-                scope.spawn(move || {
-                    for output in outputs {
-                        log.set(output, Some(&format!("{output}.c"))).unwrap();
-                    }
-                });
-            }
-        });
+            spawn(async move { log.set(&output, Some(&format!("{output}.c"))).await })
+        }))
+        .await
+        .unwrap()
+        {
+            result.unwrap();
+        }
 
         assert_eq!(get_outputs(&log), outputs);
 
@@ -346,7 +348,7 @@ mod tests {
     async fn write_line() {
         let (log, directory) = open().await;
 
-        log.set("foo", None).unwrap();
+        log.set("foo", None).await.unwrap();
 
         assert_eq!(read_log(&directory), b"foo\n");
     }
@@ -355,7 +357,7 @@ mod tests {
     async fn write_line_with_source() {
         let (log, directory) = open().await;
 
-        log.set("foo", Some("bar")).unwrap();
+        log.set("foo", Some("bar")).await.unwrap();
 
         assert_eq!(read_log(&directory), b"foo\0bar\n");
     }
@@ -364,7 +366,7 @@ mod tests {
     async fn write_line_in_utf8() {
         let (log, directory) = open().await;
 
-        log.set("😄", Some("🚀")).unwrap();
+        log.set("😄", Some("🚀")).await.unwrap();
 
         assert_eq!(
             read_log(&directory),
@@ -376,8 +378,8 @@ mod tests {
     async fn append_lines() {
         let (log, directory) = open().await;
 
-        log.set("foo", None).unwrap();
-        log.set("bar", None).unwrap();
+        log.set("foo", None).await.unwrap();
+        log.set("bar", None).await.unwrap();
 
         assert_eq!(read_log(&directory), b"foo\nbar\n");
     }
@@ -386,8 +388,8 @@ mod tests {
     async fn append_lines_with_sources() {
         let (log, directory) = open().await;
 
-        log.set("foo", Some("bar")).unwrap();
-        log.set("baz", Some("qux")).unwrap();
+        log.set("foo", Some("bar")).await.unwrap();
+        log.set("baz", Some("qux")).await.unwrap();
 
         assert_eq!(read_log(&directory), b"foo\0bar\nbaz\0qux\n");
     }
@@ -396,8 +398,8 @@ mod tests {
     async fn append_line_of_updated_source() {
         let (log, directory) = open().await;
 
-        log.set("foo", Some("bar")).unwrap();
-        log.set("foo", Some("baz")).unwrap();
+        log.set("foo", Some("bar")).await.unwrap();
+        log.set("foo", Some("baz")).await.unwrap();
 
         assert_eq!(read_log(&directory), b"foo\0bar\nfoo\0baz\n");
     }
@@ -406,8 +408,8 @@ mod tests {
     async fn append_line_of_removed_source() {
         let (log, directory) = open().await;
 
-        log.set("foo", Some("bar")).unwrap();
-        log.set("foo", None).unwrap();
+        log.set("foo", Some("bar")).await.unwrap();
+        log.set("foo", None).await.unwrap();
 
         assert_eq!(read_log(&directory), b"foo\0bar\nfoo\n");
     }
@@ -416,9 +418,9 @@ mod tests {
     async fn append_no_line_of_same_output() {
         let (log, directory) = open().await;
 
-        log.set("foo", None).unwrap();
-        log.set("bar", None).unwrap();
-        log.set("foo", None).unwrap();
+        log.set("foo", None).await.unwrap();
+        log.set("bar", None).await.unwrap();
+        log.set("foo", None).await.unwrap();
 
         assert_eq!(read_log(&directory), b"foo\nbar\n");
     }
@@ -427,9 +429,9 @@ mod tests {
     async fn append_no_line_of_same_source() {
         let (log, directory) = open().await;
 
-        log.set("foo", Some("bar")).unwrap();
-        log.set("baz", Some("qux")).unwrap();
-        log.set("foo", Some("bar")).unwrap();
+        log.set("foo", Some("bar")).await.unwrap();
+        log.set("baz", Some("qux")).await.unwrap();
+        log.set("foo", Some("bar")).await.unwrap();
 
         assert_eq!(read_log(&directory), b"foo\0bar\nbaz\0qux\n");
     }
@@ -438,8 +440,8 @@ mod tests {
     async fn reopen_log() {
         let (log, directory) = open().await;
 
-        log.set("foo", None).unwrap();
-        log.set("bar", None).unwrap();
+        log.set("foo", None).await.unwrap();
+        log.set("bar", None).await.unwrap();
 
         drop(log);
 
@@ -450,8 +452,8 @@ mod tests {
     async fn reopen_log_with_sources() {
         let (log, directory) = open().await;
 
-        log.set("foo", Some("bar")).unwrap();
-        log.set("baz", Some("qux")).unwrap();
+        log.set("foo", Some("bar")).await.unwrap();
+        log.set("baz", Some("qux")).await.unwrap();
 
         drop(log);
 
@@ -466,8 +468,8 @@ mod tests {
     async fn reopen_log_with_updated_source() {
         let (log, directory) = open().await;
 
-        log.set("foo", Some("bar")).unwrap();
-        log.set("foo", Some("baz")).unwrap();
+        log.set("foo", Some("bar")).await.unwrap();
+        log.set("foo", Some("baz")).await.unwrap();
 
         drop(log);
 
@@ -481,8 +483,8 @@ mod tests {
     async fn reopen_log_with_removed_source() {
         let (log, directory) = open().await;
 
-        log.set("foo", Some("bar")).unwrap();
-        log.set("foo", None).unwrap();
+        log.set("foo", Some("bar")).await.unwrap();
+        log.set("foo", None).await.unwrap();
 
         drop(log);
 
@@ -496,7 +498,7 @@ mod tests {
     async fn reopen_log_in_utf8() {
         let (log, directory) = open().await;
 
-        log.set("😄", Some("🚀")).unwrap();
+        log.set("😄", Some("🚀")).await.unwrap();
 
         drop(log);
 
@@ -519,7 +521,7 @@ mod tests {
     async fn reopen_log_with_empty_source() {
         let (log, directory) = open().await;
 
-        log.set("foo", Some("")).unwrap();
+        log.set("foo", Some("")).await.unwrap();
 
         drop(log);
 
@@ -542,11 +544,15 @@ mod tests {
     async fn append_lines_after_reopen() {
         let (log, directory) = open().await;
 
-        log.set("foo", None).unwrap();
+        log.set("foo", None).await.unwrap();
 
         drop(log);
 
-        reopen(&directory).await.set("bar", Some("baz")).unwrap();
+        reopen(&directory)
+            .await
+            .set("bar", Some("baz"))
+            .await
+            .unwrap();
 
         assert_eq!(read_log(&directory), b"foo\nbar\0baz\n");
     }
@@ -555,11 +561,15 @@ mod tests {
     async fn append_line_of_updated_source_after_reopen() {
         let (log, directory) = open().await;
 
-        log.set("foo", Some("bar")).unwrap();
+        log.set("foo", Some("bar")).await.unwrap();
 
         drop(log);
 
-        reopen(&directory).await.set("foo", Some("baz")).unwrap();
+        reopen(&directory)
+            .await
+            .set("foo", Some("baz"))
+            .await
+            .unwrap();
 
         assert_eq!(read_log(&directory), b"foo\0bar\nfoo\0baz\n");
     }
@@ -568,11 +578,11 @@ mod tests {
     async fn append_no_line_of_same_output_after_reopen() {
         let (log, directory) = open().await;
 
-        log.set("foo", None).unwrap();
+        log.set("foo", None).await.unwrap();
 
         drop(log);
 
-        reopen(&directory).await.set("foo", None).unwrap();
+        reopen(&directory).await.set("foo", None).await.unwrap();
 
         assert_eq!(read_log(&directory), b"foo\n");
     }
@@ -581,11 +591,15 @@ mod tests {
     async fn append_no_line_of_same_source_after_reopen() {
         let (log, directory) = open().await;
 
-        log.set("foo", Some("bar")).unwrap();
+        log.set("foo", Some("bar")).await.unwrap();
 
         drop(log);
 
-        reopen(&directory).await.set("foo", Some("bar")).unwrap();
+        reopen(&directory)
+            .await
+            .set("foo", Some("bar"))
+            .await
+            .unwrap();
 
         assert_eq!(read_log(&directory), b"foo\0bar\n");
     }
@@ -699,7 +713,7 @@ mod tests {
             let (log, directory) = open().await;
 
             for source in ["bar", "baz", "bar", "baz"] {
-                log.set("foo", Some(source)).unwrap();
+                log.set("foo", Some(source)).await.unwrap();
             }
 
             drop(log);
@@ -721,7 +735,7 @@ mod tests {
 
             write_log(&directory, "foo\nfoo\nfoo\nfoo\n");
 
-            reopen(&directory).await.set("bar", None).unwrap();
+            reopen(&directory).await.set("bar", None).await.unwrap();
 
             assert_eq!(read_log(&directory), b"foo\nbar\n");
         }
@@ -850,7 +864,7 @@ mod tests {
 
             write_log(&directory, "foo\nba");
 
-            reopen(&directory).await.set("bar", None).unwrap();
+            reopen(&directory).await.set("bar", None).await.unwrap();
 
             assert_eq!(read_log(&directory), b"foo\nbar\n");
             assert_eq!(get_outputs(&reopen(&directory).await), ["bar", "foo"]);

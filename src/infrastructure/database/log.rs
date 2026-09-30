@@ -55,7 +55,7 @@ impl Database for LogDatabase {
     }
 
     async fn set_hash(&self, id: BuildId, hash: BuildHash) -> Result<(), DatabaseError> {
-        self.hash_log.set(id, hash)
+        self.hash_log.set(id, hash).await
     }
 
     async fn get_header_inputs(&self, id: BuildId) -> Result<Vec<Arc<str>>, DatabaseError> {
@@ -75,7 +75,7 @@ impl Database for LogDatabase {
     }
 
     async fn set_output(&self, path: &str, source: Option<&str>) -> Result<(), DatabaseError> {
-        self.output_log.set(path, source)
+        self.output_log.set(path, source).await
     }
 
     async fn get_source(&self, output: &str) -> Result<Option<String>, DatabaseError> {

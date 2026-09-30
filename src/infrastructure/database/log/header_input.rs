@@ -56,7 +56,7 @@ impl HeaderInputLog {
 
         let indices = self.path_log.lock().await.index(inputs)?;
 
-        self.index_log.set(id, inputs, &indices)
+        self.index_log.set(id, inputs, &indices).await
     }
 }
 

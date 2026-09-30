@@ -1,5 +1,5 @@
 use super::Rule;
-use crate::stable_hasher::StableHasher;
+use crate::hash::StableHasher;
 use alloc::sync::Arc;
 use core::hash::{Hash, Hasher};
 

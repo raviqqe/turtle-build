@@ -2,8 +2,8 @@ use super::context::RunContext;
 use crate::{
     build_hash::BuildHash,
     error::BuildError,
+    hash::StableHasher,
     ir::{Build, Rule},
-    stable_hasher::StableHasher,
 };
 use alloc::sync::Arc;
 use core::hash::{Hash, Hasher};

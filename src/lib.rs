@@ -9,6 +9,7 @@ mod compile;
 mod context;
 mod error;
 mod file;
+mod hash;
 mod infrastructure;
 mod ir;
 mod job_limit;
@@ -16,7 +17,6 @@ mod module_dependency;
 mod parse;
 mod path_pool;
 mod run;
-mod stable_hasher;
 mod tool;
 
 pub use self::{

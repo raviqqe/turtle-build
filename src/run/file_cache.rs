@@ -1,6 +1,6 @@
 use crate::{
+    hash::StableHasher,
     infrastructure::{FileError, FileSystem, Metadata},
-    stable_hasher::StableHasher,
 };
 use alloc::sync::Arc;
 use core::hash::Hasher;

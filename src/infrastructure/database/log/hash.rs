@@ -45,10 +45,10 @@ impl HashLog {
         self.hashes.peek_with(&id, |_, hash| *hash)
     }
 
-    pub fn set(&self, id: BuildId, hash: BuildHash) -> Result<(), DatabaseError> {
+    pub async fn set(&self, id: BuildId, hash: BuildHash) -> Result<(), DatabaseError> {
         (&self.file).write_all(serialize(id, hash).as_flattened())?;
 
-        match self.hashes.entry_sync(id) {
+        match self.hashes.entry_async(id).await {
             Entry::Occupied(mut entry) => entry.update(hash),
             Entry::Vacant(entry) => {
                 entry.insert_entry(hash);
@@ -77,12 +77,12 @@ const fn deserialize([id, timestamp, content]: Record) -> (BuildId, BuildHash) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::sync::Arc;
+    use futures::future::try_join_all;
     use pretty_assertions::assert_eq;
-    use std::{
-        fs::{exists, read, write},
-        thread::scope,
-    };
+    use std::fs::{exists, read, write};
     use tempfile::{TempDir, tempdir};
+    use tokio::spawn;
 
     const FILENAME: &str = "log";
 
@@ -121,7 +121,9 @@ mod tests {
     async fn hash() {
         let (log, _directory) = open().await;
 
-        log.set(BuildId::new(0), BuildHash::new(1, 2)).unwrap();
+        log.set(BuildId::new(0), BuildHash::new(1, 2))
+            .await
+            .unwrap();
 
         assert_eq!(log.get(BuildId::new(0)), Some(BuildHash::new(1, 2)));
     }
@@ -130,7 +132,9 @@ mod tests {
     async fn get_no_hash() {
         let (log, _directory) = open().await;
 
-        log.set(BuildId::new(0), BuildHash::new(1, 2)).unwrap();
+        log.set(BuildId::new(0), BuildHash::new(1, 2))
+            .await
+            .unwrap();
 
         assert_eq!(log.get(BuildId::new(1)), None);
     }
@@ -139,39 +143,42 @@ mod tests {
     async fn update_hash() {
         let (log, _directory) = open().await;
 
-        log.set(BuildId::new(0), BuildHash::new(1, 2)).unwrap();
-        log.set(BuildId::new(0), BuildHash::new(3, 4)).unwrap();
+        log.set(BuildId::new(0), BuildHash::new(1, 2))
+            .await
+            .unwrap();
+        log.set(BuildId::new(0), BuildHash::new(3, 4))
+            .await
+            .unwrap();
 
         assert_eq!(log.get(BuildId::new(0)), Some(BuildHash::new(3, 4)));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn set_hashes_concurrently() {
-        const THREAD_COUNT: u64 = 8;
-        const BUILD_COUNT: u64 = 256;
+        const BUILD_COUNT: u64 = 1024;
 
         let (log, directory) = open().await;
+        let log = Arc::new(log);
 
-        scope(|scope| {
-            for thread in 0..THREAD_COUNT {
-                let log = &log;
+        for result in try_join_all((0..BUILD_COUNT).map(|id| {
+            let log = log.clone();
 
-                scope.spawn(move || {
-                    for build in 0..BUILD_COUNT {
-                        let id = BUILD_COUNT * thread + build;
-
-                        log.set(BuildId::new(id), BuildHash::new(id + 1, id + 2))
-                            .unwrap();
-                    }
-                });
-            }
-        });
+            spawn(async move {
+                log.set(BuildId::new(id), BuildHash::new(id + 1, id + 2))
+                    .await
+            })
+        }))
+        .await
+        .unwrap()
+        {
+            result.unwrap();
+        }
 
         drop(log);
 
         let log = reopen(&directory).await;
 
-        for id in 0..THREAD_COUNT * BUILD_COUNT {
+        for id in 0..BUILD_COUNT {
             assert_eq!(
                 log.get(BuildId::new(id)),
                 Some(BuildHash::new(id + 1, id + 2))
@@ -183,7 +190,9 @@ mod tests {
     async fn write_record() {
         let (log, directory) = open().await;
 
-        log.set(BuildId::new(1), BuildHash::new(2, 3)).unwrap();
+        log.set(BuildId::new(1), BuildHash::new(2, 3))
+            .await
+            .unwrap();
 
         assert_eq!(
             read_log(&directory),
@@ -204,6 +213,7 @@ mod tests {
             BuildId::new(0x0102_0304_0506_0708),
             BuildHash::new(0x1112_1314_1516_1718, 0x2122_2324_2526_2728),
         )
+        .await
         .unwrap();
 
         assert_eq!(
@@ -221,9 +231,15 @@ mod tests {
     async fn append_records() {
         let (log, directory) = open().await;
 
-        log.set(BuildId::new(0), BuildHash::new(1, 2)).unwrap();
-        log.set(BuildId::new(3), BuildHash::new(4, 5)).unwrap();
-        log.set(BuildId::new(0), BuildHash::new(6, 7)).unwrap();
+        log.set(BuildId::new(0), BuildHash::new(1, 2))
+            .await
+            .unwrap();
+        log.set(BuildId::new(3), BuildHash::new(4, 5))
+            .await
+            .unwrap();
+        log.set(BuildId::new(0), BuildHash::new(6, 7))
+            .await
+            .unwrap();
 
         assert_eq!(
             read_log(&directory),
@@ -241,8 +257,12 @@ mod tests {
     async fn reopen_log() {
         let (log, directory) = open().await;
 
-        log.set(BuildId::new(0), BuildHash::new(1, 2)).unwrap();
-        log.set(BuildId::new(3), BuildHash::new(4, 5)).unwrap();
+        log.set(BuildId::new(0), BuildHash::new(1, 2))
+            .await
+            .unwrap();
+        log.set(BuildId::new(3), BuildHash::new(4, 5))
+            .await
+            .unwrap();
 
         drop(log);
 
@@ -256,8 +276,12 @@ mod tests {
     async fn reopen_log_with_updated_hash() {
         let (log, directory) = open().await;
 
-        log.set(BuildId::new(0), BuildHash::new(1, 2)).unwrap();
-        log.set(BuildId::new(0), BuildHash::new(3, 4)).unwrap();
+        log.set(BuildId::new(0), BuildHash::new(1, 2))
+            .await
+            .unwrap();
+        log.set(BuildId::new(0), BuildHash::new(3, 4))
+            .await
+            .unwrap();
 
         drop(log);
 
@@ -271,13 +295,16 @@ mod tests {
     async fn append_records_after_reopen() {
         let (log, directory) = open().await;
 
-        log.set(BuildId::new(0), BuildHash::new(1, 2)).unwrap();
+        log.set(BuildId::new(0), BuildHash::new(1, 2))
+            .await
+            .unwrap();
 
         drop(log);
 
         reopen(&directory)
             .await
             .set(BuildId::new(3), BuildHash::new(4, 5))
+            .await
             .unwrap();
 
         assert_eq!(
@@ -377,6 +404,7 @@ mod tests {
 
             for hash in 0..4 {
                 log.set(BuildId::new(0), BuildHash::new(hash, hash))
+                    .await
                     .unwrap();
             }
 
@@ -410,6 +438,7 @@ mod tests {
             reopen(&directory)
                 .await
                 .set(BuildId::new(9), BuildHash::new(10, 11))
+                .await
                 .unwrap();
 
             assert_eq!(
@@ -524,6 +553,7 @@ mod tests {
             reopen(&directory)
                 .await
                 .set(BuildId::new(3), BuildHash::new(4, 5))
+                .await
                 .unwrap();
 
             let log = reopen(&directory).await;

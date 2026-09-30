@@ -56,7 +56,7 @@ impl HeaderInputLog {
 
         let indices = self.path_log.lock().await.index(inputs)?;
 
-        self.index_log.set(id, inputs, &indices)
+        self.index_log.set(id, inputs, &indices).await
     }
 }
 
@@ -273,7 +273,7 @@ mod tests {
         let _lock = log.path_log.lock().await;
 
         assert_eq!(
-            poll!(pin!(log.set(BuildId::new(1), &["foo".into()]))),
+            poll!(pin!(log.set(BuildId::new(1), &["foo".into()]).await)),
             Poll::Ready(Ok(()))
         );
     }
@@ -283,7 +283,7 @@ mod tests {
         let (log, _directory) = open().await;
         let lock = log.path_log.lock().await;
         let inputs = ["foo".into()];
-        let mut future = pin!(log.set(BuildId::new(1), &inputs));
+        let mut future = pin!(log.set(BuildId::new(1), &inputs).await);
 
         assert!(poll!(&mut future).is_pending());
 

@@ -70,7 +70,7 @@ impl IndexLog {
             .unwrap_or_default()
     }
 
-    pub fn set(
+    pub async fn set(
         &self,
         id: BuildId,
         inputs: &[Arc<str>],
@@ -84,7 +84,7 @@ impl IndexLog {
                 .collect::<Vec<_>>(),
         )?)?;
 
-        match self.inputs.entry_sync(id) {
+        match self.inputs.entry_async(id).await {
             Entry::Occupied(mut entry) => entry.update(inputs.into()),
             Entry::Vacant(entry) => {
                 entry.insert_entry(inputs.into());
@@ -123,12 +123,11 @@ fn deserialize_input(index: Index, paths: &[Arc<str>]) -> Option<Arc<str>> {
 #[cfg(test)]
 mod tests {
     use super::{super::super::utility::open_file, *};
+    use futures::future::try_join_all;
     use pretty_assertions::assert_eq;
-    use std::{
-        fs::{exists, read, write},
-        thread::scope,
-    };
+    use std::fs::{exists, read, write};
     use tempfile::{TempDir, tempdir};
+    use tokio::spawn;
 
     const FILENAME: &str = "log";
 
@@ -194,6 +193,7 @@ mod tests {
         let (log, _directory) = open(&[]).await;
 
         log.set(BuildId::new(1), &["foo".into(), "bar".into()], &[0, 1])
+            .await
             .unwrap();
 
         assert_eq!(log.get(BuildId::new(1)), ["foo".into(), "bar".into()]);
@@ -203,7 +203,9 @@ mod tests {
     async fn get_no_header_inputs() {
         let (log, _directory) = open(&[]).await;
 
-        log.set(BuildId::new(1), &["foo".into()], &[0]).unwrap();
+        log.set(BuildId::new(1), &["foo".into()], &[0])
+            .await
+            .unwrap();
 
         assert_eq!(log.get(BuildId::new(2)), Vec::<Arc<str>>::new());
     }
@@ -213,8 +215,10 @@ mod tests {
         let (log, _directory) = open(&[]).await;
 
         log.set(BuildId::new(1), &["foo".into(), "bar".into()], &[0, 1])
+            .await
             .unwrap();
         log.set(BuildId::new(1), &["bar".into(), "baz".into()], &[1, 2])
+            .await
             .unwrap();
 
         assert_eq!(log.get(BuildId::new(1)), ["bar".into(), "baz".into()]);
@@ -224,8 +228,10 @@ mod tests {
     async fn update_header_inputs_to_none() {
         let (log, _directory) = open(&[]).await;
 
-        log.set(BuildId::new(1), &["foo".into()], &[0]).unwrap();
-        log.set(BuildId::new(1), &[], &[]).unwrap();
+        log.set(BuildId::new(1), &["foo".into()], &[0])
+            .await
+            .unwrap();
+        log.set(BuildId::new(1), &[], &[]).await.unwrap();
 
         assert_eq!(log.get(BuildId::new(1)), Vec::<Arc<str>>::new());
     }
@@ -235,18 +241,19 @@ mod tests {
         let (log, _directory) = open(&[]).await;
 
         log.set(BuildId::new(1), &["foo".into(), "bar".into()], &[0, 1])
+            .await
             .unwrap();
         log.set(BuildId::new(2), &["bar".into(), "baz".into()], &[1, 2])
+            .await
             .unwrap();
 
         assert_eq!(log.get(BuildId::new(1)), ["foo".into(), "bar".into()]);
         assert_eq!(log.get(BuildId::new(2)), ["bar".into(), "baz".into()]);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn set_header_inputs_concurrently() {
-        const THREAD_COUNT: u64 = 8;
-        const BUILD_COUNT: u64 = 256;
+        const BUILD_COUNT: u64 = 1024;
         const PATHS: [&str; 3] = ["foo", "bar", "baz"];
 
         fn indices(id: u64) -> [u32; 2] {
@@ -258,27 +265,24 @@ mod tests {
         }
 
         let (log, directory) = open(&PATHS).await;
+        let log = Arc::new(log);
 
-        scope(|scope| {
-            for thread in 0..THREAD_COUNT {
-                let log = &log;
+        for result in try_join_all((0..BUILD_COUNT).map(|id| {
+            let log = log.clone();
 
-                scope.spawn(move || {
-                    for build in 0..BUILD_COUNT {
-                        let id = BUILD_COUNT * thread + build;
-
-                        log.set(BuildId::new(id), &inputs(id), &indices(id))
-                            .unwrap();
-                    }
-                });
-            }
-        });
+            spawn(async move { log.set(BuildId::new(id), &inputs(id), &indices(id)).await })
+        }))
+        .await
+        .unwrap()
+        {
+            result.unwrap();
+        }
 
         drop(log);
 
         let log = reopen(&directory, &PATHS).await;
 
-        for id in 0..THREAD_COUNT * BUILD_COUNT {
+        for id in 0..BUILD_COUNT {
             assert_eq!(log.get(BuildId::new(id)), inputs(id));
         }
     }
@@ -288,6 +292,7 @@ mod tests {
         let (log, directory) = open(&[]).await;
 
         log.set(BuildId::new(1), &["foo".into(), "bar".into()], &[0, 1])
+            .await
             .unwrap();
 
         assert_eq!(
@@ -313,6 +318,7 @@ mod tests {
             &vec!["foo".into(); INPUT_COUNT],
             &vec![0x1112_1314; INPUT_COUNT],
         )
+        .await
         .unwrap();
 
         assert_eq!(
@@ -330,7 +336,7 @@ mod tests {
     async fn write_record_of_no_header_input() {
         let (log, directory) = open(&[]).await;
 
-        log.set(BuildId::new(1), &[], &[]).unwrap();
+        log.set(BuildId::new(1), &[], &[]).await.unwrap();
 
         assert_eq!(
             read_log(&directory),
@@ -342,10 +348,15 @@ mod tests {
     async fn write_records() {
         let (log, directory) = open(&[]).await;
 
-        log.set(BuildId::new(1), &["foo".into()], &[0]).unwrap();
-        log.set(BuildId::new(2), &["foo".into(), "bar".into()], &[0, 1])
+        log.set(BuildId::new(1), &["foo".into()], &[0])
+            .await
             .unwrap();
-        log.set(BuildId::new(1), &["bar".into()], &[1]).unwrap();
+        log.set(BuildId::new(2), &["foo".into(), "bar".into()], &[0, 1])
+            .await
+            .unwrap();
+        log.set(BuildId::new(1), &["bar".into()], &[1])
+            .await
+            .unwrap();
 
         assert_eq!(
             read_log(&directory),
@@ -370,6 +381,7 @@ mod tests {
         let (log, directory) = open(&[]).await;
 
         log.set(BuildId::new(1), &["foo".into(), "bar".into()], &[0, 1])
+            .await
             .unwrap();
 
         drop(log);
@@ -443,6 +455,7 @@ mod tests {
         reopen(&directory, &["foo"])
             .await
             .set(BuildId::new(2), &["bar".into(), "foo".into()], &[1, 0])
+            .await
             .unwrap();
 
         assert_eq!(
@@ -468,7 +481,11 @@ mod tests {
 
         log.file = File::open(directory.path().join(FILENAME)).unwrap();
 
-        assert!(log.set(BuildId::new(1), &["foo".into()], &[0]).is_err());
+        assert!(
+            log.set(BuildId::new(1), &["foo".into()], &[0])
+                .await
+                .is_err()
+        );
         assert_eq!(log.get(BuildId::new(1)), Vec::<Arc<str>>::new());
         assert_eq!(read_log(&directory), b"");
     }
@@ -479,10 +496,15 @@ mod tests {
 
         log.file = File::open(directory.path().join(FILENAME)).unwrap();
 
-        assert!(log.set(BuildId::new(1), &["foo".into()], &[0]).is_err());
+        assert!(
+            log.set(BuildId::new(1), &["foo".into()], &[0])
+                .await
+                .is_err()
+        );
 
         log.file = open_file(&directory.path().join(FILENAME)).await.unwrap();
         log.set(BuildId::new(2), &["bar".into(), "foo".into()], &[1, 0])
+            .await
             .unwrap();
 
         assert_eq!(log.get(BuildId::new(1)), Vec::<Arc<str>>::new());
@@ -582,7 +604,9 @@ mod tests {
             let (log, directory) = open(&[]).await;
 
             for index in [0, 1, 0, 1] {
-                log.set(BuildId::new(1), &["foo".into()], &[index]).unwrap();
+                log.set(BuildId::new(1), &["foo".into()], &[index])
+                    .await
+                    .unwrap();
             }
 
             drop(log);
@@ -613,6 +637,7 @@ mod tests {
             reopen(&directory, &["foo", "bar"])
                 .await
                 .set(BuildId::new(2), &["baz".into(), "foo".into()], &[2, 0])
+                .await
                 .unwrap();
 
             assert_eq!(
@@ -745,6 +770,7 @@ mod tests {
             reopen(&directory, &["foo"])
                 .await
                 .set(BuildId::new(3), &["bar".into(), "foo".into()], &[1, 0])
+                .await
                 .unwrap();
 
             assert_eq!(
@@ -822,6 +848,7 @@ mod tests {
             reopen(&directory, &["foo"])
                 .await
                 .set(BuildId::new(3), &["bar".into()], &[1])
+                .await
                 .unwrap();
 
             assert_eq!(

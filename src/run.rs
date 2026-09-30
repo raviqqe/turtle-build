@@ -23,12 +23,19 @@ use crate::{
 };
 use alloc::sync::Arc;
 use async_recursion::async_recursion;
-use futures::future::{FutureExt, try_join_all};
+use futures::{
+    StreamExt, TryStreamExt,
+    future::{FutureExt, ready, try_join_all},
+    stream,
+};
 use itertools::Itertools;
 pub use options::RunOptions;
 use rapidhash::RapidHashMap;
 use std::{path::Path, process::Output};
 use tokio::{spawn, sync::MutexGuard, time::Instant, try_join};
+
+// Only this many requested outputs are started at once so that finished builds free their tasks.
+const OUTPUT_CONCURRENCY: usize = 256;
 
 /// Runs builds.
 pub async fn run(
@@ -64,7 +71,7 @@ pub async fn run(
         return Err(map_build_graph_error(&context, &error).await);
     }
 
-    try_join_all(
+    stream::iter(
         if outputs.is_empty() {
             context
                 .config()
@@ -93,6 +100,8 @@ pub async fn run(
         .into_iter()
         .map(|build| run_build(context.clone(), build)),
     )
+    .buffer_unordered(OUTPUT_CONCURRENCY)
+    .try_for_each(|_| ready(Ok(())))
     .await?;
 
     Ok(())
@@ -768,6 +777,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn build_more_outputs_than_concurrency_limit() {
+        let command_runner = FakeCommandRunner::default();
+        let outputs = (0..=OUTPUT_CONCURRENCY)
+            .map(|index| index.to_string())
+            .collect::<Vec<_>>();
+
+        run(
+            &create_context(&command_runner, &Default::default(), &Default::default()),
+            create_simple_config(
+                outputs
+                    .iter()
+                    .map(|output| {
+                        explicit_build(
+                            vec![output.as_str().into()],
+                            Rule::new(format!("touch {output}"), None),
+                            vec![],
+                        )
+                    })
+                    .collect(),
+                &[],
+            ),
+            &outputs,
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            command_runner.commands().into_iter().sorted().collect_vec(),
+            outputs
+                .iter()
+                .map(|output| format!("touch {output}"))
+                .sorted()
+                .collect_vec()
+        );
+    }
+
+    #[tokio::test]
     async fn fail_with_unknown_default_output() {
         assert_eq!(
             run(
@@ -829,6 +876,37 @@ mod tests {
         yield_now().await;
 
         assert_eq!(command_runner.commands(), Vec::<String>::new());
+    }
+
+    #[tokio::test]
+    async fn fail_to_build_one_of_outputs() {
+        let command_runner =
+            FakeCommandRunner::new([("exit 1".into(), failed_output())].into_iter().collect());
+
+        assert_eq!(
+            run(
+                &create_context(&command_runner, &Default::default(), &Default::default()),
+                create_simple_config(
+                    vec![
+                        explicit_build(
+                            vec!["foo".into()],
+                            Rule::new("touch foo".into(), None),
+                            vec![],
+                        ),
+                        explicit_build(
+                            vec!["bar".into()],
+                            Rule::new("exit 1".into(), None),
+                            vec![],
+                        ),
+                    ],
+                    &["foo", "bar"],
+                ),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await,
+            Err(BuildError::Build)
+        );
     }
 
     #[tokio::test]

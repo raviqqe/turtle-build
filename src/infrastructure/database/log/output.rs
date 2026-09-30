@@ -35,13 +35,13 @@ impl OutputLog {
                         .map(|(output, source)| serialize(output, source.as_deref()).len())
                         .sum::<usize>()
         {
-            // Do not inline this to avoid holding a guard across an await point.
-            let bytes = outputs
-                .iter(&Guard::new())
-                .flat_map(|(output, source)| serialize(output, source.as_deref()))
-                .collect::<Vec<_>>();
-
-            compact_file(path, bytes)?;
+            compact_file(
+                path,
+                outputs
+                    .iter(&Guard::new())
+                    .flat_map(|(output, source)| serialize(output, source.as_deref()))
+                    .collect(),
+            )?;
         }
 
         Ok(Self {

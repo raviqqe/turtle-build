@@ -25,14 +25,14 @@ impl HashLog {
         if !bytes.len().is_multiple_of(size_of::<Record>())
             || bytes.len() > COMPACTION_RATIO * size_of::<Record>() * hashes.len()
         {
-            // Do not inline this to avoid holding a guard across an await point.
-            let bytes = hashes
-                .iter(&Guard::new())
-                .flat_map(|(&id, &hash)| serialize(id, hash))
-                .flatten()
-                .collect::<Vec<_>>();
-
-            compact_file(path, bytes)?;
+            compact_file(
+                path,
+                hashes
+                    .iter(&Guard::new())
+                    .flat_map(|(&id, &hash)| serialize(id, hash))
+                    .flatten()
+                    .collect(),
+            )?;
         }
 
         Ok(Self {

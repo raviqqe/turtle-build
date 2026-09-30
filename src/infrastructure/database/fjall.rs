@@ -13,7 +13,6 @@ use rkyv::{Archived, access, from_bytes, rancor, to_bytes};
 const HASH_TAG: u8 = 0;
 const HEADER_DEPENDENCY_TAG: u8 = 1;
 const OUTPUT_TAG: u8 = 2;
-const SOURCE_TAG: u8 = 3;
 
 /// A Fjall database.
 pub struct FjallDatabase {
@@ -95,19 +94,20 @@ impl Database for FjallDatabase {
             .collect::<Result<_, _>>()
     }
 
-    async fn set_output(&self, path: &str) -> Result<(), DatabaseError> {
-        self.insert(&key(OUTPUT_TAG, path.as_bytes()), &[])
+    async fn set_output(&self, path: &str, source: Option<&str>) -> Result<(), DatabaseError> {
+        self.insert(
+            &key(OUTPUT_TAG, path.as_bytes()),
+            &to_bytes::<rancor::Error>(&source.map(String::from))?,
+        )
     }
 
     async fn get_source(&self, output: &str) -> Result<Option<String>, DatabaseError> {
-        self.keyspace
-            .get(key(SOURCE_TAG, output.as_bytes()))?
-            .map(|source| Ok::<_, DatabaseError>(str::from_utf8(&source)?.into()))
-            .transpose()
-    }
-
-    async fn set_source(&self, output: &str, source: &str) -> Result<(), DatabaseError> {
-        self.insert(&key(SOURCE_TAG, output.as_bytes()), source.as_bytes())
+        Ok(self
+            .keyspace
+            .get(key(OUTPUT_TAG, output.as_bytes()))?
+            .map(|value| from_bytes::<Option<String>, rancor::Error>(&value))
+            .transpose()?
+            .flatten())
     }
 }
 
@@ -198,14 +198,14 @@ mod tests {
     async fn set_output() {
         let (database, _fjall) = open(tempdir().unwrap().path());
 
-        database.set_output("foo").await.unwrap();
+        database.set_output("foo", None).await.unwrap();
     }
 
     #[tokio::test]
     async fn get_output() {
         let (database, _fjall) = open(tempdir().unwrap().path());
 
-        database.set_output("foo").await.unwrap();
+        database.set_output("foo", None).await.unwrap();
 
         assert_eq!(database.get_outputs().await.unwrap(), vec!["foo"]);
     }
@@ -214,8 +214,7 @@ mod tests {
     async fn get_output_with_source() {
         let (database, _fjall) = open(tempdir().unwrap().path());
 
-        database.set_output("foo").await.unwrap();
-        database.set_source("foo", "bar").await.unwrap();
+        database.set_output("foo", Some("bar")).await.unwrap();
 
         assert_eq!(database.get_outputs().await.unwrap(), vec!["foo"]);
     }
@@ -320,22 +319,56 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_source() {
-        let (database, _fjall) = open(tempdir().unwrap().path());
-
-        database.set_source("foo", "bar").await.unwrap();
-    }
-
-    #[tokio::test]
     async fn get_source() {
         let (database, _fjall) = open(tempdir().unwrap().path());
 
-        database.set_source("foo", "bar").await.unwrap();
+        database.set_output("foo", Some("bar")).await.unwrap();
 
         assert_eq!(
             database.get_source("foo").await.unwrap(),
             Some("bar".into())
         );
+    }
+
+    #[tokio::test]
+    async fn get_no_source() {
+        let (database, _fjall) = open(tempdir().unwrap().path());
+
+        database.set_output("foo", None).await.unwrap();
+
+        assert_eq!(database.get_source("foo").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn update_source() {
+        let (database, _fjall) = open(tempdir().unwrap().path());
+
+        database.set_output("foo", Some("bar")).await.unwrap();
+        database.set_output("foo", Some("baz")).await.unwrap();
+
+        assert_eq!(
+            database.get_source("foo").await.unwrap(),
+            Some("baz".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn remove_source() {
+        let (database, _fjall) = open(tempdir().unwrap().path());
+
+        database.set_output("foo", Some("bar")).await.unwrap();
+        database.set_output("foo", None).await.unwrap();
+
+        assert_eq!(database.get_source("foo").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn fail_to_get_invalid_source() {
+        let (database, _fjall) = open(tempdir().unwrap().path());
+
+        database.insert(&key(OUTPUT_TAG, b"foo"), &[0]).unwrap();
+
+        assert!(database.get_source("foo").await.is_err());
     }
 
     #[tokio::test]
@@ -352,8 +385,7 @@ mod tests {
             .set_header_inputs(BuildId::new(0), &["foo".into()])
             .await
             .unwrap();
-        database.set_output("foo").await.unwrap();
-        database.set_source("foo", "bar").await.unwrap();
+        database.set_output("foo", Some("bar")).await.unwrap();
 
         drop(database);
         drop(fjall);

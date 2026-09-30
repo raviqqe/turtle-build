@@ -1,10 +1,9 @@
 mod hash;
 mod header_input;
 mod output;
-mod source;
 mod utility;
 
-use self::{hash::HashLog, header_input::HeaderInputLog, output::OutputLog, source::SourceLog};
+use self::{hash::HashLog, header_input::HeaderInputLog, output::OutputLog};
 use crate::{
     build_hash::BuildHash,
     infrastructure::{Database, DatabaseError},
@@ -19,14 +18,12 @@ use tokio::{fs::create_dir_all, try_join};
 const HASH_FILENAME: &str = "hashes";
 const HEADER_INPUT_DIRECTORY: &str = "header_inputs";
 const OUTPUT_FILENAME: &str = "outputs";
-const SOURCE_FILENAME: &str = "sources";
 
 /// A log database.
 pub struct LogDatabase {
     hash_log: HashLog,
     header_input_log: HeaderInputLog,
     output_log: OutputLog,
-    source_log: SourceLog,
 }
 
 impl LogDatabase {
@@ -37,19 +34,16 @@ impl LogDatabase {
         let hash_path = directory.join(HASH_FILENAME);
         let header_input_path = directory.join(HEADER_INPUT_DIRECTORY);
         let output_path = directory.join(OUTPUT_FILENAME);
-        let source_path = directory.join(SOURCE_FILENAME);
-        let (hash_log, header_input_log, output_log, source_log) = try_join!(
+        let (hash_log, header_input_log, output_log) = try_join!(
             HashLog::new(&hash_path),
             HeaderInputLog::new(&header_input_path, path_pool),
-            OutputLog::new(&output_path),
-            SourceLog::new(&source_path)
+            OutputLog::new(&output_path)
         )?;
 
         Ok(Self {
             hash_log,
             header_input_log,
             output_log,
-            source_log,
         })
     }
 }
@@ -80,16 +74,12 @@ impl Database for LogDatabase {
         Ok(self.output_log.get())
     }
 
-    async fn set_output(&self, path: &str) -> Result<(), DatabaseError> {
-        self.output_log.set(path)
+    async fn set_output(&self, path: &str, source: Option<&str>) -> Result<(), DatabaseError> {
+        self.output_log.set(path, source)
     }
 
     async fn get_source(&self, output: &str) -> Result<Option<String>, DatabaseError> {
-        Ok(self.source_log.get(output))
-    }
-
-    async fn set_source(&self, output: &str, source: &str) -> Result<(), DatabaseError> {
-        self.source_log.set(output, source)
+        Ok(self.output_log.get_source(output))
     }
 }
 
@@ -120,7 +110,6 @@ mod tests {
         assert!(exists(directory.path().join("header_inputs").join("paths")).unwrap());
         assert!(exists(directory.path().join("header_inputs").join("indices")).unwrap());
         assert!(exists(directory.path().join("outputs")).unwrap());
-        assert!(exists(directory.path().join("sources")).unwrap());
     }
 
     #[tokio::test]
@@ -218,7 +207,7 @@ mod tests {
     async fn set_output() {
         let (database, _directory) = open().await;
 
-        database.set_output("foo").await.unwrap();
+        database.set_output("foo", None).await.unwrap();
 
         assert_eq!(database.get_outputs().await.unwrap(), ["foo"]);
     }
@@ -234,17 +223,16 @@ mod tests {
     async fn get_output_with_source() {
         let (database, _directory) = open().await;
 
-        database.set_output("foo").await.unwrap();
-        database.set_source("foo", "bar").await.unwrap();
+        database.set_output("foo", Some("bar")).await.unwrap();
 
         assert_eq!(database.get_outputs().await.unwrap(), ["foo"]);
     }
 
     #[tokio::test]
-    async fn set_source() {
+    async fn get_source() {
         let (database, _directory) = open().await;
 
-        database.set_source("foo", "bar").await.unwrap();
+        database.set_output("foo", Some("bar")).await.unwrap();
 
         assert_eq!(
             database.get_source("foo").await.unwrap(),
@@ -256,7 +244,7 @@ mod tests {
     async fn get_no_source() {
         let (database, _directory) = open().await;
 
-        database.set_source("foo", "bar").await.unwrap();
+        database.set_output("foo", Some("bar")).await.unwrap();
 
         assert_eq!(database.get_source("baz").await.unwrap(), None);
     }
@@ -273,8 +261,7 @@ mod tests {
             .set_header_inputs(BuildId::new(0), &["foo".into()])
             .await
             .unwrap();
-        database.set_output("foo").await.unwrap();
-        database.set_source("foo", "bar").await.unwrap();
+        database.set_output("foo", Some("bar")).await.unwrap();
 
         drop(database);
 

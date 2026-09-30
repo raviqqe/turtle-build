@@ -3,7 +3,7 @@ use crate::{
     infrastructure::{Database, DatabaseError},
     ir::BuildId,
 };
-use alloc::{collections::BTreeSet, sync::Arc};
+use alloc::{collections::BTreeMap, sync::Arc};
 use async_trait::async_trait;
 use std::{collections::HashMap, sync::Mutex};
 
@@ -12,8 +12,7 @@ pub struct FakeDatabase {
     hashes: Arc<Mutex<HashMap<BuildId, BuildHash>>>,
     header_dependencies: Arc<Mutex<HashMap<BuildId, Vec<Arc<str>>>>>,
     header_dependency_requests: Arc<Mutex<Vec<BuildId>>>,
-    outputs: Arc<Mutex<BTreeSet<String>>>,
-    sources: Arc<Mutex<HashMap<String, String>>>,
+    outputs: Arc<Mutex<BTreeMap<String, Option<String>>>>,
 }
 
 impl FakeDatabase {
@@ -60,25 +59,19 @@ impl Database for FakeDatabase {
     }
 
     async fn get_outputs(&self) -> Result<Vec<String>, DatabaseError> {
-        Ok(self.outputs.lock().unwrap().iter().cloned().collect())
+        Ok(self.outputs.lock().unwrap().keys().cloned().collect())
     }
 
-    async fn set_output(&self, path: &str) -> Result<(), DatabaseError> {
-        self.outputs.lock().unwrap().insert(path.into());
+    async fn set_output(&self, path: &str, source: Option<&str>) -> Result<(), DatabaseError> {
+        self.outputs
+            .lock()
+            .unwrap()
+            .insert(path.into(), source.map(From::from));
 
         Ok(())
     }
 
     async fn get_source(&self, output: &str) -> Result<Option<String>, DatabaseError> {
-        Ok(self.sources.lock().unwrap().get(output).cloned())
-    }
-
-    async fn set_source(&self, output: &str, source: &str) -> Result<(), DatabaseError> {
-        self.sources
-            .lock()
-            .unwrap()
-            .insert(output.into(), source.into());
-
-        Ok(())
+        Ok(self.outputs.lock().unwrap().get(output).cloned().flatten())
     }
 }

@@ -14,8 +14,7 @@ use std::{fs::create_dir_all, path::Path};
 const HASHES: TableDefinition<[u8; 8], (u64, u64)> = TableDefinition::new("hashes");
 const HEADER_DEPENDENCIES: TableDefinition<[u8; 8], Vec<&str>> =
     TableDefinition::new("header_dependencies");
-const OUTPUTS: TableDefinition<&str, ()> = TableDefinition::new("outputs");
-const SOURCES: TableDefinition<&str, &str> = TableDefinition::new("sources");
+const OUTPUTS: TableDefinition<&str, Option<&str>> = TableDefinition::new("outputs");
 
 /// A redb database.
 pub struct RedbDatabase {
@@ -44,7 +43,6 @@ impl RedbDatabase {
         transaction.open_table(HASHES)?;
         transaction.open_table(HEADER_DEPENDENCIES)?;
         transaction.open_table(OUTPUTS)?;
-        transaction.open_table(SOURCES)?;
         transaction.commit()?;
 
         Ok(database)
@@ -126,18 +124,16 @@ impl Database for RedbDatabase {
         })?)
     }
 
-    async fn set_output(&self, path: &str) -> Result<(), DatabaseError> {
-        Ok(self.write(OUTPUTS, path, ())?)
+    async fn set_output(&self, path: &str, source: Option<&str>) -> Result<(), DatabaseError> {
+        Ok(self.write(OUTPUTS, path, source)?)
     }
 
     async fn get_source(&self, output: &str) -> Result<Option<String>, DatabaseError> {
-        Ok(self.read(SOURCES, |table| {
-            Ok(table.get(output)?.map(|source| source.value().into()))
+        Ok(self.read(OUTPUTS, |table| {
+            Ok(table
+                .get(output)?
+                .and_then(|source| source.value().map(Into::into)))
         })?)
-    }
-
-    async fn set_source(&self, output: &str, source: &str) -> Result<(), DatabaseError> {
-        Ok(self.write(SOURCES, output, source)?)
     }
 }
 
@@ -223,14 +219,14 @@ mod tests {
     async fn set_output() {
         let (database, _directory) = open();
 
-        database.set_output("foo").await.unwrap();
+        database.set_output("foo", None).await.unwrap();
     }
 
     #[tokio::test]
     async fn get_output() {
         let (database, _directory) = open();
 
-        database.set_output("foo").await.unwrap();
+        database.set_output("foo", None).await.unwrap();
 
         assert_eq!(database.get_outputs().await.unwrap(), vec!["foo"]);
     }
@@ -246,8 +242,7 @@ mod tests {
     async fn get_output_with_source() {
         let (database, _directory) = open();
 
-        database.set_output("foo").await.unwrap();
-        database.set_source("foo", "bar").await.unwrap();
+        database.set_output("foo", Some("bar")).await.unwrap();
 
         assert_eq!(database.get_outputs().await.unwrap(), vec!["foo"]);
     }
@@ -296,17 +291,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_source() {
-        let (database, _directory) = open();
-
-        database.set_source("foo", "bar").await.unwrap();
-    }
-
-    #[tokio::test]
     async fn get_source() {
         let (database, _directory) = open();
 
-        database.set_source("foo", "bar").await.unwrap();
+        database.set_output("foo", Some("bar")).await.unwrap();
 
         assert_eq!(
             database.get_source("foo").await.unwrap(),
@@ -317,6 +305,38 @@ mod tests {
     #[tokio::test]
     async fn get_no_source() {
         let (database, _directory) = open();
+
+        database.set_output("foo", None).await.unwrap();
+
+        assert_eq!(database.get_source("foo").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn get_no_source_of_missing_output() {
+        let (database, _directory) = open();
+
+        assert_eq!(database.get_source("foo").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn update_source() {
+        let (database, _directory) = open();
+
+        database.set_output("foo", Some("bar")).await.unwrap();
+        database.set_output("foo", Some("baz")).await.unwrap();
+
+        assert_eq!(
+            database.get_source("foo").await.unwrap(),
+            Some("baz".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn remove_source() {
+        let (database, _directory) = open();
+
+        database.set_output("foo", Some("bar")).await.unwrap();
+        database.set_output("foo", None).await.unwrap();
 
         assert_eq!(database.get_source("foo").await.unwrap(), None);
     }
@@ -333,8 +353,7 @@ mod tests {
             .set_header_inputs(BuildId::new(0), &["foo".into()])
             .await
             .unwrap();
-        database.set_output("foo").await.unwrap();
-        database.set_source("foo", "bar").await.unwrap();
+        database.set_output("foo", Some("bar")).await.unwrap();
 
         drop(database);
 

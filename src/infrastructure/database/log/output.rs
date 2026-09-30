@@ -1,14 +1,15 @@
 use super::utility::{
-    COMPACTION_RATIO, LINE_TERMINATOR, compact_file, open_file, read_file, split_lines,
+    COLUMN_SEPARATOR, COMPACTION_RATIO, LINE_TERMINATOR, compact_file, open_file, read_file,
+    split_lines,
 };
 use crate::infrastructure::DatabaseError;
 use core::str;
-use scc::{Guard, HashIndex};
+use scc::{Guard, HashIndex, hash_index::Entry};
 use std::{fs::File, io::Write, path::Path};
 
 pub struct OutputLog {
     file: File,
-    outputs: HashIndex<String, ()>,
+    outputs: HashIndex<String, Option<String>>,
 }
 
 impl OutputLog {
@@ -16,10 +17,14 @@ impl OutputLog {
     pub async fn new(path: &Path) -> Result<Self, DatabaseError> {
         let bytes = read_file(path).await?;
         let lines = split_lines(&bytes).collect::<Vec<_>>();
-        let outputs = HashIndex::<String, _>::with_capacity(lines.len());
+        let outputs = HashIndex::<String, Option<String>>::with_capacity(lines.len());
 
-        for line in lines {
-            outputs.insert_sync(str::from_utf8(line)?.into(), ()).ok();
+        for line in lines.into_iter().rev() {
+            let (output, source) = deserialize(line)?;
+
+            outputs
+                .insert_sync(output.into(), source.map(From::from))
+                .ok();
         }
 
         if bytes.last().is_some_and(|&byte| byte != LINE_TERMINATOR)
@@ -27,13 +32,13 @@ impl OutputLog {
                 > COMPACTION_RATIO
                     * outputs
                         .iter(&Guard::new())
-                        .map(|(path, _)| path.len() + size_of_val(&LINE_TERMINATOR))
+                        .map(|(output, source)| serialize(output, source.as_deref()).len())
                         .sum::<usize>()
         {
             // Do not inline this to avoid holding a guard across an await point.
             let bytes = outputs
                 .iter(&Guard::new())
-                .flat_map(|(path, _)| serialize(path))
+                .flat_map(|(output, source)| serialize(output, source.as_deref()))
                 .collect::<Vec<_>>();
 
             compact_file(path, bytes).await?;
@@ -48,21 +53,54 @@ impl OutputLog {
     pub fn get(&self) -> Vec<String> {
         self.outputs
             .iter(&Guard::new())
-            .map(|(path, _)| path.clone())
+            .map(|(output, _)| output.clone())
             .collect()
     }
 
-    pub fn set(&self, path: &str) -> Result<(), DatabaseError> {
-        if self.outputs.insert_sync(path.into(), ()).is_ok() {
-            (&self.file).write_all(&serialize(path))?;
+    pub fn get_source(&self, output: &str) -> Option<String> {
+        self.outputs
+            .peek_with(output, |_, source| source.clone())
+            .flatten()
+    }
+
+    pub fn set(&self, output: &str, source: Option<&str>) -> Result<(), DatabaseError> {
+        if self
+            .outputs
+            .peek_with(output, |_, value| value.as_deref() != source)
+            .unwrap_or(true)
+        {
+            (&self.file).write_all(&serialize(output, source))?;
+
+            match self.outputs.entry_sync(output.into()) {
+                Entry::Occupied(mut entry) => entry.update(source.map(From::from)),
+                Entry::Vacant(entry) => {
+                    entry.insert_entry(source.map(From::from));
+                }
+            }
         }
 
         Ok(())
     }
 }
 
-fn serialize(path: &str) -> Vec<u8> {
-    [path.as_bytes(), &[LINE_TERMINATOR]].concat()
+fn serialize(output: &str, source: Option<&str>) -> Vec<u8> {
+    output
+        .bytes()
+        .chain(
+            source
+                .into_iter()
+                .flat_map(|source| [COLUMN_SEPARATOR].into_iter().chain(source.bytes())),
+        )
+        .chain([LINE_TERMINATOR])
+        .collect()
+}
+
+fn deserialize(line: &[u8]) -> Result<(&str, Option<&str>), DatabaseError> {
+    let line = str::from_utf8(line)?;
+
+    Ok(line
+        .split_once(char::from(COLUMN_SEPARATOR))
+        .map_or((line, None), |(output, source)| (output, Some(source))))
 }
 
 #[cfg(test)]
@@ -128,7 +166,7 @@ mod tests {
     async fn set_output() {
         let (log, _directory) = open().await;
 
-        log.set("foo").unwrap();
+        log.set("foo", None).unwrap();
 
         assert_eq!(log.get(), ["foo"]);
     }
@@ -144,8 +182,8 @@ mod tests {
     async fn set_outputs() {
         let (log, _directory) = open().await;
 
-        log.set("foo").unwrap();
-        log.set("bar").unwrap();
+        log.set("foo", None).unwrap();
+        log.set("bar", None).unwrap();
 
         assert_eq!(get_outputs(&log), ["bar", "foo"]);
     }
@@ -154,8 +192,8 @@ mod tests {
     async fn set_output_twice() {
         let (log, _directory) = open().await;
 
-        log.set("foo").unwrap();
-        log.set("foo").unwrap();
+        log.set("foo", None).unwrap();
+        log.set("foo", None).unwrap();
 
         assert_eq!(log.get(), ["foo"]);
     }
@@ -164,9 +202,109 @@ mod tests {
     async fn set_output_in_directory() {
         let (log, _directory) = open().await;
 
-        log.set("foo/bar baz.o").unwrap();
+        log.set("foo/bar baz.o", None).unwrap();
 
         assert_eq!(log.get(), ["foo/bar baz.o"]);
+    }
+
+    #[tokio::test]
+    async fn set_output_with_source() {
+        let (log, _directory) = open().await;
+
+        log.set("foo", Some("bar")).unwrap();
+
+        assert_eq!(log.get(), ["foo"]);
+    }
+
+    #[tokio::test]
+    async fn get_source() {
+        let (log, _directory) = open().await;
+
+        log.set("foo", Some("bar")).unwrap();
+
+        assert_eq!(log.get_source("foo"), Some("bar".into()));
+    }
+
+    #[tokio::test]
+    async fn get_no_source() {
+        let (log, _directory) = open().await;
+
+        log.set("foo", None).unwrap();
+
+        assert_eq!(log.get_source("foo"), None);
+    }
+
+    #[tokio::test]
+    async fn get_no_source_of_missing_output() {
+        let (log, _directory) = open().await;
+
+        log.set("foo", Some("bar")).unwrap();
+
+        assert_eq!(log.get_source("baz"), None);
+    }
+
+    #[tokio::test]
+    async fn update_source() {
+        let (log, _directory) = open().await;
+
+        log.set("foo", Some("bar")).unwrap();
+        log.set("foo", Some("baz")).unwrap();
+
+        assert_eq!(log.get_source("foo"), Some("baz".into()));
+    }
+
+    #[tokio::test]
+    async fn remove_source() {
+        let (log, _directory) = open().await;
+
+        log.set("foo", Some("bar")).unwrap();
+        log.set("foo", None).unwrap();
+
+        assert_eq!(log.get(), ["foo"]);
+        assert_eq!(log.get_source("foo"), None);
+    }
+
+    #[tokio::test]
+    async fn set_sources() {
+        let (log, _directory) = open().await;
+
+        log.set("foo", Some("bar")).unwrap();
+        log.set("baz", Some("qux")).unwrap();
+
+        assert_eq!(log.get_source("foo"), Some("bar".into()));
+        assert_eq!(log.get_source("baz"), Some("qux".into()));
+    }
+
+    #[tokio::test]
+    async fn set_same_source_of_outputs() {
+        let (log, _directory) = open().await;
+
+        log.set("foo", Some("baz")).unwrap();
+        log.set("bar", Some("baz")).unwrap();
+
+        assert_eq!(log.get_source("foo"), Some("baz".into()));
+        assert_eq!(log.get_source("bar"), Some("baz".into()));
+    }
+
+    #[tokio::test]
+    async fn set_source_in_directory() {
+        let (log, _directory) = open().await;
+
+        log.set("foo/bar baz.o", Some("foo/bar baz.c")).unwrap();
+
+        assert_eq!(
+            log.get_source("foo/bar baz.o"),
+            Some("foo/bar baz.c".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn set_empty_source() {
+        let (log, _directory) = open().await;
+
+        log.set("foo", Some("")).unwrap();
+
+        assert_eq!(log.get_source("foo"), Some("".into()));
     }
 
     #[tokio::test]
@@ -185,7 +323,7 @@ mod tests {
 
                 scope.spawn(move || {
                     for output in outputs {
-                        log.set(output).unwrap();
+                        log.set(output, Some(&format!("{output}.c"))).unwrap();
                     }
                 });
             }
@@ -195,54 +333,113 @@ mod tests {
 
         drop(log);
 
-        assert_eq!(get_outputs(&reopen(&directory).await), outputs);
+        let log = reopen(&directory).await;
+
+        assert_eq!(get_outputs(&log), outputs);
+
+        for output in outputs {
+            assert_eq!(log.get_source(&output), Some(format!("{output}.c")));
+        }
     }
 
     #[tokio::test]
     async fn write_line() {
         let (log, directory) = open().await;
 
-        log.set("foo").unwrap();
+        log.set("foo", None).unwrap();
 
         assert_eq!(read_log(&directory), b"foo\n");
+    }
+
+    #[tokio::test]
+    async fn write_line_with_source() {
+        let (log, directory) = open().await;
+
+        log.set("foo", Some("bar")).unwrap();
+
+        assert_eq!(read_log(&directory), b"foo\0bar\n");
     }
 
     #[tokio::test]
     async fn write_line_in_utf8() {
         let (log, directory) = open().await;
 
-        log.set("😄").unwrap();
+        log.set("😄", Some("🚀")).unwrap();
 
-        assert_eq!(read_log(&directory), [0xf0, 0x9f, 0x98, 0x84, b'\n']);
+        assert_eq!(
+            read_log(&directory),
+            [0xf0, 0x9f, 0x98, 0x84, 0, 0xf0, 0x9f, 0x9a, 0x80, b'\n']
+        );
     }
 
     #[tokio::test]
     async fn append_lines() {
         let (log, directory) = open().await;
 
-        log.set("foo").unwrap();
-        log.set("bar").unwrap();
+        log.set("foo", None).unwrap();
+        log.set("bar", None).unwrap();
 
         assert_eq!(read_log(&directory), b"foo\nbar\n");
+    }
+
+    #[tokio::test]
+    async fn append_lines_with_sources() {
+        let (log, directory) = open().await;
+
+        log.set("foo", Some("bar")).unwrap();
+        log.set("baz", Some("qux")).unwrap();
+
+        assert_eq!(read_log(&directory), b"foo\0bar\nbaz\0qux\n");
+    }
+
+    #[tokio::test]
+    async fn append_line_of_updated_source() {
+        let (log, directory) = open().await;
+
+        log.set("foo", Some("bar")).unwrap();
+        log.set("foo", Some("baz")).unwrap();
+
+        assert_eq!(read_log(&directory), b"foo\0bar\nfoo\0baz\n");
+    }
+
+    #[tokio::test]
+    async fn append_line_of_removed_source() {
+        let (log, directory) = open().await;
+
+        log.set("foo", Some("bar")).unwrap();
+        log.set("foo", None).unwrap();
+
+        assert_eq!(read_log(&directory), b"foo\0bar\nfoo\n");
     }
 
     #[tokio::test]
     async fn append_no_line_of_same_output() {
         let (log, directory) = open().await;
 
-        log.set("foo").unwrap();
-        log.set("bar").unwrap();
-        log.set("foo").unwrap();
+        log.set("foo", None).unwrap();
+        log.set("bar", None).unwrap();
+        log.set("foo", None).unwrap();
 
         assert_eq!(read_log(&directory), b"foo\nbar\n");
+    }
+
+    #[tokio::test]
+    async fn append_no_line_of_same_source() {
+        let (log, directory) = open().await;
+
+        log.set("foo", Some("bar")).unwrap();
+        log.set("baz", Some("qux")).unwrap();
+        log.set("foo", Some("bar")).unwrap();
+
+        assert_eq!(read_log(&directory), b"foo\0bar\nbaz\0qux\n");
     }
 
     #[tokio::test]
     async fn reopen_log() {
         let (log, directory) = open().await;
 
-        log.set("foo").unwrap();
-        log.set("bar").unwrap();
+        log.set("foo", None).unwrap();
+        log.set("bar", None).unwrap();
 
         drop(log);
 
@@ -250,14 +447,63 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reopen_log_in_utf8() {
+    async fn reopen_log_with_sources() {
         let (log, directory) = open().await;
 
-        log.set("😄").unwrap();
+        log.set("foo", Some("bar")).unwrap();
+        log.set("baz", Some("qux")).unwrap();
 
         drop(log);
 
-        assert_eq!(reopen(&directory).await.get(), ["😄"]);
+        let log = reopen(&directory).await;
+
+        assert_eq!(get_outputs(&log), ["baz", "foo"]);
+        assert_eq!(log.get_source("foo"), Some("bar".into()));
+        assert_eq!(log.get_source("baz"), Some("qux".into()));
+    }
+
+    #[tokio::test]
+    async fn reopen_log_with_updated_source() {
+        let (log, directory) = open().await;
+
+        log.set("foo", Some("bar")).unwrap();
+        log.set("foo", Some("baz")).unwrap();
+
+        drop(log);
+
+        assert_eq!(
+            reopen(&directory).await.get_source("foo"),
+            Some("baz".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn reopen_log_with_removed_source() {
+        let (log, directory) = open().await;
+
+        log.set("foo", Some("bar")).unwrap();
+        log.set("foo", None).unwrap();
+
+        drop(log);
+
+        let log = reopen(&directory).await;
+
+        assert_eq!(log.get(), ["foo"]);
+        assert_eq!(log.get_source("foo"), None);
+    }
+
+    #[tokio::test]
+    async fn reopen_log_in_utf8() {
+        let (log, directory) = open().await;
+
+        log.set("😄", Some("🚀")).unwrap();
+
+        drop(log);
+
+        let log = reopen(&directory).await;
+
+        assert_eq!(log.get(), ["😄"]);
+        assert_eq!(log.get_source("😄"), Some("🚀".into()));
     }
 
     #[tokio::test]
@@ -270,29 +516,78 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn append_lines_after_reopen() {
+    async fn reopen_log_with_empty_source() {
         let (log, directory) = open().await;
 
-        log.set("foo").unwrap();
+        log.set("foo", Some("")).unwrap();
 
         drop(log);
 
-        reopen(&directory).await.set("bar").unwrap();
+        assert_eq!(reopen(&directory).await.get_source("foo"), Some("".into()));
+    }
 
-        assert_eq!(read_log(&directory), b"foo\nbar\n");
+    #[tokio::test]
+    async fn reopen_log_with_column_separator_in_source() {
+        let directory = tempdir().unwrap();
+
+        write_log(&directory, "foo\0bar\0baz\n");
+
+        assert_eq!(
+            reopen(&directory).await.get_source("foo"),
+            Some("bar\0baz".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn append_lines_after_reopen() {
+        let (log, directory) = open().await;
+
+        log.set("foo", None).unwrap();
+
+        drop(log);
+
+        reopen(&directory).await.set("bar", Some("baz")).unwrap();
+
+        assert_eq!(read_log(&directory), b"foo\nbar\0baz\n");
+    }
+
+    #[tokio::test]
+    async fn append_line_of_updated_source_after_reopen() {
+        let (log, directory) = open().await;
+
+        log.set("foo", Some("bar")).unwrap();
+
+        drop(log);
+
+        reopen(&directory).await.set("foo", Some("baz")).unwrap();
+
+        assert_eq!(read_log(&directory), b"foo\0bar\nfoo\0baz\n");
     }
 
     #[tokio::test]
     async fn append_no_line_of_same_output_after_reopen() {
         let (log, directory) = open().await;
 
-        log.set("foo").unwrap();
+        log.set("foo", None).unwrap();
 
         drop(log);
 
-        reopen(&directory).await.set("foo").unwrap();
+        reopen(&directory).await.set("foo", None).unwrap();
 
         assert_eq!(read_log(&directory), b"foo\n");
+    }
+
+    #[tokio::test]
+    async fn append_no_line_of_same_source_after_reopen() {
+        let (log, directory) = open().await;
+
+        log.set("foo", Some("bar")).unwrap();
+
+        drop(log);
+
+        reopen(&directory).await.set("foo", Some("bar")).unwrap();
+
+        assert_eq!(read_log(&directory), b"foo\0bar\n");
     }
 
     #[tokio::test]
@@ -300,6 +595,19 @@ mod tests {
         let directory = tempdir().unwrap();
 
         write_log(&directory, [b'f', 0xff, b'\n']);
+
+        assert!(
+            OutputLog::new(&directory.path().join(FILENAME))
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn fail_to_open_log_with_source_in_invalid_utf8() {
+        let directory = tempdir().unwrap();
+
+        write_log(&directory, [b'f', 0, 0xff, b'\n']);
 
         assert!(
             OutputLog::new(&directory.path().join(FILENAME))
@@ -336,6 +644,30 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn compact_sources() {
+            let directory = tempdir().unwrap();
+
+            write_log(&directory, "foo\0bar\nfoo\0bar\nfoo\0bar\nfoo\0baz\n");
+
+            let log = reopen(&directory).await;
+
+            assert_eq!(log.get_source("foo"), Some("baz".into()));
+            assert_eq!(read_log(&directory), b"foo\0baz\n");
+        }
+
+        #[tokio::test]
+        async fn compact_output_with_source() {
+            let directory = tempdir().unwrap();
+
+            write_log(&directory, "foo\nfoo\nfoo\nfoo\nfoo\nfoo\0bar\n");
+
+            let log = reopen(&directory).await;
+
+            assert_eq!(log.get_source("foo"), Some("bar".into()));
+            assert_eq!(read_log(&directory), b"foo\0bar\n");
+        }
+
+        #[tokio::test]
         async fn compact_many_outputs() {
             let directory = tempdir().unwrap();
 
@@ -363,12 +695,33 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn compact_after_appending_lines() {
+            let (log, directory) = open().await;
+
+            for source in ["bar", "baz", "bar", "baz"] {
+                log.set("foo", Some(source)).unwrap();
+            }
+
+            drop(log);
+
+            assert_eq!(
+                read_log(&directory),
+                b"foo\0bar\nfoo\0baz\nfoo\0bar\nfoo\0baz\n"
+            );
+
+            let log = reopen(&directory).await;
+
+            assert_eq!(log.get_source("foo"), Some("baz".into()));
+            assert_eq!(read_log(&directory), b"foo\0baz\n");
+        }
+
+        #[tokio::test]
         async fn append_line_after_compaction() {
             let directory = tempdir().unwrap();
 
             write_log(&directory, "foo\nfoo\nfoo\nfoo\n");
 
-            reopen(&directory).await.set("bar").unwrap();
+            reopen(&directory).await.set("bar", None).unwrap();
 
             assert_eq!(read_log(&directory), b"foo\nbar\n");
         }
@@ -377,11 +730,11 @@ mod tests {
         async fn keep_log_of_optimal_size() {
             let directory = tempdir().unwrap();
 
-            write_log(&directory, "foo\nbar\n");
+            write_log(&directory, "foo\nbar\0baz\n");
 
             reopen(&directory).await;
 
-            assert_eq!(read_log(&directory), b"foo\nbar\n");
+            assert_eq!(read_log(&directory), b"foo\nbar\0baz\n");
         }
 
         #[tokio::test]
@@ -394,6 +747,18 @@ mod tests {
 
             assert_eq!(log.get(), ["foo"]);
             assert_eq!(read_log(&directory), b"foo\nfoo\nfoo\n");
+        }
+
+        #[tokio::test]
+        async fn keep_log_of_compaction_ratio_with_sources() {
+            let directory = tempdir().unwrap();
+
+            write_log(&directory, "foo\0bar\nfoo\0bar\nfoo\0baz\n");
+
+            let log = reopen(&directory).await;
+
+            assert_eq!(log.get_source("foo"), Some("baz".into()));
+            assert_eq!(read_log(&directory), b"foo\0bar\nfoo\0bar\nfoo\0baz\n");
         }
 
         #[tokio::test]
@@ -440,6 +805,19 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn remove_incomplete_line_with_source() {
+            let directory = tempdir().unwrap();
+
+            write_log(&directory, "foo\0bar\nbaz\0qu");
+
+            let log = reopen(&directory).await;
+
+            assert_eq!(log.get(), ["foo"]);
+            assert_eq!(log.get_source("foo"), Some("bar".into()));
+            assert_eq!(read_log(&directory), b"foo\0bar\n");
+        }
+
+        #[tokio::test]
         async fn remove_only_incomplete_line() {
             let directory = tempdir().unwrap();
 
@@ -472,7 +850,7 @@ mod tests {
 
             write_log(&directory, "foo\nba");
 
-            reopen(&directory).await.set("bar").unwrap();
+            reopen(&directory).await.set("bar", None).unwrap();
 
             assert_eq!(read_log(&directory), b"foo\nbar\n");
             assert_eq!(get_outputs(&reopen(&directory).await), ["bar", "foo"]);

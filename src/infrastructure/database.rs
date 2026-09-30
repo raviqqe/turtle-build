@@ -25,8 +25,6 @@ pub trait Database {
     ) -> Result<(), DatabaseError>;
 
     async fn get_outputs(&self) -> Result<Vec<String>, DatabaseError>;
-    async fn set_output(&self, path: &str) -> Result<(), DatabaseError>;
-
+    async fn set_output(&self, path: &str, source: Option<&str>) -> Result<(), DatabaseError>;
     async fn get_source(&self, output: &str) -> Result<Option<String>, DatabaseError>;
-    async fn set_source(&self, output: &str, source: &str) -> Result<(), DatabaseError>;
 }

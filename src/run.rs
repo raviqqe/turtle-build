@@ -26,7 +26,8 @@ use async_recursion::async_recursion;
 use futures::future::{FutureExt, try_join_all};
 use itertools::Itertools;
 pub use options::RunOptions;
-use std::{collections::HashMap, path::Path, process::Output};
+use rapidhash::RapidHashMap;
+use std::{path::Path, process::Output};
 use tokio::{spawn, sync::MutexGuard, time::Instant, try_join};
 
 /// Runs builds.
@@ -37,7 +38,7 @@ pub async fn run(
     options: RunOptions,
 ) -> Result<(), BuildError> {
     let mut graph = BuildGraph::new(config.outputs());
-    let mut header_inputs = HashMap::new();
+    let mut header_inputs = RapidHashMap::default();
 
     for build in config
         .outputs()
@@ -538,7 +539,7 @@ mod tests {
     use std::os::unix::process::ExitStatusExt;
     #[cfg(windows)]
     use std::os::windows::process::ExitStatusExt;
-    use std::{collections::HashMap, process::ExitStatus};
+    use std::process::ExitStatus;
     use tokio::{sync::Mutex, task::yield_now};
 
     const DEFAULT_OPTIONS: RunOptions = RunOptions {
@@ -563,7 +564,7 @@ mod tests {
         .into()
     }
 
-    fn create_outputs(builds: Vec<Build>) -> HashMap<Arc<str>, Arc<Build>> {
+    fn create_outputs(builds: Vec<Build>) -> RapidHashMap<Arc<str>, Arc<Build>> {
         builds
             .into_iter()
             .map(Arc::new)

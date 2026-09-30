@@ -2,8 +2,9 @@ use super::super::utility::{COMPACTION_RATIO, open_log};
 use crate::{infrastructure::DatabaseError, ir::BuildId};
 use alloc::sync::Arc;
 use core::iter::successors;
+use rapidhash::{RapidHashMap, fast::RandomState};
 use scc::{HashIndex, hash_index::Entry};
-use std::{collections::HashMap, fs::File, io::Write, path::Path};
+use std::{fs::File, io::Write, path::Path};
 
 const RECORD_HEADER_SIZE: usize = size_of::<u64>() + size_of::<Index>();
 
@@ -11,7 +12,7 @@ type Index = [u8; size_of::<u32>()];
 
 pub struct IndexLog {
     file: File,
-    inputs: HashIndex<BuildId, Vec<Arc<str>>>,
+    inputs: HashIndex<BuildId, Vec<Arc<str>>, RandomState>,
 }
 
 impl IndexLog {
@@ -23,9 +24,9 @@ impl IndexLog {
         let mut indices = records
             .iter()
             .map(|&(id, indices, _)| (id, indices))
-            .collect::<HashMap<_, _>>();
+            .collect::<RapidHashMap<_, _>>();
         let count = indices.len();
-        let inputs = HashIndex::with_capacity(count);
+        let inputs = HashIndex::with_capacity_and_hasher(count, RandomState::default());
 
         // Paths might be lost on a system failure while records of them are not.
         indices.retain(|&id, indices| {

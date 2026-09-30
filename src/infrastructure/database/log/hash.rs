@@ -1,5 +1,6 @@
 use super::utility::{COMPACTION_RATIO, compact_file, open_file, read_file};
 use crate::{build_hash::BuildHash, infrastructure::DatabaseError, ir::BuildId};
+use rapidhash::fast::RandomState;
 use scc::{Guard, HashIndex, hash_index::Entry};
 use std::{fs::File, io::Write, path::Path};
 
@@ -7,14 +8,14 @@ type Record = [[u8; size_of::<u64>()]; 3];
 
 pub struct HashLog {
     file: File,
-    hashes: HashIndex<BuildId, BuildHash>,
+    hashes: HashIndex<BuildId, BuildHash, RandomState>,
 }
 
 impl HashLog {
     pub async fn new(path: &Path) -> Result<Self, DatabaseError> {
         let bytes = read_file(path)?;
         let records = bytes.as_chunks().0.as_chunks().0;
-        let hashes = HashIndex::with_capacity(records.len());
+        let hashes = HashIndex::with_capacity_and_hasher(records.len(), RandomState::default());
 
         for &record in records.iter().rev() {
             let (id, hash) = deserialize(record);

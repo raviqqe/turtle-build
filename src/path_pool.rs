@@ -1,10 +1,11 @@
 use alloc::sync::Arc;
+use rapidhash::fast::RandomState;
 use scc::HashSet;
 
 /// A path pool.
 #[derive(Debug, Default)]
 pub struct PathPool {
-    paths: HashSet<Arc<str>>,
+    paths: HashSet<Arc<str>, RandomState>,
 }
 
 impl PathPool {

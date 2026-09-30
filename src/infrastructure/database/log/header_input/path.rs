@@ -2,12 +2,13 @@ use super::super::utility::{LINE_TERMINATOR, open_log, split_lines};
 use crate::{infrastructure::DatabaseError, path_pool::PathPool};
 use alloc::sync::Arc;
 use core::str;
-use std::{collections::HashMap, fs::File, io::Write, path::Path};
+use rapidhash::RapidHashMap;
+use std::{fs::File, io::Write, path::Path};
 
 pub struct PathLog {
     file: File,
     count: u32,
-    indices: HashMap<Arc<str>, u32>,
+    indices: RapidHashMap<Arc<str>, u32>,
     failed: bool,
 }
 

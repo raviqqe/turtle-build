@@ -30,6 +30,7 @@
     "nofile",
     "octocov",
     "petgraph",
+    "rapidhash",
     "raviqqe",
     "redb",
     "reimplementation",

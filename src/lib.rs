@@ -16,6 +16,7 @@ mod module_dependency;
 mod parse;
 mod path_pool;
 mod run;
+mod stable_hasher;
 mod tool;
 
 pub use self::{

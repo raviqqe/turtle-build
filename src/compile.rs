@@ -14,6 +14,7 @@ use crate::{
 use alloc::{borrow::Cow, sync::Arc};
 use core::num::NonZeroUsize;
 use once_cell::sync::Lazy;
+use rapidhash::RapidHashMap;
 use regex::{Captures, Regex};
 use std::{
     collections::{HashMap, hash_map::Entry},
@@ -51,7 +52,7 @@ pub fn compile(
         outputs: Default::default(),
         default_outputs: Default::default(),
         source_map: Default::default(),
-        pools: [(CONSOLE_POOL.into(), None)].into(),
+        pools: [(CONSOLE_POOL.into(), None)].into_iter().collect(),
     };
     let mut module_state = ModuleState {
         rules: TrainMap::new(),
@@ -263,7 +264,7 @@ fn compile_header_dependency(
 }
 
 fn compile_pool(
-    pools: &HashMap<Arc<str>, Option<NonZeroUsize>>,
+    pools: &RapidHashMap<Arc<str>, Option<NonZeroUsize>>,
     variables: &TrainMap<&str, Arc<str>>,
 ) -> Result<Option<Pool>, CompileError> {
     let Some(name) = resolve_variable(POOL_VARIABLE, variables) else {
@@ -382,7 +383,7 @@ mod tests {
     use crate::ast;
     use once_cell::sync::Lazy;
     use pretty_assertions::assert_eq;
-    use std::collections::HashSet;
+    use rapidhash::RapidHashSet;
 
     static ROOT_MODULE_PATH: Lazy<PathBuf> = Lazy::new(|| PathBuf::from("build.ninja"));
     static DEFAULT_DEPENDENCIES: Lazy<ModuleDependencyMap> = Lazy::new(|| {
@@ -423,8 +424,8 @@ mod tests {
     }
 
     fn create_simple_config(
-        outputs: HashMap<Arc<str>, Arc<Build>>,
-        default_outputs: HashSet<Arc<str>>,
+        outputs: RapidHashMap<Arc<str>, Arc<Build>>,
+        default_outputs: RapidHashSet<Arc<str>>,
     ) -> Config {
         Config::new(
             outputs,

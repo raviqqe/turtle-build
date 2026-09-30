@@ -1,7 +1,7 @@
 use super::Rule;
+use crate::stable_hasher::StableHasher;
 use alloc::sync::Arc;
 use core::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct BuildId(u64);
@@ -82,7 +82,7 @@ impl Build {
     }
 
     fn calculate_id(outputs: &[Arc<str>], implicit_outputs: &[Arc<str>]) -> BuildId {
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = StableHasher::default();
 
         outputs.hash(&mut hasher);
         implicit_outputs.hash(&mut hasher);
@@ -94,7 +94,15 @@ impl Build {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pretty_assertions::assert_eq;
+    use pretty_assertions::{assert_eq, assert_ne};
+
+    fn create_build(
+        outputs: Vec<Arc<str>>,
+        implicit_outputs: Vec<Arc<str>>,
+        inputs: Vec<Arc<str>>,
+    ) -> Build {
+        Build::new(outputs, implicit_outputs, None, inputs, vec![], None)
+    }
 
     #[test]
     fn convert_id_from_bytes() {
@@ -120,5 +128,33 @@ mod tests {
                 BuildId::new(id)
             );
         }
+    }
+
+    #[test]
+    fn calculate_id_from_outputs() {
+        assert_eq!(
+            create_build(vec!["foo".into()], vec![], vec![]).id(),
+            create_build(vec!["foo".into()], vec![], vec![]).id()
+        );
+        assert_ne!(
+            create_build(vec!["foo".into()], vec![], vec![]).id(),
+            create_build(vec!["bar".into()], vec![], vec![]).id()
+        );
+    }
+
+    #[test]
+    fn calculate_id_from_implicit_outputs() {
+        assert_ne!(
+            create_build(vec!["foo".into()], vec![], vec![]).id(),
+            create_build(vec!["foo".into()], vec!["bar".into()], vec![]).id()
+        );
+    }
+
+    #[test]
+    fn ignore_inputs_in_id() {
+        assert_eq!(
+            create_build(vec!["foo".into()], vec![], vec![]).id(),
+            create_build(vec!["foo".into()], vec![], vec!["bar".into()]).id()
+        );
     }
 }

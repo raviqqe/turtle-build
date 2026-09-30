@@ -8,8 +8,8 @@ use crate::{
 use alloc::sync::Arc;
 use core::pin::Pin;
 use futures::future::Shared;
+use rapidhash::{RapidHashMap, fast::RandomState};
 use scc::HashIndex;
-use std::collections::HashMap;
 use tokio::sync::{Mutex, OnceCell, Semaphore, SemaphorePermit};
 
 type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<bool, BuildError>> + Send>>>;
@@ -17,12 +17,12 @@ type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<bool, BuildError>> 
 pub struct RunContext {
     build: Arc<Context>,
     config: Arc<Config>,
-    build_futures: HashIndex<BuildId, BuildFuture>,
+    build_futures: HashIndex<BuildId, BuildFuture, RandomState>,
     build_graph: Mutex<BuildGraph>,
-    dynamic_configs: HashMap<Arc<str>, OnceCell<DynamicConfig>>,
+    dynamic_configs: RapidHashMap<Arc<str>, OnceCell<DynamicConfig>>,
     file_cache: FileCache,
-    header_inputs: HashMap<BuildId, Vec<Arc<str>>>,
-    pools: HashMap<Arc<str>, Semaphore>,
+    header_inputs: RapidHashMap<BuildId, Vec<Arc<str>>>,
+    pools: RapidHashMap<Arc<str>, Semaphore>,
     options: RunOptions,
 }
 
@@ -31,7 +31,7 @@ impl RunContext {
         build: Arc<Context>,
         config: Arc<Config>,
         build_graph: BuildGraph,
-        header_inputs: HashMap<BuildId, Vec<Arc<str>>>,
+        header_inputs: RapidHashMap<BuildId, Vec<Arc<str>>>,
         options: RunOptions,
     ) -> Self {
         Self {
@@ -54,7 +54,10 @@ impl RunContext {
                     )
                 })
                 .collect(),
-            build_futures: HashIndex::with_capacity(config.outputs().len()),
+            build_futures: HashIndex::with_capacity_and_hasher(
+                config.outputs().len(),
+                Default::default(),
+            ),
             config,
             options,
         }
@@ -68,7 +71,7 @@ impl RunContext {
         &self.config
     }
 
-    pub const fn build_futures(&self) -> &HashIndex<BuildId, BuildFuture> {
+    pub const fn build_futures(&self) -> &HashIndex<BuildId, BuildFuture, RandomState> {
         &self.build_futures
     }
 

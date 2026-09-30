@@ -4,12 +4,13 @@ use super::utility::{
 };
 use crate::infrastructure::DatabaseError;
 use core::str;
+use rapidhash::fast::RandomState;
 use scc::{Guard, HashIndex, hash_index::Entry};
 use std::{fs::File, io::Write, path::Path};
 
 pub struct OutputLog {
     file: File,
-    outputs: HashIndex<String, Option<String>>,
+    outputs: HashIndex<String, Option<String>, RandomState>,
 }
 
 impl OutputLog {
@@ -17,7 +18,10 @@ impl OutputLog {
     pub async fn new(path: &Path) -> Result<Self, DatabaseError> {
         let bytes = read_file(path)?;
         let lines = split_lines(&bytes).collect::<Vec<_>>();
-        let outputs = HashIndex::<String, Option<String>>::with_capacity(lines.len());
+        let outputs = HashIndex::<String, Option<String>, _>::with_capacity_and_hasher(
+            lines.len(),
+            Default::default(),
+        );
 
         for line in lines.into_iter().rev() {
             let (output, source) = deserialize(line)?;

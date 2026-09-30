@@ -6,22 +6,22 @@ use petgraph::{
     algo::{has_path_connecting, kosaraju_scc, toposort},
     graph::{DefaultIx, NodeIndex},
 };
-use std::collections::HashMap;
+use rapidhash::RapidHashMap;
 use thiserror::Error;
 
 #[derive(Debug)]
 pub struct BuildGraph {
     graph: Graph<Arc<str>, ()>,
-    nodes: HashMap<Arc<str>, NodeIndex<DefaultIx>>,
-    primary_outputs: HashMap<Arc<str>, Arc<str>>,
+    nodes: RapidHashMap<Arc<str>, NodeIndex<DefaultIx>>,
+    primary_outputs: RapidHashMap<Arc<str>, Arc<str>>,
 }
 
 impl BuildGraph {
-    pub fn new(outputs: &HashMap<Arc<str>, Arc<Build>>) -> Self {
+    pub fn new(outputs: &RapidHashMap<Arc<str>, Arc<Build>>) -> Self {
         let mut this = Self {
             graph: Graph::<Arc<str>, ()>::new(),
-            nodes: HashMap::<Arc<str>, NodeIndex<DefaultIx>>::new(),
-            primary_outputs: HashMap::new(),
+            nodes: Default::default(),
+            primary_outputs: Default::default(),
         };
 
         for (output, build) in outputs {
@@ -133,7 +133,7 @@ mod tests {
     use crate::ir::{DynamicBuild, Rule};
 
     fn validate_builds(
-        dependencies: &HashMap<Arc<str>, Arc<Build>>,
+        dependencies: &RapidHashMap<Arc<str>, Arc<Build>>,
     ) -> Result<(), BuildGraphError> {
         BuildGraph::new(dependencies).validate()
     }

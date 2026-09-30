@@ -1,11 +1,11 @@
 use crate::infrastructure::{FileError, FileSystem, Metadata};
 use alloc::sync::Arc;
-use core::hash::{BuildHasher, BuildHasherDefault};
+use core::hash::Hasher;
+use rapidhash::fast::{RandomState, RapidHasher};
 use scc::HashIndex;
-use std::collections::hash_map::DefaultHasher;
 use tokio::sync::OnceCell;
 
-type Cache<T> = HashIndex<Arc<str>, Arc<OnceCell<T>>>;
+type Cache<T> = HashIndex<Arc<str>, Arc<OnceCell<T>>, RandomState>;
 
 pub struct FileCache {
     file_system: Arc<dyn FileSystem + Send + Sync>,
@@ -17,8 +17,8 @@ impl FileCache {
     pub fn new(file_system: Arc<dyn FileSystem + Send + Sync>, capacity: usize) -> Self {
         Self {
             file_system,
-            metadata: HashIndex::with_capacity(capacity),
-            content_hashes: HashIndex::with_capacity(capacity),
+            metadata: HashIndex::with_capacity_and_hasher(capacity, Default::default()),
+            content_hashes: HashIndex::with_capacity_and_hasher(capacity, Default::default()),
         }
     }
 
@@ -53,8 +53,11 @@ impl FileCache {
 
     pub async fn content_hash(&self, path: &Arc<str>) -> Result<u64, FileError> {
         Self::get(&self.content_hashes, path, || async {
-            Ok(BuildHasherDefault::<DefaultHasher>::default()
-                .hash_one(self.file_system.read_file(path.as_ref().as_ref()).await?))
+            let mut hasher = RapidHasher::default();
+
+            hasher.write(&self.file_system.read_file(path.as_ref().as_ref()).await?);
+
+            Ok(hasher.finish())
         })
         .await
     }

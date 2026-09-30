@@ -6,7 +6,7 @@ use crate::{
 };
 use alloc::sync::Arc;
 use core::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
+use rapidhash::fast::RapidHasher;
 
 pub async fn calculate_timestamp_hash(
     context: &RunContext,
@@ -18,7 +18,7 @@ pub async fn calculate_timestamp_hash(
         return Ok(hash);
     }
 
-    let mut hasher = DefaultHasher::new();
+    let mut hasher = RapidHasher::default();
 
     hash_command(build, &mut hasher);
 
@@ -52,7 +52,7 @@ pub async fn calculate_content_hash(
         return Ok(hash);
     }
 
-    let mut hasher = DefaultHasher::new();
+    let mut hasher = RapidHasher::default();
 
     hash_command(build, &mut hasher);
 
@@ -119,10 +119,7 @@ mod tests {
         ir::{Config, HeaderDependency},
     };
     use alloc::sync::Arc;
-    use core::{
-        hash::{BuildHasher, BuildHasherDefault},
-        time::Duration,
-    };
+    use core::time::Duration;
     use pretty_assertions::{assert_eq, assert_ne};
     use std::time::SystemTime;
     use tokio::sync::Mutex;
@@ -173,7 +170,7 @@ mod tests {
             SystemTime::UNIX_EPOCH,
             SystemTime::UNIX_EPOCH + Duration::from_secs(1),
         ];
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = RapidHasher::default();
 
         file_system.write_file("foo.c", "");
         file_system.write_file("foo.h", "");
@@ -233,7 +230,7 @@ mod tests {
             vec![],
             None,
         );
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = RapidHasher::default();
 
         file_system.write_file("foo.c", "foo");
         file_system.write_file("foo.h", "bar");
@@ -242,9 +239,10 @@ mod tests {
         None::<&HeaderDependency>.hash(&mut hasher);
 
         for content in ["foo", "bar"] {
-            BuildHasherDefault::<DefaultHasher>::default()
-                .hash_one(content.as_bytes())
-                .hash(&mut hasher);
+            let mut content_hasher = RapidHasher::default();
+
+            content_hasher.write(content.as_bytes());
+            content_hasher.finish().hash(&mut hasher);
         }
 
         assert_eq!(

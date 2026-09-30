@@ -1,7 +1,7 @@
 use crate::infrastructure::{FileError, FileSystem, Metadata};
 use alloc::sync::Arc;
 use core::hash::Hasher;
-use rapidhash::fast::{RandomState, RapidHasher};
+use rapidhash::{fast::RandomState, quality::RapidHasher};
 use scc::HashIndex;
 use tokio::sync::OnceCell;
 

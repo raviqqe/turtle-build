@@ -1,17 +1,18 @@
 use std::{
-    fs::File,
+    fs::{File, OpenOptions, read, rename, write},
     io::{self, ErrorKind},
     path::Path,
 };
-use tokio::fs::{OpenOptions, read, rename, write};
 
 pub const COLUMN_SEPARATOR: u8 = b'\0';
 pub const COMPACTION_RATIO: usize = 3;
 pub const LINE_TERMINATOR: u8 = b'\n';
 const TEMPORARY_EXTENSION: &str = "tmp";
 
-pub async fn read_file(path: &Path) -> Result<Vec<u8>, io::Error> {
-    read(path).await.or_else(|error| {
+// Log files are read and opened inline because databases open before any build
+// runs, when a round trip through the blocking thread pool only adds latency.
+pub fn read_file(path: &Path) -> Result<Vec<u8>, io::Error> {
+    read(path).or_else(|error| {
         if error.kind() == ErrorKind::NotFound {
             Ok(vec![])
         } else {
@@ -20,29 +21,23 @@ pub async fn read_file(path: &Path) -> Result<Vec<u8>, io::Error> {
     })
 }
 
-pub async fn compact_file(path: &Path, bytes: Vec<u8>) -> Result<(), io::Error> {
+pub fn compact_file(path: &Path, bytes: Vec<u8>) -> Result<(), io::Error> {
     let temporary_path = path.with_added_extension(TEMPORARY_EXTENSION);
 
-    write(&temporary_path, bytes).await?;
-    rename(temporary_path, path).await
+    write(&temporary_path, bytes)?;
+    rename(temporary_path, path)
 }
 
-pub async fn open_file(path: &Path) -> Result<File, io::Error> {
-    Ok(OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(path)
-        .await?
-        .into_std()
-        .await)
+pub fn open_file(path: &Path) -> Result<File, io::Error> {
+    OpenOptions::new().append(true).create(true).open(path)
 }
 
-pub async fn open_log(path: &Path, bytes: Option<Vec<u8>>) -> Result<File, io::Error> {
+pub fn open_log(path: &Path, bytes: Option<Vec<u8>>) -> Result<File, io::Error> {
     if let Some(bytes) = bytes {
-        compact_file(path, bytes).await?;
+        compact_file(path, bytes)?;
     }
 
-    open_file(path).await
+    open_file(path)
 }
 
 pub fn split_lines(bytes: &[u8]) -> impl DoubleEndedIterator<Item = &[u8]> {
@@ -63,139 +58,127 @@ mod tests {
 
     const FILENAME: &str = "foo";
 
-    #[tokio::test]
-    async fn read_existing_file() {
+    #[test]
+    fn read_existing_file() {
         let directory = tempdir().unwrap();
         let path = directory.path().join(FILENAME);
 
         write(&path, "bar").unwrap();
 
-        assert_eq!(read_file(&path).await.unwrap(), b"bar");
+        assert_eq!(read_file(&path).unwrap(), b"bar");
     }
 
-    #[tokio::test]
-    async fn read_missing_file() {
+    #[test]
+    fn read_missing_file() {
         let directory = tempdir().unwrap();
 
-        assert_eq!(
-            read_file(&directory.path().join(FILENAME)).await.unwrap(),
-            b""
-        );
+        assert_eq!(read_file(&directory.path().join(FILENAME)).unwrap(), b"");
     }
 
-    #[tokio::test]
-    async fn fail_to_read_directory() {
+    #[test]
+    fn fail_to_read_directory() {
         let directory = tempdir().unwrap();
 
-        assert!(read_file(directory.path()).await.is_err());
+        assert!(read_file(directory.path()).is_err());
     }
 
-    #[tokio::test]
-    async fn compact_existing_file() {
+    #[test]
+    fn compact_existing_file() {
         let directory = tempdir().unwrap();
         let path = directory.path().join(FILENAME);
 
         write(&path, "bar").unwrap();
 
-        compact_file(&path, b"baz".into()).await.unwrap();
+        compact_file(&path, b"baz".into()).unwrap();
 
         assert_eq!(read(&path).unwrap(), b"baz");
     }
 
-    #[tokio::test]
-    async fn compact_missing_file() {
+    #[test]
+    fn compact_missing_file() {
         let directory = tempdir().unwrap();
         let path = directory.path().join(FILENAME);
 
-        compact_file(&path, b"bar".into()).await.unwrap();
+        compact_file(&path, b"bar".into()).unwrap();
 
         assert_eq!(read(&path).unwrap(), b"bar");
     }
 
-    #[tokio::test]
-    async fn remove_temporary_file() {
+    #[test]
+    fn remove_temporary_file() {
         let directory = tempdir().unwrap();
         let path = directory.path().join(FILENAME);
 
         write(&path, "bar").unwrap();
 
-        compact_file(&path, b"baz".into()).await.unwrap();
+        compact_file(&path, b"baz".into()).unwrap();
 
         assert!(!exists(path.with_added_extension(TEMPORARY_EXTENSION)).unwrap());
     }
 
-    #[tokio::test]
-    async fn overwrite_temporary_file() {
+    #[test]
+    fn overwrite_temporary_file() {
         let directory = tempdir().unwrap();
         let path = directory.path().join(FILENAME);
 
         write(&path, "bar").unwrap();
         write(path.with_added_extension(TEMPORARY_EXTENSION), "qux").unwrap();
 
-        compact_file(&path, b"baz".into()).await.unwrap();
+        compact_file(&path, b"baz".into()).unwrap();
 
         assert_eq!(read(&path).unwrap(), b"baz");
         assert!(!exists(path.with_added_extension(TEMPORARY_EXTENSION)).unwrap());
     }
 
-    #[tokio::test]
-    async fn open_existing_file() {
+    #[test]
+    fn open_existing_file() {
         let directory = tempdir().unwrap();
         let path = directory.path().join(FILENAME);
 
         write(&path, "bar\n").unwrap();
 
-        open_file(&path).await.unwrap().write_all(b"baz\n").unwrap();
+        open_file(&path).unwrap().write_all(b"baz\n").unwrap();
 
         assert_eq!(read(&path).unwrap(), b"bar\nbaz\n");
     }
 
-    #[tokio::test]
-    async fn open_missing_file() {
+    #[test]
+    fn open_missing_file() {
         let directory = tempdir().unwrap();
         let path = directory.path().join(FILENAME);
 
-        open_file(&path).await.unwrap();
+        open_file(&path).unwrap();
 
         assert_eq!(read(&path).unwrap(), b"");
     }
 
-    #[tokio::test]
-    async fn fail_to_open_file_in_missing_directory() {
+    #[test]
+    fn fail_to_open_file_in_missing_directory() {
         let directory = tempdir().unwrap();
 
-        assert!(
-            open_file(&directory.path().join("foo").join(FILENAME))
-                .await
-                .is_err()
-        );
+        assert!(open_file(&directory.path().join("foo").join(FILENAME)).is_err());
     }
 
-    #[tokio::test]
-    async fn open_log_without_compaction() {
+    #[test]
+    fn open_log_without_compaction() {
         let directory = tempdir().unwrap();
         let path = directory.path().join(FILENAME);
 
         write(&path, "bar\n").unwrap();
 
-        open_log(&path, None)
-            .await
-            .unwrap()
-            .write_all(b"baz\n")
-            .unwrap();
+        open_log(&path, None).unwrap().write_all(b"baz\n").unwrap();
 
         assert_eq!(read(&path).unwrap(), b"bar\nbaz\n");
     }
 
-    #[tokio::test]
-    async fn open_log_with_compaction() {
+    #[test]
+    fn open_log_with_compaction() {
         let directory = tempdir().unwrap();
         let path = directory.path().join(FILENAME);
 
         write(&path, "bar\n").unwrap();
 
         open_log(&path, Some(b"foo\n".into()))
-            .await
             .unwrap()
             .write_all(b"baz\n")
             .unwrap();
@@ -203,22 +186,22 @@ mod tests {
         assert_eq!(read(&path).unwrap(), b"foo\nbaz\n");
     }
 
-    #[tokio::test]
-    async fn open_missing_log() {
+    #[test]
+    fn open_missing_log() {
         let directory = tempdir().unwrap();
         let path = directory.path().join(FILENAME);
 
-        open_log(&path, None).await.unwrap();
+        open_log(&path, None).unwrap();
 
         assert_eq!(read(&path).unwrap(), b"");
     }
 
-    #[tokio::test]
-    async fn open_missing_log_with_compaction() {
+    #[test]
+    fn open_missing_log_with_compaction() {
         let directory = tempdir().unwrap();
         let path = directory.path().join(FILENAME);
 
-        open_log(&path, Some(b"foo\n".into())).await.unwrap();
+        open_log(&path, Some(b"foo\n".into())).unwrap();
 
         assert_eq!(read(&path).unwrap(), b"foo\n");
     }

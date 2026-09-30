@@ -8,8 +8,8 @@ use self::{
 use super::utility::{LINE_TERMINATOR, read_file};
 use crate::{infrastructure::DatabaseError, ir::BuildId, path_pool::PathPool};
 use alloc::sync::Arc;
-use std::path::Path;
-use tokio::{fs::create_dir_all, sync::Mutex, try_join};
+use std::{fs::create_dir_all, path::Path};
+use tokio::{sync::Mutex, try_join};
 
 const PATH_FILENAME: &str = "paths";
 const INDEX_FILENAME: &str = "indices";
@@ -21,11 +21,12 @@ pub struct HeaderInputLog {
 
 impl HeaderInputLog {
     pub async fn new(directory: &Path, path_pool: &PathPool) -> Result<Self, DatabaseError> {
-        create_dir_all(directory).await?;
+        create_dir_all(directory)?;
 
         let path_file = directory.join(PATH_FILENAME);
         let index_file = directory.join(INDEX_FILENAME);
-        let (path_bytes, index_bytes) = try_join!(read_file(&path_file), read_file(&index_file))?;
+        let path_bytes = read_file(&path_file)?;
+        let index_bytes = read_file(&index_file)?;
         let paths = deserialize_paths(&path_bytes, path_pool)?;
         let (path_log, index_log) = try_join!(
             PathLog::new(&path_file, &path_bytes, &paths),

@@ -12,7 +12,7 @@ pub struct HashLog {
 
 impl HashLog {
     pub async fn new(path: &Path) -> Result<Self, DatabaseError> {
-        let bytes = read_file(path).await?;
+        let bytes = read_file(path)?;
         let records = bytes.as_chunks().0.as_chunks().0;
         let hashes = HashIndex::with_capacity(records.len());
 
@@ -32,11 +32,11 @@ impl HashLog {
                 .flatten()
                 .collect::<Vec<_>>();
 
-            compact_file(path, bytes).await?;
+            compact_file(path, bytes)?;
         }
 
         Ok(Self {
-            file: open_file(path).await?,
+            file: open_file(path)?,
             hashes,
         })
     }

@@ -14,11 +14,11 @@ pub struct FileCache {
 }
 
 impl FileCache {
-    pub fn new(file_system: Arc<dyn FileSystem + Send + Sync>) -> Self {
+    pub fn new(file_system: Arc<dyn FileSystem + Send + Sync>, capacity: usize) -> Self {
         Self {
             file_system,
-            metadata: HashIndex::new(),
-            content_hashes: HashIndex::new(),
+            metadata: HashIndex::with_capacity(capacity),
+            content_hashes: HashIndex::with_capacity(capacity),
         }
     }
 
@@ -91,7 +91,7 @@ mod tests {
     use crate::infrastructure::FakeFileSystem;
 
     fn create_cache(file_system: &FakeFileSystem) -> FileCache {
-        FileCache::new(Arc::new(file_system.clone()))
+        FileCache::new(Arc::new(file_system.clone()), 0)
     }
 
     mod exists {

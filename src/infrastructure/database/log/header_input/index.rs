@@ -58,8 +58,7 @@ impl IndexLog {
                 })
                 .transpose()?
                 .map(|records| records.concat()),
-            )
-            .await?,
+            )?,
             inputs,
         })
     }
@@ -502,7 +501,7 @@ mod tests {
                 .is_err()
         );
 
-        log.file = open_file(&directory.path().join(FILENAME)).await.unwrap();
+        log.file = open_file(&directory.path().join(FILENAME)).unwrap();
         log.set(BuildId::new(2), &["bar".into(), "foo".into()], &[1, 0])
             .await
             .unwrap();

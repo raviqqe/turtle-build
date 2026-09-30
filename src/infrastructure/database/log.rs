@@ -12,8 +12,8 @@ use crate::{
 };
 use alloc::sync::Arc;
 use async_trait::async_trait;
-use std::path::Path;
-use tokio::{fs::create_dir_all, try_join};
+use std::{fs::create_dir_all, path::Path};
+use tokio::try_join;
 
 const HASH_FILENAME: &str = "hashes";
 const HEADER_INPUT_DIRECTORY: &str = "header_inputs";
@@ -29,7 +29,7 @@ pub struct LogDatabase {
 impl LogDatabase {
     /// Creates a database.
     pub async fn new(directory: &Path, path_pool: &PathPool) -> Result<Self, DatabaseError> {
-        create_dir_all(directory).await?;
+        create_dir_all(directory)?;
 
         let hash_path = directory.join(HASH_FILENAME);
         let header_input_path = directory.join(HEADER_INPUT_DIRECTORY);

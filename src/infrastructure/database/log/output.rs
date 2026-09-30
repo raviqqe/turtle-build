@@ -15,7 +15,7 @@ pub struct OutputLog {
 impl OutputLog {
     // TODO Load a file lazily.
     pub async fn new(path: &Path) -> Result<Self, DatabaseError> {
-        let bytes = read_file(path).await?;
+        let bytes = read_file(path)?;
         let lines = split_lines(&bytes).collect::<Vec<_>>();
         let outputs = HashIndex::<String, Option<String>>::with_capacity(lines.len());
 
@@ -41,11 +41,11 @@ impl OutputLog {
                 .flat_map(|(output, source)| serialize(output, source.as_deref()))
                 .collect::<Vec<_>>();
 
-            compact_file(path, bytes).await?;
+            compact_file(path, bytes)?;
         }
 
         Ok(Self {
-            file: open_file(path).await?,
+            file: open_file(path)?,
             outputs,
         })
     }

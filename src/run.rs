@@ -101,7 +101,7 @@ pub async fn run(
         .map(|build| run_build(context.clone(), build)),
     )
     .buffer_unordered(OUTPUT_CONCURRENCY)
-    .try_for_each(|_| ready(Ok(())))
+    .try_for_each(async |_| Ok(()))
     .await?;
 
     Ok(())

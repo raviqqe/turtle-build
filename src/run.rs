@@ -35,6 +35,7 @@ use std::{path::Path, process::Output};
 use tokio::{spawn, sync::MutexGuard, time::Instant, try_join};
 
 // Only this many requested outputs are started at once so that finished builds free their tasks.
+// TODO Consider using no `async` and a normal thread pool (e.g. `rayon`).
 const OUTPUT_CONCURRENCY: usize = 256;
 
 /// Runs builds.

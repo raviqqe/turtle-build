@@ -81,6 +81,7 @@ impl Build {
         self.dynamic_module.as_ref()
     }
 
+    // TODO Is this cheating??
     fn calculate_id(outputs: &[Arc<str>], implicit_outputs: &[Arc<str>]) -> BuildId {
         let mut hasher = RapidHasher::default();
 

@@ -20,8 +20,8 @@ impl BuildGraph {
     pub fn new(outputs: &RapidHashMap<Arc<str>, Arc<Build>>) -> Self {
         let mut this = Self {
             graph: Graph::<Arc<str>, ()>::new(),
-            nodes: RapidHashMap::default(),
-            primary_outputs: RapidHashMap::default(),
+            nodes: Default::default(),
+            primary_outputs: Default::default(),
         };
 
         for (output, build) in outputs {

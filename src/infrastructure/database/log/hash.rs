@@ -15,7 +15,7 @@ impl HashLog {
     pub async fn new(path: &Path) -> Result<Self, DatabaseError> {
         let bytes = read_file(path)?;
         let records = bytes.as_chunks().0.as_chunks().0;
-        let hashes = HashIndex::with_capacity_and_hasher(records.len(), RandomState::default());
+        let hashes = HashIndex::with_capacity_and_hasher(records.len(), Default::default());
 
         for &record in records.iter().rev() {
             let (id, hash) = deserialize(record);

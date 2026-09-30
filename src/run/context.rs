@@ -56,7 +56,7 @@ impl RunContext {
                 .collect(),
             build_futures: HashIndex::with_capacity_and_hasher(
                 config.outputs().len(),
-                RandomState::default(),
+                Default::default(),
             ),
             config,
             options,

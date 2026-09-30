@@ -20,8 +20,8 @@ impl FileCache {
     pub fn new(file_system: Arc<dyn FileSystem + Send + Sync>, capacity: usize) -> Self {
         Self {
             file_system,
-            metadata: HashIndex::with_capacity_and_hasher(capacity, RandomState::default()),
-            content_hashes: HashIndex::with_capacity_and_hasher(capacity, RandomState::default()),
+            metadata: HashIndex::with_capacity_and_hasher(capacity, Default::default()),
+            content_hashes: HashIndex::with_capacity_and_hasher(capacity, Default::default()),
         }
     }
 

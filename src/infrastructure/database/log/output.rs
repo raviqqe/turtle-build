@@ -18,9 +18,9 @@ impl OutputLog {
     pub async fn new(path: &Path) -> Result<Self, DatabaseError> {
         let bytes = read_file(path)?;
         let lines = split_lines(&bytes).collect::<Vec<_>>();
-        let outputs = HashIndex::<String, Option<String>, RandomState>::with_capacity_and_hasher(
+        let outputs = HashIndex::<String, Option<String>, _>::with_capacity_and_hasher(
             lines.len(),
-            RandomState::default(),
+            Default::default(),
         );
 
         for line in lines.into_iter().rev() {

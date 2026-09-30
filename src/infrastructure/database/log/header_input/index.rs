@@ -26,7 +26,7 @@ impl IndexLog {
             .map(|&(id, indices, _)| (id, indices))
             .collect::<RapidHashMap<_, _>>();
         let count = indices.len();
-        let inputs = HashIndex::with_capacity_and_hasher(count, RandomState::default());
+        let inputs = HashIndex::with_capacity_and_hasher(count, Default::default());
 
         // Paths might be lost on a system failure while records of them are not.
         indices.retain(|&id, indices| {

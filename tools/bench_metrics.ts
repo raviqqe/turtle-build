@@ -3,6 +3,26 @@
 import { glob, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
+import {
+  array,
+  type InferOutput,
+  minLength,
+  number,
+  object,
+  parse,
+  pipe,
+  string,
+} from "valibot";
+
+const reportSchema = object({
+  results: array(
+    object({
+      command: string(),
+      mean: number(),
+      memory_usage_byte: pipe(array(number()), minLength(1)),
+    }),
+  ),
+});
 
 interface Result {
   benchmark: string;
@@ -22,50 +42,33 @@ const metricNames = [
   ["memory", "peak memory usage"],
 ] as const;
 
-const parseResult = (result: unknown): Result => {
-  if (
-    typeof result !== "object" ||
-    result === null ||
-    !("command" in result) ||
-    typeof result.command !== "string" ||
-    !("mean" in result) ||
-    typeof result.mean !== "number" ||
-    !("memory_usage_byte" in result) ||
-    !Array.isArray(result.memory_usage_byte) ||
-    result.memory_usage_byte.length === 0 ||
-    !result.memory_usage_byte.every(
-      (value: unknown) => typeof value === "number",
-    )
-  ) {
-    throw new Error(`invalid result: ${JSON.stringify(result)}`);
-  }
-
-  const [, tool, benchmark] = /^(\S+) \((.+)\)$/.exec(result.command) ?? [];
+const parseResult = ({
+  command,
+  mean,
+  memory_usage_byte: memory,
+}: InferOutput<typeof reportSchema>["results"][number]): Result => {
+  const [, tool, benchmark] = /^(\S+) \((.+)\)$/.exec(command) ?? [];
 
   if (tool === undefined || benchmark === undefined) {
-    throw new Error(`invalid command: ${result.command}`);
+    throw new Error(`invalid command: ${command}`);
   }
 
-  return {
-    benchmark,
-    memory: Math.max(...result.memory_usage_byte),
-    time: result.mean,
-    tool,
-  };
+  return { benchmark, memory: Math.max(...memory), time: mean, tool };
 };
 
-const parseResults = (report: unknown): Result[] => {
-  if (
-    typeof report !== "object" ||
-    report === null ||
-    !("results" in report) ||
-    !Array.isArray(report.results)
-  ) {
-    throw new Error(`invalid report: ${JSON.stringify(report)}`);
-  }
-
-  return report.results.map(parseResult);
-};
+const readResults = async (directory: string): Promise<Result[]> =>
+  (
+    await Promise.all(
+      (
+        await Array.fromAsync(glob("*/tmp/*.json", { cwd: directory }))
+      ).map(async (path) =>
+        parse(
+          reportSchema,
+          JSON.parse(await readFile(join(directory, path), "utf-8")),
+        ).results.map(parseResult),
+      ),
+    )
+  ).flat();
 
 const findResult = (
   results: Result[],
@@ -96,19 +99,6 @@ const compileMetrics = (os: string, results: Result[]): MetricSet[] =>
       })),
     name: `${name} relative to Ninja on ${os}`,
   }));
-
-const readResults = async (directory: string): Promise<Result[]> =>
-  (
-    await Promise.all(
-      (
-        await Array.fromAsync(glob("*/tmp/*.json", { cwd: directory }))
-      ).map(async (path) =>
-        parseResults(
-          JSON.parse(await readFile(join(directory, path), "utf-8")),
-        ),
-      ),
-    )
-  ).flat();
 
 const {
   positionals: [os],

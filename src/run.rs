@@ -25,7 +25,7 @@ use alloc::sync::Arc;
 use async_recursion::async_recursion;
 use futures::{
     StreamExt, TryStreamExt,
-    future::{FutureExt, ready, try_join_all},
+    future::{FutureExt, try_join_all},
     stream,
 };
 use itertools::Itertools;

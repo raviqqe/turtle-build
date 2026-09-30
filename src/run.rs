@@ -215,15 +215,14 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
                 .await?;
 
             for output in build.outputs() {
-                context.build().database().set_output(output).await?;
-
-                if let Some(source) = context.config().source_map().get(output) {
-                    context
-                        .build()
-                        .database()
-                        .set_source(output, source)
-                        .await?;
-                }
+                context
+                    .build()
+                    .database()
+                    .set_output(
+                        output,
+                        context.config().source_map().get(output).map(AsRef::as_ref),
+                    )
+                    .await?;
             }
 
             if header_inputs.iter().copied().ne(&new_header_inputs) {
@@ -1027,7 +1026,7 @@ mod tests {
 
         context
             .database()
-            .set_source("foo.o", "foo.c")
+            .set_output("foo.o", Some("foo.c"))
             .await
             .unwrap();
 
@@ -1085,8 +1084,16 @@ mod tests {
             &Default::default(),
         );
 
-        context.database().set_source("foo", "baz").await.unwrap();
-        context.database().set_source("bar", "baz").await.unwrap();
+        context
+            .database()
+            .set_output("foo", Some("baz"))
+            .await
+            .unwrap();
+        context
+            .database()
+            .set_output("bar", Some("baz"))
+            .await
+            .unwrap();
 
         assert_eq!(
             run(

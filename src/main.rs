@@ -4,8 +4,7 @@ extern crate alloc;
 
 use alloc::sync::Arc;
 use clap::{Parser, ValueEnum};
-use core::error::Error;
-use core::time::Duration;
+use core::{convert::Infallible, error::Error};
 use futures::future::try_join_all;
 #[cfg(unix)]
 use rlimit::Resource;
@@ -16,7 +15,7 @@ use std::{
     path::{Path, PathBuf},
     process::exit,
 };
-use tokio::{sync::Mutex, time::sleep};
+use tokio::sync::Mutex;
 use turtle_build::{
     BuildError, Console, Context, FileSystem, LogDatabase, Module, ModuleDependencyMap,
     OsCommandRunner, OsConsole, OsFileSystem, PathPool, RunOptions, Statement, clean_dead, compile,
@@ -67,32 +66,32 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let arguments = Arguments::parse();
     let console = Arc::new(Mutex::new(OsConsole::new()));
 
-    if let Err(error) = execute(&arguments, &console).await {
-        if !arguments.quiet || !matches!(error, BuildError::Build) {
-            console
-                .lock()
-                .await
-                .write_stderr(
-                    format!(
-                        "{}{}\n",
-                        arguments.log_prefix.as_deref().unwrap_or_default(),
-                        error
-                    )
-                    .as_bytes(),
+    let Err(error) = execute(&arguments, &console).await;
+
+    if !arguments.quiet || !matches!(error, BuildError::Build) {
+        console
+            .lock()
+            .await
+            .write_stderr(
+                format!(
+                    "{}{}\n",
+                    arguments.log_prefix.as_deref().unwrap_or_default(),
+                    error
                 )
-                .await?;
-        }
-
-        // Delay for the error message to be written completely hopefully.
-        sleep(Duration::from_millis(1)).await;
-
-        exit(1)
+                .as_bytes(),
+            )
+            .await?;
     }
 
-    Ok(())
+    console.lock().await.flush().await?;
+
+    exit(1)
 }
 
-async fn execute(arguments: &Arguments, console: &Arc<Mutex<OsConsole>>) -> Result<(), BuildError> {
+async fn execute(
+    arguments: &Arguments,
+    console: &Arc<Mutex<OsConsole>>,
+) -> Result<Infallible, BuildError> {
     if let Some(directory) = &arguments.directory {
         set_current_dir(directory)?;
     }
@@ -163,7 +162,10 @@ async fn execute(arguments: &Arguments, console: &Arc<Mutex<OsConsole>>) -> Resu
         .await?;
     }
 
-    Ok(())
+    console.lock().await.flush().await?;
+
+    // Skip dropping the configuration and context, which is slow on large graphs.
+    exit(0)
 }
 
 async fn parse_modules(

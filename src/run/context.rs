@@ -35,7 +35,7 @@ impl RunContext {
         options: RunOptions,
     ) -> Self {
         Self {
-            file_cache: FileCache::new(build.file_system().clone()),
+            file_cache: FileCache::new(build.file_system().clone(), config.outputs().len()),
             build,
             build_graph: build_graph.into(),
             dynamic_configs: config
@@ -54,8 +54,8 @@ impl RunContext {
                     )
                 })
                 .collect(),
+            build_futures: HashIndex::with_capacity(config.outputs().len()),
             config,
-            build_futures: HashIndex::new(),
             options,
         }
     }

@@ -20,8 +20,7 @@ impl PathLog {
                     .last()
                     .is_some_and(|&byte| byte != LINE_TERMINATOR)
                     .then(|| serialize_paths(paths)),
-            )
-            .await?,
+            )?,
             count: paths.len().try_into()?,
             indices: paths.iter().cloned().zip(0..).collect(),
             failed: false,
@@ -292,7 +291,7 @@ mod tests {
 
         assert!(log.index(&["foo".into()]).is_err());
 
-        log.file = open_file(&directory.path().join(FILENAME)).await.unwrap();
+        log.file = open_file(&directory.path().join(FILENAME)).unwrap();
 
         assert!(log.index(&["bar".into()]).is_err());
         assert!(log.index(&[]).is_err());

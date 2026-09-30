@@ -12,7 +12,7 @@ pub struct HashLog {
 
 impl HashLog {
     pub async fn new(path: &Path) -> Result<Self, DatabaseError> {
-        let bytes = read_file(path).await?;
+        let bytes = read_file(path)?;
         let records = bytes.as_chunks().0.as_chunks().0;
         let hashes = HashIndex::with_capacity(records.len());
 
@@ -25,18 +25,18 @@ impl HashLog {
         if !bytes.len().is_multiple_of(size_of::<Record>())
             || bytes.len() > COMPACTION_RATIO * size_of::<Record>() * hashes.len()
         {
-            // Do not inline this to avoid holding a guard across an await point.
-            let bytes = hashes
-                .iter(&Guard::new())
-                .flat_map(|(&id, &hash)| serialize(id, hash))
-                .flatten()
-                .collect::<Vec<_>>();
-
-            compact_file(path, bytes).await?;
+            compact_file(
+                path,
+                hashes
+                    .iter(&Guard::new())
+                    .flat_map(|(&id, &hash)| serialize(id, hash))
+                    .flatten()
+                    .collect(),
+            )?;
         }
 
         Ok(Self {
-            file: open_file(path).await?,
+            file: open_file(path)?,
             hashes,
         })
     }

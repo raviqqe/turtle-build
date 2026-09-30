@@ -13,6 +13,7 @@ use nom::{
 };
 
 const OPERATOR_CHARACTERS: &str = "|:";
+const STRING_LITERAL_DELIMITERS: &str = " \t\r\n$|:";
 const ESCAPED_CHARACTERS: &str = "$ :";
 const DYNAMIC_MODULE_VERSION_VARIABLE: &str = "ninja_dyndep_version";
 
@@ -195,10 +196,7 @@ fn string_line(input: &str) -> IResult<&str, String> {
 }
 
 fn string_literal(input: &str) -> IResult<&str, String> {
-    token(string(is_not(
-        &*(" \t\r\n$".to_owned() + OPERATOR_CHARACTERS),
-    )))
-    .parse(input)
+    token(string(is_not(STRING_LITERAL_DELIMITERS))).parse(input)
 }
 
 fn string<'a>(

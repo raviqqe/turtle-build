@@ -2,12 +2,12 @@ use super::Metadata;
 use crate::infrastructure::{FileError, FileSystem};
 use async_trait::async_trait;
 use std::{
-    fs::{exists, metadata, read_to_string},
+    fs::{canonicalize, exists, metadata, read_to_string},
     io,
     path::{Path, PathBuf},
 };
 use tokio::{
-    fs::{canonicalize, create_dir_all, read, remove_file},
+    fs::{create_dir_all, read, remove_file},
     sync::Semaphore,
 };
 
@@ -67,10 +67,9 @@ impl FileSystem for OsFileSystem {
         Ok(())
     }
 
+    // Canonicalization runs inline for the same reason as existence checks.
     async fn canonicalize_path(&self, path: &Path) -> Result<PathBuf, FileError> {
-        canonicalize(path)
-            .await
-            .map_err(|error| Self::error(error, path))
+        canonicalize(path).map_err(|error| Self::error(error, path))
     }
 
     async fn remove_file(&self, path: &Path) -> Result<(), FileError> {

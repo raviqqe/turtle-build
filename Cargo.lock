@@ -1133,6 +1133,7 @@ dependencies = [
  "clap",
  "fjall",
  "futures",
+ "indexmap",
  "itertools",
  "nom",
  "num_cpus",

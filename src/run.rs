@@ -28,9 +28,10 @@ use futures::{
     future::{FutureExt, try_join_all},
     stream,
 };
+use indexmap::IndexSet;
 use itertools::Itertools;
 pub use options::RunOptions;
-use rapidhash::RapidHashMap;
+use rapidhash::{RapidHashMap, fast::RandomState};
 use std::{path::Path, process::Output};
 use tokio::{spawn, sync::MutexGuard, time::Instant, try_join};
 
@@ -416,7 +417,8 @@ fn classify_inputs<'a>(
         file_inputs
             .into_iter()
             .chain(header_inputs.iter().copied())
-            .unique()
+            .collect::<IndexSet<_, RandomState>>()
+            .into_iter()
             .collect(),
     )
 }
@@ -3059,6 +3061,36 @@ mod tests {
                     &"corge".into()
                 ]
             )
+        );
+    }
+
+    #[test]
+    fn classify_duplicate_header_inputs() {
+        let build = explicit_build(
+            vec!["foo".into()],
+            Rule::new("".into(), None),
+            vec!["bar".into()],
+        );
+        let context = RunContext::new(
+            create_context(
+                &Default::default(),
+                &Default::default(),
+                &Default::default(),
+            ),
+            create_simple_config(vec![build.clone()], &[]),
+            BuildGraph::new(&Default::default()),
+            Default::default(),
+            DEFAULT_OPTIONS,
+        );
+
+        assert_eq!(
+            classify_inputs(
+                &context,
+                &build,
+                &[],
+                &[&"baz".into(), &"bar".into(), &"qux".into(), &"baz".into()],
+            ),
+            (vec![], vec![&"bar".into(), &"baz".into(), &"qux".into()])
         );
     }
 

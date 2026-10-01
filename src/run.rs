@@ -200,10 +200,6 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
             calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
         if outputs_exist && hash.map(|hash| hash.content()) == Some(content_hash) {
-            if let Some(metadata) = &output_metadata {
-                cache_output_metadata(&context, &build, metadata).await;
-            }
-
             return Ok(false);
         } else if context.options().dry_run {
             return skip_build(&context, &build).await;
@@ -1720,7 +1716,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn query_output_once_on_timestamp_update_of_input() {
+    async fn query_output_again_on_timestamp_update_of_input() {
         let file_system = FakeFileSystem::default();
         let context = create_context(&Default::default(), &Default::default(), &file_system);
         let config = create_simple_config(
@@ -1753,7 +1749,7 @@ mod tests {
 
         run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
 
-        assert_eq!(count_metadata_requests(&file_system, "bar"), count + 1);
+        assert_eq!(count_metadata_requests(&file_system, "bar"), count + 2);
     }
 
     #[tokio::test]
@@ -1832,6 +1828,35 @@ mod tests {
         run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
 
         assert_eq!(count_metadata_requests(&file_system, "foo.h"), count + 2);
+    }
+
+    #[tokio::test]
+    async fn read_no_input_of_up_to_date_phony_build() {
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&Default::default(), &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![Build::new(
+                vec!["foo".into()],
+                vec![],
+                None,
+                vec!["bar".into()],
+                vec![],
+                None,
+            )],
+            &["foo"],
+        );
+
+        file_system.write_file("bar", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        let count = file_system.read_requests().len();
+
+        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+        assert_eq!(file_system.read_requests()[count..], Vec::<&Path>::new());
     }
 
     #[tokio::test]

@@ -188,6 +188,10 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
         let outputs_exist = output_metadata.is_some() || build.rule().is_none();
 
         if outputs_exist && Some(timestamp_hash) == hash.map(|hash| hash.timestamp()) {
+            if let Some(metadata) = &output_metadata {
+                cache_output_metadata(&context, &build, metadata).await;
+            }
+
             return Ok(false);
         }
 
@@ -1713,7 +1717,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn query_output_again_on_timestamp_update_of_input() {
+    async fn query_output_once_on_timestamp_update_of_input() {
         let file_system = FakeFileSystem::default();
         let context = create_context(&Default::default(), &Default::default(), &file_system);
         let config = create_simple_config(
@@ -1746,7 +1750,7 @@ mod tests {
 
         run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
 
-        assert_eq!(count_metadata_requests(&file_system, "bar"), count + 2);
+        assert_eq!(count_metadata_requests(&file_system, "bar"), count + 1);
     }
 
     #[tokio::test]

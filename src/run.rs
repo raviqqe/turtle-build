@@ -23,6 +23,7 @@ use crate::{
 };
 use alloc::sync::Arc;
 use async_recursion::async_recursion;
+use core::hash::BuildHasherDefault;
 use futures::{
     StreamExt, TryStreamExt,
     future::{FutureExt, try_join_all},
@@ -30,8 +31,8 @@ use futures::{
 };
 use itertools::Itertools;
 pub use options::RunOptions;
-use rapidhash::RapidHashMap;
-use std::{path::Path, process::Output};
+use rapidhash::{RapidHashMap, fast::RapidHasher};
+use std::{collections::HashSet, path::Path, process::Output};
 use tokio::{spawn, sync::MutexGuard, time::Instant, try_join};
 
 // Only this many requested outputs are started at once so that finished builds free their tasks.
@@ -416,7 +417,9 @@ fn classify_inputs<'a>(
         file_inputs
             .into_iter()
             .chain(header_inputs.iter().copied())
-            .unique()
+            // Use a non-random hasher to keep input orders the same across runs for build hashes.
+            .collect::<HashSet<_, BuildHasherDefault<RapidHasher>>>()
+            .into_iter()
             .collect(),
     )
 }
@@ -3017,6 +3020,12 @@ mod tests {
         assert!(foo_future.await.is_err());
     }
 
+    fn sort_file_inputs<'a>(
+        (phony_inputs, file_inputs): (Vec<&'a Arc<str>>, Vec<&'a Arc<str>>),
+    ) -> (Vec<&'a Arc<str>>, Vec<&'a Arc<str>>) {
+        (phony_inputs, file_inputs.into_iter().sorted().collect_vec())
+    }
+
     #[test]
     fn classify_phony_and_file_inputs() {
         let build = explicit_build(
@@ -3044,21 +3053,70 @@ mod tests {
         );
 
         assert_eq!(
-            classify_inputs(
+            sort_file_inputs(classify_inputs(
                 &context,
                 &build,
                 &["quux".into(), "baz".into()],
                 &[&"qux".into(), &"corge".into()],
-            ),
+            )),
             (
                 vec![&"bar".into()],
                 vec![
                     &"baz".into(),
-                    &"qux".into(),
+                    &"corge".into(),
                     &"quux".into(),
-                    &"corge".into()
+                    &"qux".into()
                 ]
             )
+        );
+    }
+
+    #[test]
+    fn classify_duplicate_header_inputs() {
+        let build = explicit_build(
+            vec!["foo".into()],
+            Rule::new("".into(), None),
+            vec!["bar".into()],
+        );
+        let context = RunContext::new(
+            create_context(
+                &Default::default(),
+                &Default::default(),
+                &Default::default(),
+            ),
+            create_simple_config(vec![build.clone()], &[]),
+            BuildGraph::new(&Default::default()),
+            Default::default(),
+            DEFAULT_OPTIONS,
+        );
+
+        assert_eq!(
+            sort_file_inputs(classify_inputs(
+                &context,
+                &build,
+                &[],
+                &[&"baz".into(), &"bar".into(), &"qux".into(), &"baz".into()],
+            )),
+            (vec![], vec![&"bar".into(), &"baz".into(), &"qux".into()])
+        );
+    }
+
+    #[test]
+    fn classify_inputs_in_deterministic_order() {
+        let build = explicit_build(vec!["foo".into()], Rule::new("".into(), None), vec![]);
+        let context = create_build_run_context(
+            &Default::default(),
+            &Default::default(),
+            vec![build.clone()],
+        );
+        let inputs = (0..64)
+            .map(|index| index.to_string().into())
+            .collect::<Vec<Arc<str>>>();
+        let inputs = inputs.iter().collect_vec();
+
+        assert_eq!(
+            classify_inputs(&context, &build, &[], &inputs),
+            classify_inputs(&context, &build, &[], &inputs)
         );
     }
 

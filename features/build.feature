@@ -76,6 +76,46 @@ Feature: Build statement
       hello
       """
 
+  Scenario: Rebuild an output on content update of an input of a phony input
+    Given a file named "build.ninja" with:
+      """
+      rule cp
+        command = sh -c 'echo hello && cp baz $out'
+
+      build foo: cp bar
+      build bar: phony baz
+
+      """
+    And a file named "baz" with ""
+    When I successfully run `turtle`
+    And a file named "baz" with "baz"
+    And I successfully run `turtle`
+    Then the stdout should contain exactly:
+      """
+      hello
+      hello
+      """
+
+  @turtle
+  Scenario: Do not rebuild an output on timestamp update of an input of a phony input
+    Given a file named "build.ninja" with:
+      """
+      rule cp
+        command = sh -c 'echo hello && cp baz $out'
+
+      build foo: cp bar
+      build bar: phony baz
+
+      """
+    And a file named "baz" with ""
+    When I successfully run `turtle`
+    And I successfully run `touch baz`
+    And I successfully run `turtle`
+    Then the stdout should contain exactly:
+      """
+      hello
+      """
+
   Scenario: Do not rebuild an output on update of an order-only input
     Given a file named "build.ninja" with:
       """

@@ -332,6 +332,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn keep_timestamp_hash_of_phony_build_with_input() {
+        let file_system = FakeFileSystem::default();
+        let build = Build::new(
+            vec!["foo".into()],
+            vec![],
+            None,
+            vec!["bar".into()],
+            vec![],
+            None,
+        );
+        let context = create_context(&file_system, vec![]);
+
+        file_system.write_file("bar", "");
+
+        assert_eq!(
+            calculate_timestamp_hash(&context, &build, &[&"bar".into()], &[]).await,
+            calculate_timestamp_hash(&context, &build, &[&"bar".into()], &[]).await
+        );
+    }
+
+    #[tokio::test]
     async fn fail_with_missing_file_input() {
         assert_eq!(
             calculate_timestamp_hash(

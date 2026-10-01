@@ -1386,6 +1386,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rebuild_on_update_of_input_of_nested_phony_input() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&command_runner, &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![
+                explicit_build(
+                    vec!["foo".into()],
+                    Rule::new("cp bar foo".into(), None),
+                    vec!["bar".into()],
+                ),
+                Build::new(
+                    vec!["bar".into()],
+                    vec![],
+                    None,
+                    vec!["baz".into()],
+                    vec![],
+                    None,
+                ),
+                Build::new(
+                    vec!["baz".into()],
+                    vec![],
+                    None,
+                    vec!["qux".into()],
+                    vec![],
+                    None,
+                ),
+            ],
+            &["foo"],
+        );
+
+        file_system.write_file("foo", "");
+        file_system.write_file("qux", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        file_system.write_file("qux", "qux");
+
+        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+        assert_eq!(command_runner.commands(), ["cp bar foo", "cp bar foo"]);
+    }
+
+    #[tokio::test]
     async fn rebuild_missing_output() {
         let command_runner = FakeCommandRunner::default();
         let file_system = FakeFileSystem::default();
@@ -1435,6 +1481,76 @@ mod tests {
         run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
 
         assert_eq!(command_runner.commands(), ["cp bar foo", "cp bar foo"]);
+    }
+
+    #[tokio::test]
+    async fn rebuild_dependent_of_output_written_by_command_of_input() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&command_runner, &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![
+                explicit_build(
+                    vec!["foo".into()],
+                    Rule::new("cp bar foo".into(), None),
+                    vec!["bar".into()],
+                ),
+                explicit_build(
+                    vec!["bar".into()],
+                    Rule::new("true".into(), None),
+                    vec!["baz".into()],
+                ),
+                explicit_build(
+                    vec!["baz".into()],
+                    Rule::new("cp qux bar && touch baz".into(), None),
+                    vec!["qux".into()],
+                ),
+            ],
+            &["foo"],
+        );
+
+        file_system.write_file("foo", "");
+        file_system.write_file("bar", "");
+        file_system.write_file("baz", "");
+        file_system.write_file("qux", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        file_system.write_file("qux", "qux");
+
+        let mut future = pin!(run(&context, config, &[], DEFAULT_OPTIONS));
+
+        assert!(poll!(&mut future).is_pending());
+
+        // Let the runtime run the builds until the command of the input suspends.
+        yield_now().await;
+
+        assert_eq!(
+            command_runner.commands(),
+            [
+                "cp qux bar && touch baz",
+                "true",
+                "cp bar foo",
+                "cp qux bar && touch baz"
+            ]
+        );
+
+        file_system.write_file("bar", "qux");
+        file_system.write_file("baz", "");
+        future.await.unwrap();
+
+        assert_eq!(
+            command_runner.commands(),
+            [
+                "cp qux bar && touch baz",
+                "true",
+                "cp bar foo",
+                "cp qux bar && touch baz",
+                "cp bar foo"
+            ]
+        );
     }
 
     #[tokio::test]

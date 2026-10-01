@@ -186,11 +186,12 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
         let hash = context.build().database().get_hash(build.id()).await?;
         let mut timestamp_hash =
             calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
+        let outputs_exist = output_metadata.is_some() || build.rule().is_none();
 
-        if let Some(metadata) = &output_metadata
-            && Some(timestamp_hash) == hash.map(|hash| hash.timestamp())
-        {
-            cache_output_metadata(&context, &build, metadata).await;
+        if outputs_exist && Some(timestamp_hash) == hash.map(|hash| hash.timestamp()) {
+            if let Some(metadata) = &output_metadata {
+                cache_output_metadata(&context, &build, metadata).await;
+            }
 
             return Ok(false);
         }
@@ -198,9 +199,7 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
         let mut content_hash =
             calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
-        if (output_metadata.is_some() || build.rule().is_none())
-            && hash.map(|hash| hash.content()) == Some(content_hash)
-        {
+        if outputs_exist && hash.map(|hash| hash.content()) == Some(content_hash) {
             return Ok(false);
         } else if context.options().dry_run {
             return skip_build(&context, &build).await;
@@ -1387,6 +1386,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rebuild_on_update_of_input_of_nested_phony_input() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&command_runner, &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![
+                explicit_build(
+                    vec!["foo".into()],
+                    Rule::new("cp bar foo".into(), None),
+                    vec!["bar".into()],
+                ),
+                Build::new(
+                    vec!["bar".into()],
+                    vec![],
+                    None,
+                    vec!["baz".into()],
+                    vec![],
+                    None,
+                ),
+                Build::new(
+                    vec!["baz".into()],
+                    vec![],
+                    None,
+                    vec!["qux".into()],
+                    vec![],
+                    None,
+                ),
+            ],
+            &["foo"],
+        );
+
+        file_system.write_file("foo", "");
+        file_system.write_file("qux", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        file_system.write_file("qux", "qux");
+
+        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+        assert_eq!(command_runner.commands(), ["cp bar foo", "cp bar foo"]);
+    }
+
+    #[tokio::test]
     async fn rebuild_missing_output() {
         let command_runner = FakeCommandRunner::default();
         let file_system = FakeFileSystem::default();
@@ -1436,6 +1481,76 @@ mod tests {
         run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
 
         assert_eq!(command_runner.commands(), ["cp bar foo", "cp bar foo"]);
+    }
+
+    #[tokio::test]
+    async fn rebuild_dependent_of_output_written_by_command_of_input() {
+        let command_runner = FakeCommandRunner::default();
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&command_runner, &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![
+                explicit_build(
+                    vec!["foo".into()],
+                    Rule::new("cp bar foo".into(), None),
+                    vec!["bar".into()],
+                ),
+                explicit_build(
+                    vec!["bar".into()],
+                    Rule::new("true".into(), None),
+                    vec!["baz".into()],
+                ),
+                explicit_build(
+                    vec!["baz".into()],
+                    Rule::new("cp qux bar && touch baz".into(), None),
+                    vec!["qux".into()],
+                ),
+            ],
+            &["foo"],
+        );
+
+        file_system.write_file("foo", "");
+        file_system.write_file("bar", "");
+        file_system.write_file("baz", "");
+        file_system.write_file("qux", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        file_system.write_file("qux", "qux");
+
+        let mut future = pin!(run(&context, config, &[], DEFAULT_OPTIONS));
+
+        assert!(poll!(&mut future).is_pending());
+
+        // Let the runtime run the builds until the command of the input suspends.
+        yield_now().await;
+
+        assert_eq!(
+            command_runner.commands(),
+            [
+                "cp qux bar && touch baz",
+                "true",
+                "cp bar foo",
+                "cp qux bar && touch baz"
+            ]
+        );
+
+        file_system.write_file("bar", "qux");
+        file_system.write_file("baz", "");
+        future.await.unwrap();
+
+        assert_eq!(
+            command_runner.commands(),
+            [
+                "cp qux bar && touch baz",
+                "true",
+                "cp bar foo",
+                "cp qux bar && touch baz",
+                "cp bar foo"
+            ]
+        );
     }
 
     #[tokio::test]
@@ -1829,6 +1944,35 @@ mod tests {
         run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
 
         assert_eq!(count_metadata_requests(&file_system, "foo.h"), count + 2);
+    }
+
+    #[tokio::test]
+    async fn read_no_input_of_up_to_date_phony_build() {
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&Default::default(), &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![Build::new(
+                vec!["foo".into()],
+                vec![],
+                None,
+                vec!["bar".into()],
+                vec![],
+                None,
+            )],
+            &["foo"],
+        );
+
+        file_system.write_file("bar", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        let count = file_system.read_requests().len();
+
+        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+        assert_eq!(file_system.read_requests()[count..], Vec::<&Path>::new());
     }
 
     #[tokio::test]

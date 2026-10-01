@@ -1,4 +1,4 @@
-/// Guesses a job limit from a processor count in the same way as Ninja.
+/// Guesses a job limit from a processor count.
 pub const fn job_limit(processor_count: usize) -> usize {
     match processor_count {
         0 | 1 => 2,

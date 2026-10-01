@@ -185,21 +185,20 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
         let hash = context.build().database().get_hash(build.id()).await?;
         let mut timestamp_hash =
             calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
+        let outputs_exist = output_metadata.is_some() || build.rule().is_none();
 
-        if let Some(metadata) = &output_metadata
-            && Some(timestamp_hash) == hash.map(|hash| hash.timestamp())
-        {
-            cache_output_metadata(&context, &build, metadata).await;
-
+        if outputs_exist && Some(timestamp_hash) == hash.map(|hash| hash.timestamp()) {
             return Ok(false);
         }
 
         let mut content_hash =
             calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
-        if (output_metadata.is_some() || build.rule().is_none())
-            && hash.map(|hash| hash.content()) == Some(content_hash)
-        {
+        if outputs_exist && hash.map(|hash| hash.content()) == Some(content_hash) {
+            if let Some(metadata) = &output_metadata {
+                cache_output_metadata(&context, &build, metadata).await;
+            }
+
             return Ok(false);
         } else if context.options().dry_run {
             return skip_build(&context, &build).await;

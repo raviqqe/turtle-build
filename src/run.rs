@@ -185,11 +185,12 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
         let hash = context.build().database().get_hash(build.id()).await?;
         let mut timestamp_hash =
             calculate_timestamp_hash(&context, &build, &file_inputs, &phony_inputs).await?;
+        let outputs_exist = output_metadata.is_some() || build.rule().is_none();
 
-        if let Some(metadata) = &output_metadata
-            && Some(timestamp_hash) == hash.map(|hash| hash.timestamp())
-        {
-            cache_output_metadata(&context, &build, metadata).await;
+        if outputs_exist && Some(timestamp_hash) == hash.map(|hash| hash.timestamp()) {
+            if let Some(metadata) = &output_metadata {
+                cache_output_metadata(&context, &build, metadata).await;
+            }
 
             return Ok(false);
         }
@@ -197,9 +198,11 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
         let mut content_hash =
             calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
-        if (output_metadata.is_some() || build.rule().is_none())
-            && hash.map(|hash| hash.content()) == Some(content_hash)
-        {
+        if outputs_exist && hash.map(|hash| hash.content()) == Some(content_hash) {
+            if let Some(metadata) = &output_metadata {
+                cache_output_metadata(&context, &build, metadata).await;
+            }
+
             return Ok(false);
         } else if context.options().dry_run {
             return skip_build(&context, &build).await;
@@ -1714,7 +1717,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn query_output_again_on_timestamp_update_of_input() {
+    async fn query_output_once_on_timestamp_update_of_input() {
         let file_system = FakeFileSystem::default();
         let context = create_context(&Default::default(), &Default::default(), &file_system);
         let config = create_simple_config(
@@ -1747,7 +1750,7 @@ mod tests {
 
         run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
 
-        assert_eq!(count_metadata_requests(&file_system, "bar"), count + 2);
+        assert_eq!(count_metadata_requests(&file_system, "bar"), count + 1);
     }
 
     #[tokio::test]

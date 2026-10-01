@@ -23,16 +23,16 @@ use crate::{
 };
 use alloc::sync::Arc;
 use async_recursion::async_recursion;
+use core::hash::BuildHasherDefault;
 use futures::{
     StreamExt, TryStreamExt,
     future::{FutureExt, try_join_all},
     stream,
 };
-use indexmap::IndexSet;
 use itertools::Itertools;
 pub use options::RunOptions;
-use rapidhash::{RapidHashMap, fast::RandomState};
-use std::{path::Path, process::Output};
+use rapidhash::{RapidHashMap, fast::RapidHasher};
+use std::{collections::HashSet, path::Path, process::Output};
 use tokio::{spawn, sync::MutexGuard, time::Instant, try_join};
 
 // Only this many requested outputs are started at once so that finished builds free their tasks.
@@ -417,7 +417,8 @@ fn classify_inputs<'a>(
         file_inputs
             .into_iter()
             .chain(header_inputs.iter().copied())
-            .collect::<IndexSet<_, RandomState>>()
+            // Use a non-random hasher to keep input orders the same across runs for build hashes.
+            .collect::<HashSet<_, BuildHasherDefault<RapidHasher>>>()
             .into_iter()
             .collect(),
     )

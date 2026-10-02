@@ -110,10 +110,6 @@ impl FileSystem for FakeFileSystem {
         Ok(())
     }
 
-    async fn canonicalize_path(&self, path: &Path) -> Result<PathBuf, FileError> {
-        Ok(path.into())
-    }
-
     async fn remove_file(&self, path: &Path) -> Result<(), FileError> {
         self.files
             .lock()

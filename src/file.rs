@@ -4,7 +4,13 @@ use std::path::{Component, MAIN_SEPARATOR, Path, PathBuf};
 // file system, because they may point to files which do not exist yet, like
 // generated headers.
 pub fn canonicalize_path(path: &str) -> String {
-    let path = Path::new(path)
+    canonicalize_native_path(path.as_ref())
+        .to_string_lossy()
+        .replace(MAIN_SEPARATOR, "/")
+}
+
+pub fn canonicalize_native_path(path: &Path) -> PathBuf {
+    let path = path
         .components()
         .fold(vec![], |mut components, component| {
             match (components.last(), component) {
@@ -24,7 +30,7 @@ pub fn canonicalize_path(path: &str) -> String {
     if path.as_os_str().is_empty() {
         ".".into()
     } else {
-        path.to_string_lossy().replace(MAIN_SEPARATOR, "/")
+        path
     }
 }
 
@@ -81,6 +87,19 @@ mod tests {
     #[test]
     fn canonicalize_unchanged_path() {
         assert_eq!(canonicalize_path("foo.c"), "foo.c");
+    }
+
+    #[test]
+    fn canonicalize_native_empty_path() {
+        assert_eq!(canonicalize_native_path(Path::new("")), Path::new("."));
+    }
+
+    #[test]
+    fn canonicalize_native_relative_path() {
+        assert_eq!(
+            canonicalize_native_path(Path::new("./a/b/../c")),
+            Path::new("a/c")
+        );
     }
 
     #[cfg(unix)]

@@ -8,7 +8,7 @@ mod os;
 pub use self::fake::FakeFileSystem;
 pub use self::{error::FileError, metadata::Metadata, os::OsFileSystem};
 use async_trait::async_trait;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// A file system.
 #[async_trait]
@@ -23,8 +23,6 @@ pub trait FileSystem {
     async fn metadata(&self, path: &Path) -> Result<Option<Metadata>, FileError>;
     /// Creates a directory and its ancestors.
     async fn create_directory(&self, path: &Path) -> Result<(), FileError>;
-    /// Canonicalizes a path.
-    async fn canonicalize_path(&self, path: &Path) -> Result<PathBuf, FileError>;
     /// Removes a file.
     async fn remove_file(&self, path: &Path) -> Result<(), FileError>;
 }

@@ -22,11 +22,10 @@ use crate::{
     parse::parse_dynamic,
 };
 use alloc::sync::Arc;
-use async_recursion::async_recursion;
 use core::hash::BuildHasherDefault;
 use futures::{
     StreamExt, TryStreamExt,
-    future::{FutureExt, try_join_all},
+    future::{BoxFuture, FutureExt, try_join_all},
     stream,
 };
 use itertools::Itertools;
@@ -109,25 +108,30 @@ pub async fn run(
     Ok(())
 }
 
-#[async_recursion]
-async fn run_build(context: Arc<RunContext>, build: &Arc<Build>) -> Result<bool, BuildError> {
-    // Do not inline this to avoid holding a lock of build futures across an await point.
-    let future = if let Some(future) = context
-        .build_futures()
-        .peek_with(&build.id(), |_, future| future.clone())
-    {
-        future
-    } else {
-        context
+fn run_build(
+    context: Arc<RunContext>,
+    build: &Arc<Build>,
+) -> BoxFuture<'_, Result<bool, BuildError>> {
+    async move {
+        // Do not inline this to avoid holding a lock of build futures across an await point.
+        let future = if let Some(future) = context
             .build_futures()
-            .entry_async(build.id())
-            .await
-            .or_insert_with(|| spawn_build(context.clone(), build.clone()).boxed().shared())
-            .get()
-            .clone()
-    };
+            .peek_with(&build.id(), |_, future| future.clone())
+        {
+            future
+        } else {
+            context
+                .build_futures()
+                .entry_async(build.id())
+                .await
+                .or_insert_with(|| spawn_build(context.clone(), build.clone()).boxed().shared())
+                .get()
+                .clone()
+        };
 
-    future.await
+        future.await
+    }
+    .boxed()
 }
 
 async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool, BuildError> {

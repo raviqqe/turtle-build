@@ -133,7 +133,7 @@ async fn execute(
     } else {
         run(
             &context,
-            config.clone(),
+            config,
             &arguments.outputs,
             RunOptions {
                 debug: arguments.debug,

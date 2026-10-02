@@ -10,7 +10,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// Loads a root module and modules it includes transitively.
+/// Loads a root module and its dependency modules.
 pub async fn load_modules(
     file_system: &impl FileSystem,
     path: &Path,

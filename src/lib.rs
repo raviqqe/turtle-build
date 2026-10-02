@@ -12,7 +12,7 @@ mod file;
 mod infrastructure;
 mod ir;
 mod job_limit;
-mod module_load;
+mod load;
 mod parse;
 mod path_pool;
 mod run;
@@ -29,7 +29,7 @@ pub use self::{
         OsConsole, OsFileSystem, RedbDatabase,
     },
     job_limit::job_limit,
-    module_load::load,
+    load::load,
     parse::parse,
     path_pool::PathPool,
     run::{RunOptions, run},

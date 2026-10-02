@@ -15,19 +15,21 @@ pub async fn load(
     file_system: &impl FileSystem,
     path: &Path,
 ) -> Result<HashMap<PathBuf, Module>, BuildError> {
-    let mut paths = vec![(canonicalize_native_path(path), vec![])];
+    let mut paths = vec![(path.to_path_buf(), vec![])];
     let mut modules = HashMap::new();
 
     while let Some((path, mut ancestors)) = paths.pop() {
-        if ancestors.contains(&path) {
+        let canonical_path = canonicalize_native_path(&path);
+
+        if ancestors.contains(&canonical_path) {
             return Err(BuildError::CircularModuleDependency);
-        } else if modules.contains_key(&path) {
+        } else if modules.contains_key(&canonical_path) {
             continue;
         }
 
         let module = parse(&file_system.read_file_to_string(&path).await?)?;
 
-        ancestors.push(path.clone());
+        ancestors.push(canonical_path.clone());
         paths.extend(
             module
                 .statements()
@@ -38,10 +40,10 @@ pub async fn load(
                     _ => None,
                 })
                 // TODO Interpolate variables in paths of included and subninja files like ninja.
-                .map(|path| (canonicalize_native_path(path.as_ref()), ancestors.clone())),
+                .map(|path| (path.into(), ancestors.clone())),
         );
 
-        modules.insert(path, module);
+        modules.insert(canonical_path, module);
     }
 
     Ok(modules)
@@ -133,36 +135,36 @@ mod tests {
     #[tokio::test]
     async fn canonicalize_root_module_path() {
         let source = "x = 42\n";
+        let file_system = create_file_system(&[("./build.ninja", source)]);
 
         assert_eq!(
-            load(
-                &create_file_system(&[("build.ninja", source)]),
-                Path::new("./build.ninja")
-            )
-            .await,
+            load(&file_system, Path::new("./build.ninja")).await,
             Ok(create_modules(&[("build.ninja", source)]))
+        );
+        assert_eq!(
+            file_system.read_requests(),
+            [PathBuf::from("./build.ninja")]
         );
     }
 
     #[tokio::test]
     async fn canonicalize_included_module_paths() {
-        let sources = [
-            (
-                "build.ninja",
-                "include ./foo.ninja\nsubninja bar/../foo.ninja\n",
-            ),
-            ("foo.ninja", "x = 42\n"),
-        ];
-        let file_system = create_file_system(&sources);
+        let root_source = "include ./foo.ninja\nsubninja bar/../foo.ninja\n";
+        let source = "x = 42\n";
+        let file_system = create_file_system(&[
+            ("build.ninja", root_source),
+            ("./foo.ninja", source),
+            ("bar/../foo.ninja", source),
+        ]);
 
         assert_eq!(
             load(&file_system, Path::new("build.ninja")).await,
-            Ok(create_modules(&sources))
+            Ok(create_modules(&[
+                ("build.ninja", root_source),
+                ("foo.ninja", source)
+            ]))
         );
-        assert_eq!(
-            file_system.read_requests(),
-            [PathBuf::from("build.ninja"), PathBuf::from("foo.ninja")]
-        );
+        assert_eq!(file_system.read_requests().len(), 2);
     }
 
     #[tokio::test]
@@ -184,6 +186,21 @@ mod tests {
         assert_eq!(
             load(
                 &create_file_system(&[("build.ninja", "include foo.ninja\n")]),
+                Path::new("build.ninja")
+            )
+            .await,
+            Err(FileError::new("file not found").into())
+        );
+    }
+
+    #[tokio::test]
+    async fn fail_to_read_module_in_missing_directory() {
+        assert_eq!(
+            load(
+                &create_file_system(&[
+                    ("build.ninja", "include bar/../foo.ninja\n"),
+                    ("foo.ninja", "x = 42\n"),
+                ]),
                 Path::new("build.ninja")
             )
             .await,

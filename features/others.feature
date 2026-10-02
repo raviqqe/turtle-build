@@ -19,9 +19,9 @@ Feature: Others
     When I successfully run `turtle -f foo.ninja`
     Then the stdout should contain exactly "hello"
 
-  @turtle
   Scenario: Use a build file location with a parent directory component
-    Given a file named "build.ninja" with:
+    Given a directory named "foo"
+    And a file named "build.ninja" with:
       """
       rule echo
         command = echo hello
@@ -31,8 +31,6 @@ Feature: Others
       """
     When I successfully run `turtle -f foo/../build.ninja`
     Then the stdout should contain exactly "hello"
-    And the directory named ".turtle" should exist
-    And the directory named "foo" should not exist
 
   Scenario: Change a directory first
     Given a directory named "foo"

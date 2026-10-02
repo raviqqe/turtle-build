@@ -23,7 +23,6 @@ pub use self::{
     compile::compile,
     context::Context,
     error::BuildError,
-    file::canonicalize_path,
     infrastructure::{
         Console, Database, DatabaseError, FileSystem, FjallDatabase, LogDatabase, OsCommandRunner,
         OsConsole, OsFileSystem, RedbDatabase,

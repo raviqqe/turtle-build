@@ -5,6 +5,15 @@ Feature: Error
     Then the exit status should not be 0
     And the stderr should contain "build.ninja"
 
+  Scenario: Fail to read a root build file in a missing directory
+    Given a file named "build.ninja" with:
+      """
+      """
+    When I run `turtle -f foo/../build.ninja`
+    Then the exit status should not be 0
+    And the stderr should contain "foo/../build.ninja"
+    And the directory named "foo" should not exist
+
   Scenario: Fail to read a included build file
     Given a file named "build.ninja" with:
       """

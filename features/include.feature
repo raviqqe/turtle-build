@@ -89,3 +89,22 @@ Feature: Include statement
       """
     When I successfully run `turtle`
     Then the stdout should contain exactly "hello"
+
+  Scenario: Include a build file with a current directory component
+    Given a file named "build.ninja" with:
+      """
+      include ./foo.ninja
+
+      rule echo
+        command = echo $x
+
+      build foo: echo
+
+      """
+    And a file named "foo.ninja" with:
+      """
+      x = hello
+
+      """
+    When I successfully run `turtle`
+    Then the stdout should contain exactly "hello"

@@ -12,7 +12,7 @@ mod file;
 mod infrastructure;
 mod ir;
 mod job_limit;
-mod module_dependency;
+mod load;
 mod parse;
 mod path_pool;
 mod run;
@@ -23,12 +23,13 @@ pub use self::{
     compile::compile,
     context::Context,
     error::BuildError,
+    file::canonicalize_path,
     infrastructure::{
         Console, Database, DatabaseError, FileSystem, FjallDatabase, LogDatabase, OsCommandRunner,
         OsConsole, OsFileSystem, RedbDatabase,
     },
     job_limit::job_limit,
-    module_dependency::ModuleDependencyMap,
+    load::load,
     parse::parse,
     path_pool::PathPool,
     run::{RunOptions, run},

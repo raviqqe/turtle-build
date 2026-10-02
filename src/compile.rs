@@ -7,8 +7,8 @@ pub use self::error::CompileError;
 use self::{context::CompileContext, global_state::GlobalState, module_state::ModuleState};
 use crate::{
     ast,
+    file::canonicalize_native_path,
     ir::{Build, Config, DynamicBuild, DynamicConfig, HeaderDependency, Pool, Rule},
-    module_dependency::ModuleDependencyMap,
     path_pool::PathPool,
 };
 use alloc::{borrow::Cow, sync::Arc};
@@ -42,11 +42,10 @@ static VARIABLE_PATTERN: Lazy<Regex> =
 /// Compiles modules.
 pub fn compile(
     modules: &HashMap<PathBuf, ast::Module>,
-    dependencies: &ModuleDependencyMap,
     root_module_path: &Path,
     path_pool: &PathPool,
 ) -> Result<Config, CompileError> {
-    let context = CompileContext::new(modules, dependencies, path_pool);
+    let context = CompileContext::new(modules, path_pool);
 
     let mut global_state = GlobalState {
         outputs: Default::default(),
@@ -96,7 +95,7 @@ fn compile_module<'a>(
 ) -> Result<(), CompileError> {
     let module = &context
         .modules()
-        .get(path)
+        .get(&canonicalize_native_path(path))
         .ok_or_else(|| CompileError::ModuleNotFound(path.into()))?;
 
     for statement in module.statements() {
@@ -190,12 +189,7 @@ fn compile_module<'a>(
                 ));
             }
             ast::Statement::Include(include) => {
-                compile_module(
-                    context,
-                    global_state,
-                    module_state,
-                    resolve_dependency(context, path, include.path())?,
-                )?;
+                compile_module(context, global_state, module_state, include.path().as_ref())?;
             }
             ast::Statement::Pool(pool) => {
                 let Entry::Vacant(entry) = global_state.pools.entry(pool.name().into()) else {
@@ -221,7 +215,7 @@ fn compile_module<'a>(
                     context,
                     global_state,
                     &mut module_state.fork(),
-                    resolve_dependency(context, path, submodule.path())?,
+                    submodule.path().as_ref(),
                 )?;
             }
             ast::Statement::VariableDefinition(definition) => {
@@ -325,19 +319,6 @@ pub fn compile_dynamic(
     ))
 }
 
-fn resolve_dependency<'a>(
-    context: &'a CompileContext,
-    module_path: &Path,
-    submodule_path: &str,
-) -> Result<&'a Path, CompileError> {
-    Ok(context
-        .dependencies()
-        .get(module_path)
-        .ok_or_else(|| CompileError::ModuleNotFound(module_path.into()))?
-        .get(submodule_path)
-        .ok_or_else(|| CompileError::ModuleNotFound(submodule_path.into()))?)
-}
-
 fn resolve_variable(name: &str, variables: &TrainMap<&str, Arc<str>>) -> Option<String> {
     variables
         .get(name)
@@ -386,11 +367,6 @@ mod tests {
     use rapidhash::RapidHashSet;
 
     static ROOT_MODULE_PATH: Lazy<PathBuf> = Lazy::new(|| PathBuf::from("build.ninja"));
-    static DEFAULT_DEPENDENCIES: Lazy<ModuleDependencyMap> = Lazy::new(|| {
-        [(ROOT_MODULE_PATH.clone(), Default::default())]
-            .into_iter()
-            .collect()
-    });
 
     fn ast_explicit_build(
         outputs: Vec<String>,
@@ -441,7 +417,6 @@ mod tests {
             &[(ROOT_MODULE_PATH.clone(), ast::Module::new(statements))]
                 .into_iter()
                 .collect(),
-            &DEFAULT_DEPENDENCIES,
             &ROOT_MODULE_PATH,
             &Default::default(),
         )
@@ -481,12 +456,33 @@ mod tests {
                 &[(ROOT_MODULE_PATH.clone(), ast::Module::new(vec![]))]
                     .into_iter()
                     .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
             .unwrap(),
             create_simple_config(Default::default(), Default::default())
+        );
+    }
+
+    #[test]
+    fn resolve_root_module_path_lexically() {
+        assert_eq!(
+            compile(
+                &[(ROOT_MODULE_PATH.clone(), ast::Module::new(vec![]))]
+                    .into_iter()
+                    .collect(),
+                Path::new("./foo/../build.ninja"),
+                &Default::default(),
+            ),
+            Ok(create_simple_config(Default::default(), Default::default()))
+        );
+    }
+
+    #[test]
+    fn fail_to_find_root_module() {
+        assert_eq!(
+            compile(&Default::default(), &ROOT_MODULE_PATH, &Default::default()),
+            Err(CompileError::ModuleNotFound(ROOT_MODULE_PATH.clone()))
         );
     }
 
@@ -504,7 +500,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -537,7 +532,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -569,7 +563,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -601,7 +594,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -632,7 +624,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -663,7 +654,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -699,7 +689,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -732,7 +721,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -766,7 +754,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -799,7 +786,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -832,7 +818,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -864,7 +849,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -901,7 +885,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -945,7 +928,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -986,7 +968,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1030,7 +1011,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1068,7 +1048,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1117,7 +1096,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1153,7 +1131,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1210,7 +1187,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1248,7 +1224,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1284,7 +1259,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1321,7 +1295,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1362,7 +1335,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1401,7 +1373,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1452,7 +1423,6 @@ mod tests {
             )]
             .into_iter()
             .collect(),
-            &DEFAULT_DEPENDENCIES,
             &ROOT_MODULE_PATH,
             &path_pool,
         )
@@ -1520,7 +1490,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1564,7 +1533,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1599,7 +1567,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1634,7 +1601,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1674,7 +1640,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1706,7 +1671,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1750,7 +1714,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1789,7 +1752,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1826,7 +1788,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1854,7 +1815,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1887,7 +1847,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1931,7 +1890,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -1978,7 +1936,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -2152,7 +2109,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -2195,7 +2151,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -2243,7 +2198,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -2288,7 +2242,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -2337,7 +2290,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -2382,7 +2334,6 @@ mod tests {
             )]
             .into_iter()
             .collect(),
-            &DEFAULT_DEPENDENCIES,
             &ROOT_MODULE_PATH,
             &path_pool,
         )
@@ -2410,7 +2361,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             ),
@@ -2431,7 +2381,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             ),
@@ -2452,7 +2401,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -2495,7 +2443,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -2542,7 +2489,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -2589,7 +2535,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -2633,7 +2578,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -2685,7 +2629,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -2741,7 +2684,6 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
-                &DEFAULT_DEPENDENCIES,
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -3027,14 +2969,6 @@ mod tests {
                 ]
                 .into_iter()
                 .collect(),
-                &[(
-                    ROOT_MODULE_PATH.clone(),
-                    [(SUBMODULE_PATH.into(), PathBuf::from(SUBMODULE_PATH))]
-                        .into_iter()
-                        .collect(),
-                )]
-                .into_iter()
-                .collect(),
                 &ROOT_MODULE_PATH,
                 &Default::default(),
             )
@@ -3066,14 +3000,6 @@ mod tests {
                             ])
                         )
                     ]
-                    .into_iter()
-                    .collect(),
-                    &[(
-                        ROOT_MODULE_PATH.clone(),
-                        [(SUBMODULE_PATH.into(), PathBuf::from(SUBMODULE_PATH))]
-                            .into_iter()
-                            .collect()
-                    )]
                     .into_iter()
                     .collect(),
                     &ROOT_MODULE_PATH,
@@ -3119,14 +3045,6 @@ mod tests {
                             ])
                         )
                     ]
-                    .into_iter()
-                    .collect(),
-                    &[(
-                        ROOT_MODULE_PATH.clone(),
-                        [(SUBMODULE_PATH.into(), PathBuf::from(SUBMODULE_PATH))]
-                            .into_iter()
-                            .collect()
-                    )]
                     .into_iter()
                     .collect(),
                     &ROOT_MODULE_PATH,
@@ -3175,14 +3093,6 @@ mod tests {
                     ]
                     .into_iter()
                     .collect(),
-                    &[(
-                        ROOT_MODULE_PATH.clone(),
-                        [(SUBMODULE_PATH.into(), PathBuf::from(SUBMODULE_PATH))]
-                            .into_iter()
-                            .collect()
-                    )]
-                    .into_iter()
-                    .collect(),
                     &ROOT_MODULE_PATH,
                     &Default::default(),
                 )
@@ -3229,6 +3139,73 @@ mod tests {
                     vec![ast::Pool::new("foo".into(), "2".into()).into()],
                 ),
                 Ok(create_pool_config(limited_pool("foo"), &[("foo", 2)]))
+            );
+        }
+
+        #[test]
+        fn resolve_submodule_path_lexically() {
+            assert_eq!(
+                compile_with_submodule(
+                    vec![
+                        ast_rule("foo", &[("command", "baz")]).into(),
+                        ast::Submodule::new(format!("./qux/../{SUBMODULE_PATH}")).into(),
+                    ],
+                    vec![
+                        ast_explicit_build(vec!["bar".into()], "foo".into(), vec![], vec![]).into()
+                    ],
+                ),
+                Ok(create_simple_config(
+                    [(
+                        "bar".into(),
+                        ir_explicit_build(
+                            vec!["bar".into()],
+                            Rule::new("baz".into(), None),
+                            vec![]
+                        )
+                        .into()
+                    )]
+                    .into_iter()
+                    .collect(),
+                    ["bar".into()].into_iter().collect()
+                ))
+            );
+        }
+
+        #[test]
+        fn resolve_included_module_path_lexically() {
+            assert_eq!(
+                compile_with_submodule(
+                    vec![
+                        ast::Include::new(format!("./qux/../{SUBMODULE_PATH}")).into(),
+                        ast_explicit_build(vec!["bar".into()], "foo".into(), vec![], vec![]).into(),
+                    ],
+                    vec![ast_rule("foo", &[("command", "baz")]).into()],
+                ),
+                Ok(create_simple_config(
+                    [(
+                        "bar".into(),
+                        ir_explicit_build(
+                            vec!["bar".into()],
+                            Rule::new("baz".into(), None),
+                            vec![]
+                        )
+                        .into()
+                    )]
+                    .into_iter()
+                    .collect(),
+                    ["bar".into()].into_iter().collect()
+                ))
+            );
+        }
+
+        #[test]
+        fn fail_to_find_submodule() {
+            assert_eq!(
+                compile_with_submodule(
+                    vec![ast::Submodule::new("./bar.ninja".into()).into()],
+                    vec![],
+                ),
+                Err(CompileError::ModuleNotFound("./bar.ninja".into()))
             );
         }
 

@@ -5,21 +5,14 @@ extern crate alloc;
 use alloc::sync::Arc;
 use clap::{Parser, ValueEnum};
 use core::{convert::Infallible, error::Error};
-use futures::future::try_join_all;
 #[cfg(unix)]
 use rlimit::Resource;
 use rlimit::increase_nofile_limit;
-use std::{
-    collections::HashMap,
-    env::set_current_dir,
-    path::{Path, PathBuf},
-    process::exit,
-};
+use std::{env::set_current_dir, path::Path, process::exit};
 use tokio::sync::Mutex;
 use turtle_build::{
-    BuildError, Console, Context, FileSystem, LogDatabase, Module, ModuleDependencyMap,
-    OsCommandRunner, OsConsole, OsFileSystem, PathPool, RunOptions, Statement, clean_dead, compile,
-    job_limit, parse, run,
+    BuildError, Console, Context, LogDatabase, OsCommandRunner, OsConsole, OsFileSystem, PathPool,
+    RunOptions, canonicalize_path, clean_dead, compile, job_limit, load, run,
 };
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
@@ -109,24 +102,13 @@ async fn execute(
         .saturating_sub(DEFAULT_FILE_COUNT_PER_PROCESS * (job_limit + 1))
         .max(1),
     );
-    let root_module_path = file_system
-        .canonicalize_path(
-            arguments
-                .file
-                .as_deref()
-                .unwrap_or(DEFAULT_BUILD_FILE)
-                .as_ref(),
-        )
-        .await?;
-    let (modules, dependencies) = parse_modules(&file_system, &root_module_path).await?;
+    let root_module_path =
+        canonicalize_path(arguments.file.as_deref().unwrap_or(DEFAULT_BUILD_FILE));
+    let root_module_path = Path::new(&root_module_path);
+    let modules = load(&file_system, root_module_path).await?;
 
     let path_pool = Arc::new(PathPool::new());
-    let config = Arc::new(compile(
-        &modules,
-        &dependencies,
-        &root_module_path,
-        &path_pool,
-    )?);
+    let config = Arc::new(compile(&modules, root_module_path, &path_pool)?);
     let context = Arc::new(Context::new(
         OsCommandRunner::new(job_limit),
         console.clone(),
@@ -151,7 +133,7 @@ async fn execute(
     } else {
         run(
             &context,
-            config.clone(),
+            config,
             &arguments.outputs,
             RunOptions {
                 debug: arguments.debug,
@@ -166,62 +148,4 @@ async fn execute(
 
     // Skip dropping the configuration and context, which is slow on large graphs.
     exit(0)
-}
-
-async fn parse_modules(
-    file_system: &OsFileSystem,
-    path: &Path,
-) -> Result<(HashMap<PathBuf, Module>, ModuleDependencyMap), BuildError> {
-    let mut paths = vec![(file_system.canonicalize_path(path).await?, vec![])];
-    let mut modules = HashMap::new();
-    let mut dependencies = HashMap::new();
-
-    while let Some((path, mut ancestors)) = paths.pop() {
-        if ancestors.contains(&path) {
-            return Err(BuildError::CircularModuleDependency);
-        } else if modules.contains_key(&path) {
-            continue;
-        }
-
-        let module = parse(&file_system.read_file_to_string(&path).await?)?;
-
-        let submodule_paths = try_join_all(
-            module
-                .statements()
-                .iter()
-                .filter_map(|statement| match statement {
-                    Statement::Include(include) => Some(include.path()),
-                    Statement::Submodule(submodule) => Some(submodule.path()),
-                    _ => None,
-                })
-                .map(|path| resolve_submodule_path(file_system, path))
-                .collect::<Vec<_>>(),
-        )
-        .await?
-        .into_iter()
-        .collect::<HashMap<_, _>>();
-
-        ancestors.push(path.clone());
-        paths.extend(
-            submodule_paths
-                .values()
-                .map(|path| (path.clone(), ancestors.clone())),
-        );
-
-        modules.insert(path.clone(), module);
-        dependencies.insert(path, submodule_paths);
-    }
-
-    Ok((modules, dependencies))
-}
-
-async fn resolve_submodule_path(
-    file_system: &OsFileSystem,
-    path: &str,
-) -> Result<(String, PathBuf), BuildError> {
-    // TODO Interpolate variables in paths of included and subninja files like ninja.
-    Ok((
-        path.into(),
-        file_system.canonicalize_path(path.as_ref()).await?,
-    ))
 }

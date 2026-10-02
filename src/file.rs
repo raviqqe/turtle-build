@@ -1,9 +1,10 @@
 use std::path::{Component, MAIN_SEPARATOR, Path, PathBuf};
 
-// Paths are canonicalized lexically like ninja does, and never through the
-// file system, because they may point to files which do not exist yet, like
-// generated headers.
+/// Canonicalizes a path lexically.
 pub fn canonicalize_path(path: &str) -> String {
+    // Paths are canonicalized lexically like ninja does, and never through the
+    // file system, because they may point to files which do not exist yet, like
+    // generated headers.
     canonicalize_native_path(path.as_ref())
         .to_string_lossy()
         .replace(MAIN_SEPARATOR, "/")

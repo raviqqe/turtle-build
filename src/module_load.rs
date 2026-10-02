@@ -11,7 +11,7 @@ use std::{
 };
 
 /// Loads a root module and its dependency modules.
-pub async fn load_modules(
+pub async fn load(
     file_system: &impl FileSystem,
     path: &Path,
 ) -> Result<HashMap<PathBuf, Module>, BuildError> {
@@ -75,7 +75,7 @@ mod tests {
         let sources = [("build.ninja", "x = 42\n")];
 
         assert_eq!(
-            load_modules(&create_file_system(&sources), Path::new("build.ninja")).await,
+            load(&create_file_system(&sources), Path::new("build.ninja")).await,
             Ok(create_modules(&sources))
         );
     }
@@ -88,7 +88,7 @@ mod tests {
         ];
 
         assert_eq!(
-            load_modules(&create_file_system(&sources), Path::new("build.ninja")).await,
+            load(&create_file_system(&sources), Path::new("build.ninja")).await,
             Ok(create_modules(&sources))
         );
     }
@@ -101,7 +101,7 @@ mod tests {
         ];
 
         assert_eq!(
-            load_modules(&create_file_system(&sources), Path::new("build.ninja")).await,
+            load(&create_file_system(&sources), Path::new("build.ninja")).await,
             Ok(create_modules(&sources))
         );
     }
@@ -117,7 +117,7 @@ mod tests {
         let file_system = create_file_system(&sources);
 
         assert_eq!(
-            load_modules(&file_system, Path::new("build.ninja")).await,
+            load(&file_system, Path::new("build.ninja")).await,
             Ok(create_modules(&sources))
         );
         assert_eq!(
@@ -135,7 +135,7 @@ mod tests {
         let source = "x = 42\n";
 
         assert_eq!(
-            load_modules(
+            load(
                 &create_file_system(&[("build.ninja", source)]),
                 Path::new("./build.ninja")
             )
@@ -156,7 +156,7 @@ mod tests {
         let file_system = create_file_system(&sources);
 
         assert_eq!(
-            load_modules(&file_system, Path::new("build.ninja")).await,
+            load(&file_system, Path::new("build.ninja")).await,
             Ok(create_modules(&sources))
         );
         assert_eq!(
@@ -174,7 +174,7 @@ mod tests {
         ];
 
         assert_eq!(
-            load_modules(&create_file_system(&sources), Path::new("build.ninja")).await,
+            load(&create_file_system(&sources), Path::new("build.ninja")).await,
             Ok(create_modules(&sources))
         );
     }
@@ -182,7 +182,7 @@ mod tests {
     #[tokio::test]
     async fn fail_to_read_module() {
         assert_eq!(
-            load_modules(
+            load(
                 &create_file_system(&[("build.ninja", "include foo.ninja\n")]),
                 Path::new("build.ninja")
             )
@@ -194,7 +194,7 @@ mod tests {
     #[tokio::test]
     async fn fail_to_include_module_in_itself() {
         assert_eq!(
-            load_modules(
+            load(
                 &create_file_system(&[("build.ninja", "include build.ninja\n")]),
                 Path::new("build.ninja")
             )
@@ -206,7 +206,7 @@ mod tests {
     #[tokio::test]
     async fn fail_to_include_modules_in_each_other() {
         assert_eq!(
-            load_modules(
+            load(
                 &create_file_system(&[
                     ("build.ninja", "subninja foo.ninja\n"),
                     ("foo.ninja", "subninja ./build.ninja\n"),

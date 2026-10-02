@@ -12,7 +12,7 @@ use std::{env::set_current_dir, path::Path, process::exit};
 use tokio::sync::Mutex;
 use turtle_build::{
     BuildError, Console, Context, LogDatabase, OsCommandRunner, OsConsole, OsFileSystem, PathPool,
-    RunOptions, clean_dead, compile, job_limit, load_modules, run,
+    RunOptions, canonicalize_path, clean_dead, compile, job_limit, load, run,
 };
 
 const DEFAULT_BUILD_FILE: &str = "build.ninja";
@@ -102,8 +102,10 @@ async fn execute(
         .saturating_sub(DEFAULT_FILE_COUNT_PER_PROCESS * (job_limit + 1))
         .max(1),
     );
-    let root_module_path = Path::new(arguments.file.as_deref().unwrap_or(DEFAULT_BUILD_FILE));
-    let modules = load_modules(&file_system, root_module_path).await?;
+    let root_module_path =
+        canonicalize_path(arguments.file.as_deref().unwrap_or(DEFAULT_BUILD_FILE));
+    let root_module_path = Path::new(&root_module_path);
+    let modules = load(&file_system, root_module_path).await?;
 
     let path_pool = Arc::new(PathPool::new());
     let config = Arc::new(compile(&modules, root_module_path, &path_pool)?);

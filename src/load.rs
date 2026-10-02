@@ -27,7 +27,6 @@ pub async fn load(
             continue;
         }
 
-        // Read files through paths as written like ninja does.
         let module = parse(&file_system.read_file_to_string(&path).await?)?;
 
         ancestors.push(canonical_path.clone());

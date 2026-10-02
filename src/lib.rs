@@ -12,8 +12,8 @@ mod file;
 mod infrastructure;
 mod ir;
 mod job_limit;
+mod module_load;
 mod parse;
-mod parse_modules;
 mod path_pool;
 mod run;
 mod tool;
@@ -28,8 +28,8 @@ pub use self::{
         OsConsole, OsFileSystem, RedbDatabase,
     },
     job_limit::job_limit,
+    module_load::load_modules,
     parse::parse,
-    parse_modules::parse_modules,
     path_pool::PathPool,
     run::{RunOptions, run},
     tool::clean_dead,

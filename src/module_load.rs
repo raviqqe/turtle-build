@@ -10,8 +10,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// Parses a root module and modules it includes transitively.
-pub async fn parse_modules(
+/// Loads a root module and modules it includes transitively.
+pub async fn load_modules(
     file_system: &impl FileSystem,
     path: &Path,
 ) -> Result<HashMap<PathBuf, Module>, BuildError> {
@@ -71,43 +71,43 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn parse_root_module() {
+    async fn load_root_module() {
         let sources = [("build.ninja", "x = 42\n")];
 
         assert_eq!(
-            parse_modules(&create_file_system(&sources), Path::new("build.ninja")).await,
+            load_modules(&create_file_system(&sources), Path::new("build.ninja")).await,
             Ok(create_modules(&sources))
         );
     }
 
     #[tokio::test]
-    async fn parse_included_module() {
+    async fn load_included_module() {
         let sources = [
             ("build.ninja", "include foo.ninja\n"),
             ("foo.ninja", "x = 42\n"),
         ];
 
         assert_eq!(
-            parse_modules(&create_file_system(&sources), Path::new("build.ninja")).await,
+            load_modules(&create_file_system(&sources), Path::new("build.ninja")).await,
             Ok(create_modules(&sources))
         );
     }
 
     #[tokio::test]
-    async fn parse_child_module() {
+    async fn load_child_module() {
         let sources = [
             ("build.ninja", "subninja foo.ninja\n"),
             ("foo.ninja", "x = 42\n"),
         ];
 
         assert_eq!(
-            parse_modules(&create_file_system(&sources), Path::new("build.ninja")).await,
+            load_modules(&create_file_system(&sources), Path::new("build.ninja")).await,
             Ok(create_modules(&sources))
         );
     }
 
     #[tokio::test]
-    async fn parse_module_included_from_two_modules() {
+    async fn load_module_included_from_two_modules() {
         let sources = [
             ("build.ninja", "include foo.ninja\ninclude bar.ninja\n"),
             ("foo.ninja", "include baz.ninja\n"),
@@ -117,7 +117,7 @@ mod tests {
         let file_system = create_file_system(&sources);
 
         assert_eq!(
-            parse_modules(&file_system, Path::new("build.ninja")).await,
+            load_modules(&file_system, Path::new("build.ninja")).await,
             Ok(create_modules(&sources))
         );
         assert_eq!(
@@ -135,7 +135,7 @@ mod tests {
         let source = "x = 42\n";
 
         assert_eq!(
-            parse_modules(
+            load_modules(
                 &create_file_system(&[("build.ninja", source)]),
                 Path::new("./build.ninja")
             )
@@ -156,7 +156,7 @@ mod tests {
         let file_system = create_file_system(&sources);
 
         assert_eq!(
-            parse_modules(&file_system, Path::new("build.ninja")).await,
+            load_modules(&file_system, Path::new("build.ninja")).await,
             Ok(create_modules(&sources))
         );
         assert_eq!(
@@ -174,7 +174,7 @@ mod tests {
         ];
 
         assert_eq!(
-            parse_modules(&create_file_system(&sources), Path::new("build.ninja")).await,
+            load_modules(&create_file_system(&sources), Path::new("build.ninja")).await,
             Ok(create_modules(&sources))
         );
     }
@@ -182,7 +182,7 @@ mod tests {
     #[tokio::test]
     async fn fail_to_read_module() {
         assert_eq!(
-            parse_modules(
+            load_modules(
                 &create_file_system(&[("build.ninja", "include foo.ninja\n")]),
                 Path::new("build.ninja")
             )
@@ -194,7 +194,7 @@ mod tests {
     #[tokio::test]
     async fn fail_to_include_module_in_itself() {
         assert_eq!(
-            parse_modules(
+            load_modules(
                 &create_file_system(&[("build.ninja", "include build.ninja\n")]),
                 Path::new("build.ninja")
             )
@@ -206,7 +206,7 @@ mod tests {
     #[tokio::test]
     async fn fail_to_include_modules_in_each_other() {
         assert_eq!(
-            parse_modules(
+            load_modules(
                 &create_file_system(&[
                     ("build.ninja", "subninja foo.ninja\n"),
                     ("foo.ninja", "subninja ./build.ninja\n"),

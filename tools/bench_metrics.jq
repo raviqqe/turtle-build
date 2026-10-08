@@ -7,8 +7,8 @@ def metrics(key; name; value): {
   })
 };
 
-[inputs.results[] | . + (.command | capture("(?<tool>.+) \\((?<name>.+)\\)"))]
+[inputs.results[] | .summary + (.name | capture("(?<tool>.+) \\((?<name>.+)\\)"))]
 | group_by(.name)
 | map(INDEX(.tool))
-| metrics("time"; "build time"; .mean),
-  metrics("memory"; "peak memory usage"; .memory_usage_byte | max)
+| metrics("time"; "build time"; .time_wall_clock.mean),
+  metrics("memory"; "peak memory usage"; .memory_peak_resident.max)

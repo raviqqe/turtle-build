@@ -8,7 +8,7 @@ if [ $# -eq 0 ]; then
   set -- *
 fi
 
-cargo install hyperfine
+cargo install hyperfine@^2.0.0
 
 clean='rm -rf *.out .ninja* .turtle*'
 

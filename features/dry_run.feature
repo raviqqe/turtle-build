@@ -119,6 +119,7 @@ Feature: Dry run
       """
       copying bar
       copying foo
+
       """
 
   Scenario: Show no description of a dependent of a stale order-only input
@@ -139,7 +140,11 @@ Feature: Dry run
     When I successfully run `turtle`
     And a file named "baz" with "baz"
     And I successfully run `turtle -n`
-    Then the stdout from "turtle -n" should contain exactly "copying bar"
+    Then the stdout from "turtle -n" should contain exactly:
+      """
+      copying bar
+
+      """
 
   Scenario: Show a description of a dependent of a stale phony input
     Given a file named "build.ninja" with:
@@ -154,7 +159,11 @@ Feature: Dry run
       """
     When I successfully run `turtle`
     And I successfully run `turtle -n`
-    Then the stdout from "turtle -n" should contain exactly "touching foo"
+    Then the stdout from "turtle -n" should contain exactly:
+      """
+      touching foo
+
+      """
 
   Scenario: Show no description of a dependent of an up-to-date phony input
     Given a file named "build.ninja" with:

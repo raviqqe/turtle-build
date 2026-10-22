@@ -35,7 +35,7 @@ pub async fn calculate_timestamp_hash(
     for &input in phony_inputs {
         get_build_hash(context, input)
             .await?
-            .timestamp()
+            .content()
             .hash(&mut hasher);
     }
 
@@ -188,6 +188,43 @@ mod tests {
                 &build,
                 &[&"foo.c".into(), &"foo.h".into()],
                 &[]
+            )
+            .await,
+            Ok(hasher.finish())
+        );
+    }
+
+    #[tokio::test]
+    async fn use_content_hash_of_phony_input_in_timestamp_hash() {
+        let phony_build = Build::new(vec!["bar".into()], vec![], None, vec![], vec![], None);
+        let context = create_context(&Default::default(), vec![phony_build.clone()]);
+        let hash = BuildHash::new(1, 2);
+        let mut hasher = RapidHasher::default();
+
+        context
+            .build()
+            .database()
+            .set_hash(phony_build.id(), hash)
+            .await
+            .unwrap();
+
+        Some("cat bar").hash(&mut hasher);
+        None::<&HeaderDependency>.hash(&mut hasher);
+        hash.content().hash(&mut hasher);
+
+        assert_eq!(
+            calculate_timestamp_hash(
+                &context,
+                &Build::new(
+                    vec!["foo".into()],
+                    vec![],
+                    Rule::new("cat bar".into(), None).into(),
+                    vec!["bar".into()],
+                    vec![],
+                    None,
+                ),
+                &[],
+                &[&"bar".into()],
             )
             .await,
             Ok(hasher.finish())

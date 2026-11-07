@@ -7,6 +7,9 @@ repository = "https://github.com/raviqqe/turtle"
 license = "MIT OR Apache-2.0"
 publish = true
 
+[package.metadata.docs.rs]
+all-features = true
+
 [[bin]]
 name = "turtle"
 path = "src/main.rs"
@@ -33,16 +36,13 @@ thiserror = "2.0.20"
 tokio = { version = "1.53.1", features = ["full"] }
 train-map = "0.1.2"
 
-[features]
-fjall = ["dep:fjall", "dep:rkyv"]
-redb = ["dep:redb"]
-
 [dev-dependencies]
 pretty_assertions = "1.4.1"
 tempfile = "3.27.0"
 
-[package.metadata.docs.rs]
-all-features = true
+[features]
+fjall = ["dep:fjall", "dep:rkyv"]
+redb = ["dep:redb"]
 
 [lints.clippy]
 alloc_instead_of_core = "deny"

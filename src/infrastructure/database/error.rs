@@ -1,4 +1,5 @@
 use core::{fmt::Display, num::TryFromIntError, str::Utf8Error};
+#[cfg(feature = "fjall")]
 use rkyv::rancor;
 use std::io;
 use thiserror::Error;
@@ -15,6 +16,7 @@ impl DatabaseError {
     }
 }
 
+#[cfg(feature = "fjall")]
 impl From<fjall::Error> for DatabaseError {
     fn from(error: fjall::Error) -> Self {
         Self::new(error)
@@ -27,12 +29,14 @@ impl From<io::Error> for DatabaseError {
     }
 }
 
+#[cfg(feature = "fjall")]
 impl From<rancor::Error> for DatabaseError {
     fn from(error: rancor::Error) -> Self {
         Self::new(error)
     }
 }
 
+#[cfg(feature = "redb")]
 impl From<redb::Error> for DatabaseError {
     fn from(error: redb::Error) -> Self {
         Self::new(error)

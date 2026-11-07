@@ -1,13 +1,19 @@
 mod error;
 #[cfg(test)]
 mod fake;
+#[cfg(feature = "fjall")]
 mod fjall;
 mod log;
+#[cfg(feature = "redb")]
 mod redb;
 
 #[cfg(test)]
 pub use self::fake::FakeDatabase;
-pub use self::{error::DatabaseError, fjall::FjallDatabase, log::LogDatabase, redb::RedbDatabase};
+#[cfg(feature = "fjall")]
+pub use self::fjall::FjallDatabase;
+#[cfg(feature = "redb")]
+pub use self::redb::RedbDatabase;
+pub use self::{error::DatabaseError, log::LogDatabase};
 use crate::{build_hash::BuildHash, ir::BuildId};
 use alloc::sync::Arc;
 use async_trait::async_trait;

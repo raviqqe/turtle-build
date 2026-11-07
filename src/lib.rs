@@ -18,14 +18,18 @@ mod path_pool;
 mod run;
 mod tool;
 
+#[cfg(feature = "fjall")]
+pub use self::infrastructure::FjallDatabase;
+#[cfg(feature = "redb")]
+pub use self::infrastructure::RedbDatabase;
 pub use self::{
     ast::{Module, Statement},
     compile::compile,
     context::Context,
     error::BuildError,
     infrastructure::{
-        Console, Database, DatabaseError, FileSystem, FjallDatabase, LogDatabase, OsCommandRunner,
-        OsConsole, OsFileSystem, RedbDatabase,
+        Console, Database, DatabaseError, FileSystem, LogDatabase, OsCommandRunner, OsConsole,
+        OsFileSystem,
     },
     job_limit::job_limit,
     load::load,

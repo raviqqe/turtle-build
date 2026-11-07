@@ -200,7 +200,11 @@ async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool
             calculate_content_hash(&context, &build, &file_inputs, &phony_inputs).await?;
 
         if outputs_exist && hash.map(|hash| hash.content()) == Some(content_hash) {
-            return Ok(false);
+            // Store the timestamp hash below so that later runs skip content hashing. It is safe
+            // because file metadata is always cached before file contents in a run.
+            if context.options().dry_run {
+                return Ok(false);
+            }
         } else if context.options().dry_run {
             return skip_build(&context, &build).await;
         } else if let Some(rule) = build.rule() {
@@ -1976,6 +1980,74 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_no_input_after_timestamp_update_of_input() {
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&Default::default(), &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![explicit_build(
+                vec!["foo".into()],
+                Rule::new("cp bar foo".into(), None),
+                vec!["bar".into()],
+            )],
+            &["foo"],
+        );
+
+        file_system.write_file("foo", "");
+        file_system.write_file("bar", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        file_system.write_file("bar", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        let count = file_system.read_requests().len();
+
+        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+        assert_eq!(file_system.read_requests()[count..], Vec::<&Path>::new());
+    }
+
+    #[tokio::test]
+    async fn read_no_input_after_timestamp_update_of_input_of_phony_build() {
+        let file_system = FakeFileSystem::default();
+        let context = create_context(&Default::default(), &Default::default(), &file_system);
+        let config = create_simple_config(
+            vec![Build::new(
+                vec!["foo".into()],
+                vec![],
+                None,
+                vec!["bar".into()],
+                vec![],
+                None,
+            )],
+            &["foo"],
+        );
+
+        file_system.write_file("bar", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        file_system.write_file("bar", "");
+
+        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+            .await
+            .unwrap();
+
+        let count = file_system.read_requests().len();
+
+        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+
+        assert_eq!(file_system.read_requests()[count..], Vec::<&Path>::new());
+    }
+
+    #[tokio::test]
     async fn read_no_input_on_timestamp_update_of_input_of_phony_input() {
         let file_system = FakeFileSystem::default();
         let context = create_context(&Default::default(), &Default::default(), &file_system);
@@ -3413,6 +3485,29 @@ mod tests {
                 Vec::<String>::new()
             );
             assert_eq!(context.database().get_source("foo.o").await.unwrap(), None);
+        }
+
+        #[tokio::test]
+        async fn record_no_hash_on_timestamp_update_of_input() {
+            let file_system = FakeFileSystem::default();
+            let context = create_context(&Default::default(), &Default::default(), &file_system);
+            let build = described_build("foo", &["bar"]);
+            let config = create_simple_config(vec![build.clone()], &["foo"]);
+
+            file_system.write_file("foo", "");
+            file_system.write_file("bar", "");
+
+            run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+                .await
+                .unwrap();
+
+            file_system.write_file("bar", "");
+
+            let hash = context.database().get_hash(build.id()).await.unwrap();
+
+            run(&context, config, &[], OPTIONS).await.unwrap();
+
+            assert_eq!(context.database().get_hash(build.id()).await.unwrap(), hash);
         }
 
         #[tokio::test]

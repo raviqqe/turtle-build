@@ -105,7 +105,6 @@ Currently, Turtle uses a topological sort algorithm only to detect dependency cy
 - [`evmar/n2`](https://github.com/evmar/n2)
 - [`ninja-rs/ninja-rs`](https://github.com/ninja-rs/ninja-rs)
 - [`nikhilm/ninja-rs`](https://github.com/nikhilm/ninja-rs)
-- [`neul-labs/rninja`](https://github.com/neul-labs/rninja)
 
 ## License
 

@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - uses: raviqqe/enable-homebrew@6bd383659a321c332bd0c0ed445c32d54e04efe8 # v1.0.5
+      - uses: raviqqe/enable-homebrew@98e3adf041d4f3c53ef592fe72a92ca692f22944 # v1.0.6
       - run: brew install ninja
       - run: cargo install --path . --locked
       - run: tools/bench.sh

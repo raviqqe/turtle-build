@@ -1,4 +1,5 @@
 use thiserror::Error;
+use winnow::error::ContextError;
 
 #[derive(Clone, Debug, Eq, Error, PartialEq)]
 #[error("{message}")]
@@ -12,8 +13,8 @@ impl ParseError {
     }
 }
 
-impl From<nom::Err<nom::error::Error<&str>>> for ParseError {
-    fn from(error: nom::Err<nom::error::Error<&str>>) -> Self {
+impl From<winnow::error::ParseError<&str, ContextError>> for ParseError {
+    fn from(error: winnow::error::ParseError<&str, ContextError>) -> Self {
         Self::new(error.to_string())
     }
 }

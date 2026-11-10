@@ -8,16 +8,17 @@ use self::{
     ninja::{dynamic_module, module},
 };
 use crate::ast::{DynamicModule, Module};
+use winnow::Parser;
 
 /// Parses a module.
 pub fn parse(source: &str) -> Result<Module, ParseError> {
-    Ok(module(source).map(|(_, module)| module)?)
+    Ok(module.parse(source)?)
 }
 
 pub fn parse_dynamic(source: &str) -> Result<DynamicModule, ParseError> {
-    Ok(dynamic_module(source).map(|(_, module)| module)?)
+    Ok(dynamic_module.parse(source)?)
 }
 
 pub fn parse_depfile(source: &str) -> Result<Vec<String>, ParseError> {
-    Ok(depfile(source).map(|(_, dependencies)| dependencies)?)
+    Ok(depfile.parse(source)?)
 }

@@ -20,9 +20,9 @@ jobs:
           - project: ${{ github.ref != 'refs/heads/main' && 'llvm' || '' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - uses: raviqqe/enable-homebrew@98e3adf041d4f3c53ef592fe72a92ca692f22944 # v1.0.6
+      - uses: actions/checkout@v7.0.1
+      - uses: swatinem/rust-cache@v2.9.3
+      - uses: raviqqe/enable-homebrew@v1.0.6
       - run: brew install meson ninja
       - run: tools/build.sh
       - run: tools/acceptance_test.sh ninja ${{ matrix.project }}

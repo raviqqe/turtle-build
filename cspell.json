@@ -40,6 +40,7 @@
     "rspfile",
     "rsplit",
     "rustfmt",
+    "rustix",
     "serde",
     "srcdep",
     "stackless",

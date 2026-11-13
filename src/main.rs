@@ -4,12 +4,16 @@ extern crate alloc;
 
 use alloc::sync::Arc;
 use clap::{Parser, ValueEnum};
+#[cfg(not(unix))]
+use core::future::pending;
 use core::{convert::Infallible, error::Error};
 #[cfg(unix)]
 use rlimit::Resource;
 use rlimit::increase_nofile_limit;
-use std::{env::set_current_dir, path::Path, process::exit};
-use tokio::sync::Mutex;
+use std::{env::set_current_dir, io, path::Path, process::exit};
+#[cfg(unix)]
+use tokio::signal::unix::{SignalKind, signal};
+use tokio::{select, sync::Mutex};
 use turtle_build::{
     BuildError, Console, Context, LogDatabase, OsCommandRunner, OsConsole, OsFileSystem, PathPool,
     RunOptions, clean_dead, compile, job_limit, load, run,
@@ -129,21 +133,49 @@ async fn execute(
             Tool::CleanDead => clean_dead(&context, &config).await?,
         }
     } else {
-        run(
-            &context,
-            config,
-            &arguments.outputs,
-            RunOptions {
-                debug: arguments.debug,
-                dry_run: arguments.dry_run,
-                profile: arguments.profile,
-            },
-        )
-        .await?;
+        select! {
+            biased;
+            signal = receive_signal() => {
+                let signal = signal?;
+
+                context.command_runner().kill().await;
+                console.lock().await.flush().await?;
+
+                exit(128 + signal)
+            }
+            result = run(
+                &context,
+                config,
+                &arguments.outputs,
+                RunOptions {
+                    debug: arguments.debug,
+                    dry_run: arguments.dry_run,
+                    profile: arguments.profile,
+                },
+            ) => result?,
+        }
     }
 
     console.lock().await.flush().await?;
 
     // Skip dropping the configuration and context, which is slow on large graphs.
     exit(0)
+}
+
+async fn receive_signal() -> io::Result<i32> {
+    cfg_select! {
+        unix => {
+            let mut hangup = signal(SignalKind::hangup())?;
+            let mut interrupt = signal(SignalKind::interrupt())?;
+            let mut terminate = signal(SignalKind::terminate())?;
+
+            Ok(select! {
+                _ = hangup.recv() => SignalKind::hangup(),
+                _ = interrupt.recv() => SignalKind::interrupt(),
+                _ = terminate.recv() => SignalKind::terminate(),
+            }
+            .as_raw_value())
+        }
+        _ => pending().await,
+    }
 }

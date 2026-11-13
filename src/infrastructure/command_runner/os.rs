@@ -1,10 +1,18 @@
 use crate::infrastructure::{CommandError, CommandRunner};
 use async_trait::async_trait;
+#[cfg(unix)]
+use rustix::process::{Pid, Signal, kill_process_group};
 use std::{
     io,
     process::{ExitStatus, Output, Stdio},
 };
-use tokio::{process::Command, sync::Semaphore};
+use tokio::{
+    io::{AsyncRead, AsyncReadExt},
+    process::{Child, Command},
+    select,
+    sync::{Semaphore, watch},
+    try_join,
+};
 
 #[cfg(any(windows, test))]
 const BLANK_CHARACTERS: [char; 2] = [' ', '\t'];
@@ -13,6 +21,7 @@ const BLANK_CHARACTERS: [char; 2] = [' ', '\t'];
 #[derive(Debug)]
 pub struct OsCommandRunner {
     semaphore: Semaphore,
+    killed: watch::Sender<()>,
 }
 
 impl OsCommandRunner {
@@ -20,6 +29,7 @@ impl OsCommandRunner {
     pub fn new(job_limit: usize) -> Self {
         Self {
             semaphore: Semaphore::new(job_limit),
+            killed: watch::Sender::new(()),
         }
     }
 
@@ -41,6 +51,32 @@ impl OsCommandRunner {
         }
     }
 
+    fn terminate(child: &mut Child) {
+        cfg_select! {
+            unix => {
+                if let Some(id) = child
+                    .id()
+                    .and_then(|id| Pid::from_raw(id.try_into().ok()?))
+                {
+                    kill_process_group(id, Signal::TERM).ok();
+                }
+            }
+            _ => {
+                child.start_kill().ok();
+            }
+        }
+    }
+
+    async fn read(stream: &mut Option<impl AsyncRead + Unpin>) -> io::Result<Vec<u8>> {
+        let mut buffer = vec![];
+
+        if let Some(stream) = stream {
+            stream.read_to_end(&mut buffer).await?;
+        }
+
+        Ok(buffer)
+    }
+
     fn error(error: io::Error, process: &Command) -> CommandError {
         CommandError::new(format!(
             "{}: {}",
@@ -53,17 +89,48 @@ impl OsCommandRunner {
 #[async_trait]
 impl CommandRunner for OsCommandRunner {
     async fn run(&self, command: &str) -> Result<Output, CommandError> {
+        let mut killed = self.killed.subscribe();
         let _permit = self.semaphore.acquire().await?;
         let mut process = Self::create_command(command);
 
-        process
+        // Group a command with its descendants to terminate them all at once.
+        #[cfg(unix)]
+        process.process_group(0);
+
+        let mut child = process
             .stdin(Stdio::null())
-            .output()
-            .await
-            .map_err(|error| Self::error(error, &process))
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| Self::error(error, &process))?;
+        let (mut stdout, mut stderr) = (child.stdout.take(), child.stderr.take());
+        let (status, stdout, stderr) = try_join!(
+            async {
+                select! {
+                    status = child.wait() => status.map(Some),
+                    _ = killed.changed() => {
+                        Self::terminate(&mut child);
+                        child.wait().await?;
+
+                        Ok(None)
+                    }
+                }
+            },
+            Self::read(&mut stdout),
+            Self::read(&mut stderr),
+        )
+        .map_err(|error| Self::error(error, &process))?;
+
+        Ok(Output {
+            status: status.ok_or_else(|| CommandError::new("command killed"))?,
+            stdout,
+            stderr,
+        })
     }
 
     async fn run_with_console(&self, command: &str) -> Result<ExitStatus, CommandError> {
+        // A command with a console is never killed, but a kill waits for it.
+        let _killed = self.killed.subscribe();
         let _permit = self.semaphore.acquire().await?;
         let mut process = Self::create_command(command);
 
@@ -72,6 +139,13 @@ impl CommandRunner for OsCommandRunner {
             .status()
             .await
             .map_err(|error| Self::error(error, &process))
+    }
+
+    async fn kill(&self) {
+        // Close a semaphore first so that every command started is notified.
+        self.semaphore.close();
+        self.killed.send_replace(());
+        self.killed.closed().await;
     }
 }
 
@@ -133,6 +207,21 @@ mod tests {
                 String::from_utf8(output.stdout).unwrap().trim_end(),
                 "foo  bar"
             );
+        }
+
+        // cspell: ignore pgid
+        #[cfg(unix)]
+        #[tokio::test]
+        async fn run_command_in_own_process_group() {
+            let output = OsCommandRunner::new(1)
+                .run("ps -o pid= -o pgid= -p $$")
+                .await
+                .unwrap();
+            let output = String::from_utf8(output.stdout).unwrap();
+            let ids = output.split_whitespace().collect::<Vec<_>>();
+
+            assert_eq!(ids.len(), 2);
+            assert_eq!(ids[0], ids[1]);
         }
 
         #[tokio::test]
@@ -208,6 +297,107 @@ mod tests {
                     .unwrap_err()
                     .to_string()
                     .ends_with(": missing-program")
+            );
+        }
+    }
+
+    mod kill {
+        use super::*;
+        use core::pin::pin;
+        use futures::poll;
+        use pretty_assertions::assert_eq;
+        use tokio::join;
+
+        #[tokio::test]
+        async fn kill_no_command() {
+            OsCommandRunner::new(1).kill().await;
+        }
+
+        #[tokio::test]
+        async fn kill_command() {
+            let runner = OsCommandRunner::new(1);
+            let mut future = pin!(runner.run(cfg_select! {
+                windows => "ping -n 60 127.0.0.1",
+                _ => "sleep 60",
+            }));
+
+            assert!(poll!(&mut future).is_pending());
+
+            let (result, ()) = join!(future, runner.kill());
+
+            assert_eq!(result, Err(CommandError::new("command killed")));
+        }
+
+        #[cfg(unix)]
+        #[tokio::test]
+        async fn kill_descendant_of_command() {
+            use core::time::Duration;
+            use tempfile::tempdir;
+            use tokio::{
+                fs::try_exists,
+                time::{sleep, timeout},
+            };
+
+            let directory = tempdir().unwrap();
+            let file = directory.path().join("foo");
+            let command = format!("sleep 60 & touch {} && wait", file.display());
+            let runner = OsCommandRunner::new(1);
+
+            // A command finishes only after its descendant closes standard output and error.
+            let (result, ()) = timeout(Duration::from_secs(10), async {
+                join!(runner.run(&command), async {
+                    while !try_exists(&file).await.unwrap() {
+                        sleep(Duration::from_millis(10)).await;
+                    }
+
+                    runner.kill().await;
+                })
+            })
+            .await
+            .unwrap();
+
+            assert_eq!(result, Err(CommandError::new("command killed")));
+        }
+
+        #[tokio::test]
+        async fn wait_for_console_command() {
+            let runner = OsCommandRunner::new(1);
+            let mut command = pin!(runner.run_with_console(cfg_select! {
+                windows => "ping -n 2 127.0.0.1",
+                _ => "sleep 0.1",
+            }));
+            let mut kill = pin!(runner.kill());
+
+            assert!(poll!(&mut command).is_pending());
+            assert!(poll!(&mut kill).is_pending());
+            assert!(command.await.unwrap().success());
+
+            kill.await;
+        }
+
+        #[tokio::test]
+        async fn run_no_command_after_kill() {
+            let runner = OsCommandRunner::new(1);
+
+            runner.kill().await;
+
+            assert!(
+                runner
+                    .run(cfg_select! {
+                        windows => "cmd /c exit 0",
+                        _ => "exit 0",
+                    })
+                    .await
+                    .is_err()
+            );
+            assert!(
+                runner
+                    .run_with_console(cfg_select! {
+                        windows => "cmd /c exit 0",
+                        _ => "exit 0",
+                    })
+                    .await
+                    .is_err()
             );
         }
     }

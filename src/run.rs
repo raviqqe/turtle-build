@@ -73,7 +73,7 @@ pub async fn run(
         return Err(map_build_graph_error(&context, &error).await);
     }
 
-    stream::iter(
+    let result = stream::iter(
         if outputs.is_empty() {
             context
                 .config()
@@ -104,9 +104,13 @@ pub async fn run(
     )
     .buffer_unordered(OUTPUT_CONCURRENCY)
     .try_for_each(async |_| Ok(()))
-    .await?;
+    .await;
 
-    Ok(())
+    if result.is_err() {
+        context.build().command_runner().kill().await;
+    }
+
+    result
 }
 
 #[async_recursion]
@@ -910,6 +914,54 @@ mod tests {
             .await,
             Err(BuildError::Build)
         );
+    }
+
+    #[tokio::test]
+    async fn kill_no_command_on_build_success() {
+        let command_runner = FakeCommandRunner::default();
+
+        run(
+            &create_context(&command_runner, &Default::default(), &Default::default()),
+            create_simple_config(
+                vec![explicit_build(
+                    vec!["foo".into()],
+                    Rule::new("touch foo".into(), None),
+                    vec![],
+                )],
+                &["foo"],
+            ),
+            &[],
+            DEFAULT_OPTIONS,
+        )
+        .await
+        .unwrap();
+
+        assert!(!command_runner.killed());
+    }
+
+    #[tokio::test]
+    async fn kill_commands_on_build_failure() {
+        let command_runner =
+            FakeCommandRunner::new([("exit 1".into(), failed_output())].into_iter().collect());
+
+        assert_eq!(
+            run(
+                &create_context(&command_runner, &Default::default(), &Default::default()),
+                create_simple_config(
+                    vec![explicit_build(
+                        vec!["foo".into()],
+                        Rule::new("exit 1".into(), None),
+                        vec![],
+                    )],
+                    &["foo"],
+                ),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await,
+            Err(BuildError::Build)
+        );
+        assert!(command_runner.killed());
     }
 
     #[tokio::test]

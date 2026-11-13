@@ -99,3 +99,62 @@ Feature: Others
       """
       256
       """
+
+  @turtle
+  Scenario: Kill a command on failure of another command
+    Given a file named "build.ninja" with:
+      """
+      rule fail
+        command = sh -c 'sleep 0.2 && exit 1'
+
+      rule slow
+        command = sh -c 'sleep 1 && touch $out'
+
+      build foo: fail
+      build bar: slow
+
+      """
+    When I run `turtle`
+    Then the exit status should be 1
+    And I successfully run `sleep 1.5`
+    And the file named "bar" should not exist
+
+  @turtle @unix
+  Scenario: Kill a descendant of a command on failure of another command
+    Given a file named "build.ninja" with:
+      """
+      rule fail
+        command = sleep 0.2 && exit 1
+
+      rule slow
+        command = (sleep 1 && touch $out) > /dev/null 2>&1 & wait
+
+      build foo: fail
+      build bar: slow
+
+      """
+    When I run `turtle`
+    Then the exit status should be 1
+    And I successfully run `sleep 1.5`
+    And the file named "bar" should not exist
+
+  @turtle @unix
+  Scenario: Kill a command on a termination signal
+    Given a file named "build.ninja" with:
+      """
+      rule slow
+        command = (sleep 1 && touch $out) > /dev/null 2>&1 & wait
+
+      build foo: slow
+
+      """
+    When I run the following script:
+      """
+      turtle &
+      sleep 0.5
+      kill $!
+      wait $!
+      """
+    Then the exit status should be 143
+    And I successfully run `sleep 1`
+    And the file named "foo" should not exist

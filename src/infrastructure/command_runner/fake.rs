@@ -1,7 +1,7 @@
 use crate::infrastructure::{CommandError, CommandRunner};
 use alloc::sync::Arc;
 use async_trait::async_trait;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::{
     collections::HashMap,
     process::{ExitStatus, Output},
@@ -16,6 +16,7 @@ pub struct FakeCommandRunner {
     outputs: HashMap<String, Output>,
     concurrency: Arc<AtomicUsize>,
     max_concurrency: Arc<AtomicUsize>,
+    killed: Arc<AtomicBool>,
 }
 
 impl FakeCommandRunner {
@@ -36,6 +37,10 @@ impl FakeCommandRunner {
 
     pub fn max_concurrency(&self) -> usize {
         self.max_concurrency.load(Ordering::SeqCst)
+    }
+
+    pub fn killed(&self) -> bool {
+        self.killed.load(Ordering::SeqCst)
     }
 
     async fn execute(&self, command: &str) -> Output {
@@ -71,5 +76,9 @@ impl CommandRunner for FakeCommandRunner {
         self.console_commands.lock().unwrap().push(command.into());
 
         Ok(self.execute(command).await.status)
+    }
+
+    async fn kill(&self) {
+        self.killed.store(true, Ordering::SeqCst);
     }
 }

@@ -10,7 +10,7 @@ use core::pin::Pin;
 use futures::future::Shared;
 use rapidhash::{RapidHashMap, fast::RandomState};
 use scc::HashIndex;
-use tokio::sync::{Mutex, OnceCell, Semaphore, SemaphorePermit};
+use tokio::sync::{Mutex, OnceCell, Semaphore, SemaphorePermit, watch};
 
 type BuildFuture = Shared<Pin<Box<dyn Future<Output = Result<bool, BuildError>> + Send>>>;
 
@@ -24,6 +24,7 @@ pub struct RunContext {
     header_inputs: RapidHashMap<BuildId, Vec<Arc<str>>>,
     pools: RapidHashMap<Arc<str>, Semaphore>,
     options: RunOptions,
+    tasks: watch::Sender<()>,
 }
 
 impl RunContext {
@@ -60,6 +61,7 @@ impl RunContext {
             ),
             config,
             options,
+            tasks: watch::Sender::new(()),
         }
     }
 
@@ -104,5 +106,13 @@ impl RunContext {
 
     pub const fn options(&self) -> &RunOptions {
         &self.options
+    }
+
+    pub fn track_task(&self) -> watch::Receiver<()> {
+        self.tasks.subscribe()
+    }
+
+    pub async fn wait_for_tasks(&self) {
+        self.tasks.closed().await;
     }
 }

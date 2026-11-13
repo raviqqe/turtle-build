@@ -100,8 +100,7 @@ Feature: Others
       256
       """
 
-  @turtle
-  Scenario: Kill a command on failure of another command
+  Scenario: Wait for a running command on failure of another command
     Given a file named "build.ninja" with:
       """
       rule fail
@@ -115,46 +114,48 @@ Feature: Others
 
       """
     When I run `turtle`
-    Then the exit status should be 1
-    And I successfully run `sleep 1.5`
-    And the file named "bar" should not exist
+    Then the exit status should not be 0
+    And the file named "bar" should exist
 
-  @turtle @unix
-  Scenario: Kill a descendant of a command on failure of another command
+  Scenario: Run no command after failure of another command
     Given a file named "build.ninja" with:
       """
       rule fail
-        command = sleep 0.2 && exit 1
+        command = sh -c 'sleep 0.2 && exit 1'
 
       rule slow
-        command = (sleep 1 && touch $out) > /dev/null 2>&1 & wait
+        command = sh -c 'sleep 1 && touch $out'
+
+      rule touch
+        command = touch $out
 
       build foo: fail
+      build bar: slow
+      build baz: touch bar
+
+      """
+    When I run `turtle`
+    Then the exit status should not be 0
+    And the file named "bar" should exist
+    And the file named "baz" should not exist
+
+  Scenario: Do not rerun a command finished after failure of another command
+    Given a file named "build.ninja" with:
+      """
+      rule check
+        command = sh -c 'sleep 0.2 && test -e qux && touch $out'
+
+      rule slow
+        command = sh -c 'sleep 1 && printf hello >> log && touch $out'
+
+      build foo: check
       build bar: slow
 
       """
     When I run `turtle`
-    Then the exit status should be 1
-    And I successfully run `sleep 1.5`
-    And the file named "bar" should not exist
-
-  @turtle @unix
-  Scenario: Kill a command on a termination signal
-    Given a file named "build.ninja" with:
+    And a file named "qux" with ""
+    And I successfully run `turtle`
+    Then the file named "log" should contain exactly:
       """
-      rule slow
-        command = (sleep 1 && touch $out) > /dev/null 2>&1 & wait
-
-      build foo: slow
-
+      hello
       """
-    When I run the following script:
-      """
-      turtle &
-      sleep 0.5
-      kill $!
-      wait $!
-      """
-    Then the exit status should be 143
-    And I successfully run `sleep 1`
-    And the file named "foo" should not exist

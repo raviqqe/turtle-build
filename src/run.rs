@@ -107,7 +107,8 @@ pub async fn run(
     .await;
 
     if result.is_err() {
-        context.build().command_runner().kill().await;
+        context.build().command_runner().close();
+        context.wait_for_tasks().await;
     }
 
     result
@@ -135,7 +136,10 @@ async fn run_build(context: Arc<RunContext>, build: &Arc<Build>) -> Result<bool,
 }
 
 async fn spawn_build(context: Arc<RunContext>, build: Arc<Build>) -> Result<bool, BuildError> {
+    let task = context.track_task();
+
     spawn(async move {
+        let _task = task;
         let (inputs_stale, _, output_metadata) = try_join!(
             build_inputs(&context, build.inputs()),
             build_inputs(&context, build.order_only_inputs()),
@@ -917,7 +921,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn kill_no_command_on_build_success() {
+    async fn keep_command_runner_open_on_build_success() {
         let command_runner = FakeCommandRunner::default();
 
         run(
@@ -936,11 +940,11 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(!command_runner.killed());
+        assert!(!command_runner.closed());
     }
 
     #[tokio::test]
-    async fn kill_commands_on_build_failure() {
+    async fn close_command_runner_on_build_failure() {
         let command_runner =
             FakeCommandRunner::new([("exit 1".into(), failed_output())].into_iter().collect());
 
@@ -961,7 +965,48 @@ mod tests {
             .await,
             Err(BuildError::Build)
         );
-        assert!(command_runner.killed());
+        assert!(command_runner.closed());
+    }
+
+    #[tokio::test]
+    async fn wait_for_running_build_on_build_failure() {
+        let command_runner = FakeCommandRunner::default();
+        let context = create_context(&command_runner, &Default::default(), &Default::default());
+        let build = explicit_build(
+            vec!["foo".into()],
+            Rule::new("touch foo".into(), None),
+            vec![],
+        );
+
+        assert_eq!(
+            run(
+                &context,
+                create_simple_config(
+                    vec![
+                        build.clone(),
+                        explicit_build(
+                            vec!["bar".into()],
+                            Rule::new("cp baz bar".into(), None),
+                            vec!["baz".into()],
+                        ),
+                    ],
+                    &["foo", "bar"],
+                ),
+                &[],
+                DEFAULT_OPTIONS,
+            )
+            .await,
+            Err(BuildError::FileNotFound("baz".into()))
+        );
+        assert_eq!(command_runner.commands(), ["touch foo"]);
+        assert!(
+            context
+                .database()
+                .get_hash(build.id())
+                .await
+                .unwrap()
+                .is_some()
+        );
     }
 
     #[tokio::test]

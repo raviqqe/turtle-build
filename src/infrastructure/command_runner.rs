@@ -13,5 +13,5 @@ use std::process::{ExitStatus, Output};
 pub trait CommandRunner {
     async fn run(&self, command: &str) -> Result<Output, CommandError>;
     async fn run_with_console(&self, command: &str) -> Result<ExitStatus, CommandError>;
-    async fn kill(&self);
+    fn close(&self);
 }

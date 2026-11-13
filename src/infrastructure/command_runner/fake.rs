@@ -16,7 +16,7 @@ pub struct FakeCommandRunner {
     outputs: HashMap<String, Output>,
     concurrency: Arc<AtomicUsize>,
     max_concurrency: Arc<AtomicUsize>,
-    killed: Arc<AtomicBool>,
+    closed: Arc<AtomicBool>,
 }
 
 impl FakeCommandRunner {
@@ -39,8 +39,8 @@ impl FakeCommandRunner {
         self.max_concurrency.load(Ordering::SeqCst)
     }
 
-    pub fn killed(&self) -> bool {
-        self.killed.load(Ordering::SeqCst)
+    pub fn closed(&self) -> bool {
+        self.closed.load(Ordering::SeqCst)
     }
 
     async fn execute(&self, command: &str) -> Output {
@@ -78,7 +78,7 @@ impl CommandRunner for FakeCommandRunner {
         Ok(self.execute(command).await.status)
     }
 
-    async fn kill(&self) {
-        self.killed.store(true, Ordering::SeqCst);
+    fn close(&self) {
+        self.closed.store(true, Ordering::SeqCst);
     }
 }

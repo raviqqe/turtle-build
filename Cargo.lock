@@ -1135,7 +1135,6 @@ dependencies = [
  "regex",
  "rkyv",
  "rlimit",
- "rustix",
  "scc",
  "tempfile",
  "thiserror",

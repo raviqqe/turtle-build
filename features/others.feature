@@ -99,3 +99,63 @@ Feature: Others
       """
       256
       """
+
+  Scenario: Wait for a running command on failure of another command
+    Given a file named "build.ninja" with:
+      """
+      rule fail
+        command = sh -c 'sleep 0.2 && exit 1'
+
+      rule slow
+        command = sh -c 'sleep 1 && touch $out'
+
+      build foo: fail
+      build bar: slow
+
+      """
+    When I run `turtle`
+    Then the exit status should not be 0
+    And the file named "bar" should exist
+
+  Scenario: Run no command after failure of another command
+    Given a file named "build.ninja" with:
+      """
+      rule fail
+        command = sh -c 'sleep 0.2 && exit 1'
+
+      rule slow
+        command = sh -c 'sleep 1 && touch $out'
+
+      rule touch
+        command = touch $out
+
+      build foo: fail
+      build bar: slow
+      build baz: touch bar
+
+      """
+    When I run `turtle`
+    Then the exit status should not be 0
+    And the file named "bar" should exist
+    And the file named "baz" should not exist
+
+  Scenario: Do not rerun a command finished after failure of another command
+    Given a file named "build.ninja" with:
+      """
+      rule check
+        command = sh -c 'sleep 0.2 && test -e qux && touch $out'
+
+      rule slow
+        command = sh -c 'sleep 1 && printf hello >> log && touch $out'
+
+      build foo: check
+      build bar: slow
+
+      """
+    When I run `turtle`
+    And a file named "qux" with ""
+    And I successfully run `turtle`
+    Then the file named "log" should contain exactly:
+      """
+      hello
+      """

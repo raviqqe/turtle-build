@@ -107,7 +107,6 @@ pub async fn run(
     .await;
 
     if result.is_err() {
-        context.build().command_runner().close();
         context.wait_for_tasks().await;
     }
 

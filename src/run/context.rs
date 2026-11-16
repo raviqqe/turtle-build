@@ -113,6 +113,7 @@ impl RunContext {
     }
 
     pub async fn wait_for_tasks(&self) {
+        self.build.command_runner().close();
         self.tasks.closed().await;
     }
 }

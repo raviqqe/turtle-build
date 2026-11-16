@@ -111,7 +111,7 @@ fn hash_command(build: &Build, hasher: &mut impl Hasher) {
 
 #[cfg(test)]
 mod tests {
-    use super::{super::RunOptions, *};
+    use super::*;
     use crate::{
         build_graph::BuildGraph,
         context::Context,
@@ -147,11 +147,7 @@ mod tests {
             .into(),
             BuildGraph::new(&Default::default()),
             Default::default(),
-            RunOptions {
-                debug: false,
-                dry_run: false,
-                profile: false,
-            },
+            Default::default(),
         )
     }
 

@@ -561,11 +561,6 @@ mod tests {
     use std::process::ExitStatus;
     use tokio::{sync::Mutex, task::yield_now};
 
-    const DEFAULT_OPTIONS: RunOptions = RunOptions {
-        debug: false,
-        dry_run: false,
-        profile: false,
-    };
     const POLL_COUNT: usize = 8;
 
     fn create_context(
@@ -668,7 +663,7 @@ mod tests {
             create_pool_config(vec![], &[], pools),
             BuildGraph::new(&Default::default()),
             Default::default(),
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
     }
 
@@ -682,7 +677,7 @@ mod tests {
             create_simple_config(builds, &[]),
             BuildGraph::new(&Default::default()),
             Default::default(),
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .into()
     }
@@ -695,7 +690,7 @@ mod tests {
             &create_context(&command_runner, &Default::default(), &Default::default()),
             create_simple_config(vec![], &[]),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -725,7 +720,7 @@ mod tests {
                 &["foo"],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -755,7 +750,7 @@ mod tests {
                 &["foo"],
             ),
             &["bar".into()],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -778,7 +773,7 @@ mod tests {
                 &[],
             ),
             &["foo".into(), "foo".into()],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -809,7 +804,7 @@ mod tests {
                 &[],
             ),
             &outputs,
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -835,7 +830,7 @@ mod tests {
                 ),
                 create_simple_config(vec![], &["foo"]),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await,
             Err(BuildError::DefaultOutputNotFound("foo".into()))
@@ -853,7 +848,7 @@ mod tests {
                 ),
                 create_simple_config(vec![], &[]),
                 &["foo".into()],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await,
             Err(BuildError::OutputNotFound("foo".into()))
@@ -876,7 +871,7 @@ mod tests {
                     &[],
                 ),
                 &["foo".into(), "bar".into()],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await,
             Err(BuildError::OutputNotFound("bar".into()))
@@ -912,7 +907,7 @@ mod tests {
                     &["foo", "bar"],
                 ),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await,
             Err(BuildError::Build)
@@ -934,7 +929,7 @@ mod tests {
                 &["foo"],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -959,7 +954,7 @@ mod tests {
                     &["foo"],
                 ),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await,
             Err(BuildError::Build)
@@ -992,7 +987,7 @@ mod tests {
                     &["foo", "bar"],
                 ),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await,
             Err(BuildError::FileNotFound("baz".into()))
@@ -1039,7 +1034,7 @@ mod tests {
                 &["foo"],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -1097,7 +1092,7 @@ mod tests {
                 &["foo"],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -1131,7 +1126,7 @@ mod tests {
                 &["baz"],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -1158,7 +1153,7 @@ mod tests {
                     &["foo"],
                 ),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await,
             Err(BuildError::FileNotFound("bar".into()))
@@ -1187,7 +1182,7 @@ mod tests {
                     &["foo"],
                 ),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await,
             Err(BuildError::FileNotFound("bar".into()))
@@ -1220,7 +1215,7 @@ mod tests {
                     &["foo"],
                 ),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await,
             Err(BuildError::FileNotFound("foo.c".into()))
@@ -1245,7 +1240,7 @@ mod tests {
                     &["foo"],
                 ),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await,
             Err(BuildError::BuildGraph(BuildGraphError::CircularDependency(
@@ -1292,7 +1287,7 @@ mod tests {
                     &["foo"],
                 ),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await,
             Err(BuildError::BuildGraph(BuildGraphError::CircularDependency(
@@ -1320,7 +1315,7 @@ mod tests {
                 &["foo/bar"],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -1350,7 +1345,7 @@ mod tests {
             )
             .into(),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -1379,10 +1374,12 @@ mod tests {
         file_system.write_file("foo", "");
         file_system.write_file("bar", "");
 
-        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+        run(&context, config.clone(), &[], Default::default())
             .await
             .unwrap();
-        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+        run(&context, config, &[], Default::default())
+            .await
+            .unwrap();
 
         assert_eq!(command_runner.commands(), ["cp bar foo"]);
     }
@@ -1404,13 +1401,15 @@ mod tests {
         file_system.write_file("foo", "");
         file_system.write_file("bar", "");
 
-        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+        run(&context, config.clone(), &[], Default::default())
             .await
             .unwrap();
 
         file_system.write_file("bar", "");
 
-        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+        run(&context, config, &[], Default::default())
+            .await
+            .unwrap();
 
         assert_eq!(command_runner.commands(), ["cp bar foo"]);
     }
@@ -1432,13 +1431,15 @@ mod tests {
         file_system.write_file("foo", "");
         file_system.write_file("bar", "");
 
-        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+        run(&context, config.clone(), &[], Default::default())
             .await
             .unwrap();
 
         file_system.write_file("bar", "bar");
 
-        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+        run(&context, config, &[], Default::default())
+            .await
+            .unwrap();
 
         assert_eq!(command_runner.commands(), ["cp bar foo", "cp bar foo"]);
     }
@@ -1470,13 +1471,15 @@ mod tests {
         file_system.write_file("foo", "");
         file_system.write_file("baz", "");
 
-        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+        run(&context, config.clone(), &[], Default::default())
             .await
             .unwrap();
 
         file_system.write_file("baz", "baz");
 
-        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+        run(&context, config, &[], Default::default())
+            .await
+            .unwrap();
 
         assert_eq!(command_runner.commands(), ["cp bar foo", "cp bar foo"]);
     }
@@ -1516,13 +1519,15 @@ mod tests {
         file_system.write_file("foo", "");
         file_system.write_file("qux", "");
 
-        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+        run(&context, config.clone(), &[], Default::default())
             .await
             .unwrap();
 
         file_system.write_file("qux", "qux");
 
-        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+        run(&context, config, &[], Default::default())
+            .await
+            .unwrap();
 
         assert_eq!(command_runner.commands(), ["cp bar foo", "cp bar foo"]);
     }
@@ -1543,10 +1548,12 @@ mod tests {
 
         file_system.write_file("bar", "");
 
-        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+        run(&context, config.clone(), &[], Default::default())
             .await
             .unwrap();
-        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+        run(&context, config, &[], Default::default())
+            .await
+            .unwrap();
 
         assert_eq!(command_runner.commands(), ["cp bar foo", "cp bar foo"]);
     }
@@ -1571,10 +1578,12 @@ mod tests {
         file_system.write_file("foo", "");
         file_system.write_file("bar", "");
 
-        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+        run(&context, config.clone(), &[], Default::default())
             .await
             .unwrap();
-        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+        run(&context, config, &[], Default::default())
+            .await
+            .unwrap();
 
         assert_eq!(command_runner.commands(), ["cp bar foo", "cp bar foo"]);
     }
@@ -1610,13 +1619,13 @@ mod tests {
         file_system.write_file("baz", "");
         file_system.write_file("qux", "");
 
-        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+        run(&context, config.clone(), &[], Default::default())
             .await
             .unwrap();
 
         file_system.write_file("qux", "qux");
 
-        let mut future = pin!(run(&context, config, &[], DEFAULT_OPTIONS));
+        let mut future = pin!(run(&context, config, &[], Default::default()));
 
         assert!(poll!(&mut future).is_pending());
 
@@ -1667,11 +1676,11 @@ mod tests {
         file_system.write_file("foo", "");
 
         assert_eq!(
-            run(&context, config.clone(), &[], DEFAULT_OPTIONS).await,
+            run(&context, config.clone(), &[], Default::default()).await,
             Err(BuildError::Build)
         );
         assert_eq!(
-            run(&context, config, &[], DEFAULT_OPTIONS).await,
+            run(&context, config, &[], Default::default()).await,
             Err(BuildError::Build)
         );
         assert_eq!(command_runner.commands(), ["exit 1", "exit 1"]);
@@ -1845,7 +1854,7 @@ mod tests {
                 &["foo"],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -1877,13 +1886,15 @@ mod tests {
         file_system.write_file("bar", "");
         file_system.write_file("baz", "");
 
-        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+        run(&context, config.clone(), &[], Default::default())
             .await
             .unwrap();
 
         let count = count_metadata_requests(&file_system, "bar");
 
-        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+        run(&context, config, &[], Default::default())
+            .await
+            .unwrap();
 
         assert_eq!(count_metadata_requests(&file_system, "bar"), count + 1);
     }
@@ -1916,13 +1927,15 @@ mod tests {
         file_system.write_file("baz", "");
         file_system.write_file("qux", "");
 
-        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+        run(&context, config.clone(), &[], Default::default())
             .await
             .unwrap();
 
         let count = count_metadata_requests(&file_system, "qux");
 
-        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+        run(&context, config, &[], Default::default())
+            .await
+            .unwrap();
 
         assert_eq!(count_metadata_requests(&file_system, "qux"), count + 1);
     }
@@ -1951,7 +1964,7 @@ mod tests {
         file_system.write_file("bar", "");
         file_system.write_file("baz", "");
 
-        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+        run(&context, config.clone(), &[], Default::default())
             .await
             .unwrap();
 
@@ -1959,7 +1972,9 @@ mod tests {
 
         let count = count_metadata_requests(&file_system, "bar");
 
-        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+        run(&context, config, &[], Default::default())
+            .await
+            .unwrap();
 
         assert_eq!(count_metadata_requests(&file_system, "bar"), count + 2);
     }
@@ -1990,7 +2005,7 @@ mod tests {
                 &["foo"],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -2031,13 +2046,15 @@ mod tests {
         file_system.write_file("foo.h.in", "");
         file_system.write_file("foo.d", "foo.o: foo.h\n");
 
-        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+        run(&context, config.clone(), &[], Default::default())
             .await
             .unwrap();
 
         let count = count_metadata_requests(&file_system, "foo.h");
 
-        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+        run(&context, config, &[], Default::default())
+            .await
+            .unwrap();
 
         assert_eq!(count_metadata_requests(&file_system, "foo.h"), count + 2);
     }
@@ -2060,13 +2077,15 @@ mod tests {
 
         file_system.write_file("bar", "");
 
-        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+        run(&context, config.clone(), &[], Default::default())
             .await
             .unwrap();
 
         let count = file_system.read_requests().len();
 
-        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+        run(&context, config, &[], Default::default())
+            .await
+            .unwrap();
 
         assert_eq!(file_system.read_requests()[count..], Vec::<&Path>::new());
     }
@@ -2098,7 +2117,7 @@ mod tests {
         file_system.write_file("baz", "");
         file_system.write_file("qux", "");
 
-        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+        run(&context, config.clone(), &[], Default::default())
             .await
             .unwrap();
 
@@ -2106,7 +2125,9 @@ mod tests {
 
         let count = file_system.read_requests().len();
 
-        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+        run(&context, config, &[], Default::default())
+            .await
+            .unwrap();
 
         assert_eq!(file_system.read_requests()[count..], [Path::new("baz")]);
     }
@@ -2131,7 +2152,7 @@ mod tests {
                     &["foo"],
                 ),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await,
             Err(BuildError::File(FileError::new("metadata failure")))
@@ -2169,7 +2190,7 @@ mod tests {
                 &["foo"],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -2202,8 +2223,7 @@ mod tests {
                 &[],
                 RunOptions {
                     debug: true,
-                    dry_run: false,
-                    profile: false,
+                    ..Default::default()
                 },
             )
             .await,
@@ -2231,9 +2251,8 @@ mod tests {
             ),
             &[],
             RunOptions {
-                debug: false,
-                dry_run: false,
                 profile: true,
+                ..Default::default()
             },
         )
         .await
@@ -2269,16 +2288,18 @@ mod tests {
         file_system.write_file("foo.h", "");
         file_system.write_file("foo.d", "foo.o: foo.h\n");
 
-        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+        run(&context, config.clone(), &[], Default::default())
             .await
             .unwrap();
-        run(&context, config.clone(), &[], DEFAULT_OPTIONS)
+        run(&context, config.clone(), &[], Default::default())
             .await
             .unwrap();
 
         file_system.write_file("foo.h", "foo");
 
-        run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+        run(&context, config, &[], Default::default())
+            .await
+            .unwrap();
 
         assert_eq!(command_runner.commands(), ["cc foo.c", "cc foo.c"]);
     }
@@ -2305,7 +2326,7 @@ mod tests {
             &context,
             create_simple_config(vec![build.clone()], &["foo.o"]),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -2364,7 +2385,7 @@ mod tests {
             &context,
             create_simple_config(vec![build.clone()], &["foo.obj"]),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -2402,7 +2423,7 @@ mod tests {
             &context,
             create_simple_config(vec![build.clone()], &["foo.o"]),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -2450,7 +2471,7 @@ mod tests {
                 &["foo.o"],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -2479,7 +2500,7 @@ mod tests {
             &context,
             create_simple_config(vec![build], &["foo.o"]),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -2514,7 +2535,7 @@ mod tests {
             &context,
             create_simple_config(vec![build.clone()], &["foo.o"]),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -2546,7 +2567,7 @@ mod tests {
                 &context,
                 create_simple_config(vec![build], &["foo"]),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await,
             Err(BuildError::BuildGraph(BuildGraphError::CircularDependency(
@@ -2592,7 +2613,7 @@ mod tests {
                 &["foo"],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -2640,7 +2661,7 @@ mod tests {
                 &["foo"],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -2698,7 +2719,7 @@ mod tests {
                 &["bar"],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -2737,7 +2758,7 @@ mod tests {
                 &["foo", "bar"],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -2764,7 +2785,7 @@ mod tests {
             config.clone(),
             BuildGraph::new(config.outputs()),
             Default::default(),
-            DEFAULT_OPTIONS,
+            Default::default(),
         );
 
         file_system.write_file(
@@ -2801,7 +2822,7 @@ mod tests {
                 &create_context(&Default::default(), &Default::default(), &file_system),
                 create_simple_config(vec![build.clone()], &["foo"]),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await,
             Err(BuildError::DynamicDependencyNotFound(build.into()))
@@ -2832,7 +2853,7 @@ mod tests {
                     &["foo"],
                 ),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await,
             Err(BuildError::BuildGraph(BuildGraphError::OutputNotFound(
@@ -2865,7 +2886,7 @@ mod tests {
                     &["foo"],
                 ),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await,
             Err(BuildError::BuildGraph(BuildGraphError::CircularDependency(
@@ -2889,7 +2910,7 @@ mod tests {
                 &["foo", "bar", "baz"],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -2913,7 +2934,7 @@ mod tests {
                 &[("qux", 1)],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -2939,7 +2960,7 @@ mod tests {
                 &[("quux", 2)],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -2963,7 +2984,7 @@ mod tests {
                 &[("baz", 1), ("qux", 1)],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -2983,7 +3004,7 @@ mod tests {
                 &[("bar", usize::MAX)],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -3019,7 +3040,7 @@ mod tests {
                 &["foo"],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -3045,7 +3066,7 @@ mod tests {
                 &["foo", "bar", "baz"],
             ),
             &[],
-            DEFAULT_OPTIONS,
+            Default::default(),
         )
         .await
         .unwrap();
@@ -3074,8 +3095,7 @@ mod tests {
                 &[],
                 RunOptions {
                     debug: true,
-                    dry_run: false,
-                    profile: false,
+                    ..Default::default()
                 },
             )
             .await,
@@ -3289,7 +3309,7 @@ mod tests {
             ),
             BuildGraph::new(&Default::default()),
             Default::default(),
-            DEFAULT_OPTIONS,
+            Default::default(),
         );
 
         assert_eq!(
@@ -3327,7 +3347,7 @@ mod tests {
             create_simple_config(vec![build.clone()], &[]),
             BuildGraph::new(&Default::default()),
             Default::default(),
-            DEFAULT_OPTIONS,
+            Default::default(),
         );
 
         assert_eq!(
@@ -3366,8 +3386,9 @@ mod tests {
         use std::path::PathBuf;
 
         const OPTIONS: RunOptions = RunOptions {
+            debug: false,
             dry_run: true,
-            ..DEFAULT_OPTIONS
+            profile: false,
         };
 
         fn create_database_context(
@@ -3528,7 +3549,9 @@ mod tests {
             file_system.write_file("baz", "");
 
             run(&context, config.clone(), &[], OPTIONS).await.unwrap();
-            run(&context, config, &[], DEFAULT_OPTIONS).await.unwrap();
+            run(&context, config, &[], Default::default())
+                .await
+                .unwrap();
 
             assert_eq!(command_runner.commands(), ["touch foo"]);
         }
@@ -3547,7 +3570,7 @@ mod tests {
                 &create_database_context(&Default::default(), &database, &file_system),
                 config.clone(),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await
             .unwrap();
@@ -3577,7 +3600,7 @@ mod tests {
                 &create_database_context(&Default::default(), &database, &file_system),
                 config.clone(),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await
             .unwrap();
@@ -3609,7 +3632,7 @@ mod tests {
                 &create_database_context(&Default::default(), &database, &file_system),
                 config.clone(),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await
             .unwrap();
@@ -3671,7 +3694,7 @@ mod tests {
                 &create_database_context(&Default::default(), &database, &file_system),
                 config.clone(),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await
             .unwrap();
@@ -3718,7 +3741,7 @@ mod tests {
                 &create_database_context(&Default::default(), &database, &file_system),
                 config.clone(),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await
             .unwrap();
@@ -3757,7 +3780,7 @@ mod tests {
                 &create_database_context(&Default::default(), &database, &file_system),
                 config.clone(),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await
             .unwrap();
@@ -3793,7 +3816,7 @@ mod tests {
                 &create_database_context(&Default::default(), &database, &file_system),
                 config.clone(),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await
             .unwrap();
@@ -3828,7 +3851,7 @@ mod tests {
                 &create_database_context(&Default::default(), &database, &file_system),
                 config.clone(),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await
             .unwrap();
@@ -3866,7 +3889,7 @@ mod tests {
                 &create_database_context(&Default::default(), &database, &file_system),
                 config.clone(),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await
             .unwrap();
@@ -3916,7 +3939,7 @@ mod tests {
                 &create_database_context(&Default::default(), &database, &file_system),
                 config.clone(),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await
             .unwrap();
@@ -3967,7 +3990,7 @@ mod tests {
                 &create_database_context(&Default::default(), &database, &file_system),
                 config.clone(),
                 &[],
-                DEFAULT_OPTIONS,
+                Default::default(),
             )
             .await
             .unwrap();

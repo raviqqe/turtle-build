@@ -1,5 +1,5 @@
 /// Run options.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct RunOptions {
     /// Shows debug logs.
     pub debug: bool,

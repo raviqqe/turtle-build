@@ -132,7 +132,11 @@ async fn execute(
         run(
             &context,
             config,
-            &arguments.outputs,
+            &arguments
+                .outputs
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
             RunOptions {
                 debug: arguments.debug,
                 dry_run: arguments.dry_run,

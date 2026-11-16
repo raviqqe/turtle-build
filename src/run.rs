@@ -43,7 +43,7 @@ const OUTPUT_CONCURRENCY: usize = 256;
 pub async fn run(
     context: &Arc<Context>,
     config: Arc<Config>,
-    outputs: &[String],
+    outputs: &[&str],
     options: RunOptions,
 ) -> Result<(), BuildError> {
     let mut graph = BuildGraph::new(config.outputs());
@@ -94,8 +94,8 @@ pub async fn run(
                     context
                         .config()
                         .outputs()
-                        .get(output.as_str())
-                        .ok_or_else(|| BuildError::OutputNotFound(output.clone()))
+                        .get(*output)
+                        .ok_or_else(|| BuildError::OutputNotFound(output.to_string()))
                 })
                 .collect::<Result<Vec<_>, _>>()?
         }
@@ -754,7 +754,7 @@ mod tests {
                 ],
                 &["foo"],
             ),
-            &["bar".into()],
+            &["bar"],
             DEFAULT_OPTIONS,
         )
         .await
@@ -777,7 +777,7 @@ mod tests {
                 )],
                 &[],
             ),
-            &["foo".into(), "foo".into()],
+            &["foo", "foo"],
             DEFAULT_OPTIONS,
         )
         .await
@@ -808,7 +808,7 @@ mod tests {
                     .collect(),
                 &[],
             ),
-            &outputs,
+            &outputs.iter().map(String::as_str).collect::<Vec<_>>(),
             DEFAULT_OPTIONS,
         )
         .await
@@ -852,7 +852,7 @@ mod tests {
                     &Default::default()
                 ),
                 create_simple_config(vec![], &[]),
-                &["foo".into()],
+                &["foo"],
                 DEFAULT_OPTIONS,
             )
             .await,
@@ -875,7 +875,7 @@ mod tests {
                     )],
                     &[],
                 ),
-                &["foo".into(), "bar".into()],
+                &["foo", "bar"],
                 DEFAULT_OPTIONS,
             )
             .await,

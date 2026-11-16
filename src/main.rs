@@ -4,7 +4,7 @@ extern crate alloc;
 
 use alloc::sync::Arc;
 use clap::{Parser, ValueEnum};
-use core::{convert::Infallible, error::Error};
+use core::error::Error;
 #[cfg(unix)]
 use rlimit::Resource;
 use rlimit::increase_nofile_limit;
@@ -81,10 +81,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     exit(1)
 }
 
-async fn execute(
-    arguments: &Arguments,
-    console: &Arc<Mutex<OsConsole>>,
-) -> Result<Infallible, BuildError> {
+async fn execute(arguments: &Arguments, console: &Arc<Mutex<OsConsole>>) -> Result<!, BuildError> {
     if let Some(directory) = &arguments.directory {
         set_current_dir(directory)?;
     }

@@ -73,6 +73,10 @@ impl CommandRunner for OsCommandRunner {
             .await
             .map_err(|error| Self::error(error, &process))
     }
+
+    fn close(&self) {
+        self.semaphore.close();
+    }
 }
 
 #[cfg(any(windows, test))]
@@ -209,6 +213,54 @@ mod tests {
                     .to_string()
                     .ends_with(": missing-program")
             );
+        }
+    }
+
+    mod close {
+        use super::*;
+        use core::pin::pin;
+        use futures::poll;
+
+        const SLOW_COMMAND: &str = cfg_select! {
+            windows => "ping -n 2 127.0.0.1",
+            _ => "sleep 0.1",
+        };
+
+        #[tokio::test]
+        async fn finish_running_command_after_close() {
+            let runner = OsCommandRunner::new(1);
+            let mut future = pin!(runner.run(SLOW_COMMAND));
+
+            assert!(poll!(&mut future).is_pending());
+
+            runner.close();
+
+            assert!(future.await.unwrap().status.success());
+        }
+
+        #[tokio::test]
+        async fn run_no_command_after_close() {
+            let runner = OsCommandRunner::new(1);
+
+            runner.close();
+
+            assert!(runner.run(SLOW_COMMAND).await.is_err());
+            assert!(runner.run_with_console(SLOW_COMMAND).await.is_err());
+        }
+
+        #[tokio::test]
+        async fn run_no_command_waiting_for_job_on_close() {
+            let runner = OsCommandRunner::new(1);
+            let mut foo_future = pin!(runner.run(SLOW_COMMAND));
+            let mut bar_future = pin!(runner.run(SLOW_COMMAND));
+
+            assert!(poll!(&mut foo_future).is_pending());
+            assert!(poll!(&mut bar_future).is_pending());
+
+            runner.close();
+
+            assert!(bar_future.await.is_err());
+            assert!(foo_future.await.unwrap().status.success());
         }
     }
 

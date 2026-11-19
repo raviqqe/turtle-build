@@ -17,7 +17,7 @@ workflows:
     '.github/workflows/dependabot.yaml': []
     '.github/workflows/lint.yaml':
         - 'actions/checkout@v7.0.1'
-        - 'bnjbvr/cargo-machete@v0.10.0'
+        - 'bnjbvr/cargo-machete@v0.10.1'
         - 'streetsidesoftware/cspell-action@v9.2.0'
         - 'swatinem/rust-cache@v2.9.3'
     '.github/workflows/release.yaml':
@@ -64,9 +64,9 @@ dependencies:
         commit: 'sha1-cf430e030ddbb5b0abf93d22962f4752f3646cd9'
         owner_id: 44036562
         repo_id: 192625955
-    'bnjbvr/cargo-machete@v0.10.0':
-        ref: 'v0.10.0'
-        commit: 'sha1-a84eadc0a20e522e37a502609e97a7ce30c998ed'
+    'bnjbvr/cargo-machete@v0.10.1':
+        ref: 'v0.10.1'
+        commit: 'sha1-431e75731b681a69a4cfdeb1315b505778bb5c70'
         owner_id: 1180019
         repo_id: 420777439
     'goreleaser/goreleaser-action@e24998b8b67b290c2fa8b7c14fcfa7de2c5c9b8c':
